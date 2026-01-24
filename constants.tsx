@@ -20,6 +20,8 @@ export const MOCK_PRODUCTS: Product[] = [
     shipping_rules: [{ name: '7-11', fee: 60, free_threshold: 1000 }, { name: '宅配', fee: 100, free_threshold: 2000 }],
     end_time: new Date(Date.now() + 86400000 * 3).toISOString(), // 3 days
     target_amount: 10000,
+    // Fix: Added missing current_amount property to satisfy Product type requirement
+    current_amount: 4500,
     total_stock: 100,
     is_pinned: true,
     questions: [{ title: '備註款式顏色', required: false }]
@@ -38,6 +40,8 @@ export const MOCK_PRODUCTS: Product[] = [
     shipping_rules: [{ name: '宅配', fee: 150, free_threshold: 2000 }],
     end_time: new Date(Date.now() + 86400000 * 7).toISOString(),
     target_amount: 50000,
+    // Fix: Added missing current_amount property to satisfy Product type requirement
+    current_amount: 12500,
     total_stock: 25,
     is_pinned: false
   },
@@ -55,6 +59,8 @@ export const MOCK_PRODUCTS: Product[] = [
     shipping_rules: [{ name: '7-11', fee: 60, free_threshold: 1000 }, { name: '宅配', fee: 120, free_threshold: 2000 }],
     end_time: new Date(Date.now() + 86400000 * 5).toISOString(),
     target_amount: 20000,
+    // Fix: Added missing current_amount property to satisfy Product type requirement
+    current_amount: 18500,
     total_stock: 40,
     is_pinned: true
   }

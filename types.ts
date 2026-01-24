@@ -23,6 +23,8 @@ export interface ShippingRule {
   name: string;
   fee: number;
   free_threshold: number;
+  limit_qty?: number; // 每筆運費貨品數量
+  pickup_address?: string; // 自取地址
 }
 
 export interface ProductVariant {
@@ -49,7 +51,8 @@ export interface Product {
   shipping_rules: ShippingRule[];
   bank_info?: BankInfo;
   end_time: string;
-  target_amount: number;
+  target_amount: number; // 銷售目標金額
+  current_amount: number; // 當前銷售總額 (新增)
   total_stock: number;
   is_pinned: boolean;
   questions?: ProductQuestion[];
