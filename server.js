@@ -1,4 +1,3 @@
-
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
@@ -234,10 +233,56 @@ app.post('/api/permissions/bulk', async (req, res) => {
   res.json(permissions);
 });
 
+// --- Initialization Logic ---
+const initializeAdmin = async () => {
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    if (!adminEmail || !adminPassword) {
+      console.log('⚠️ No ADMIN_EMAIL or ADMIN_PASSWORD in .env, skipping admin creation.');
+      return;
+    }
+
+    const existingAdmin = await User.findOne({ role: 'ADMIN' });
+    if (!existingAdmin) {
+      console.log('⚙️ Initializing default Admin account...');
+      const adminUser = new User({
+        id: 'admin_init_' + Date.now(),
+        name: 'Super Admin',
+        email: adminEmail,
+        password: adminPassword,
+        role: 'ADMIN',
+        level: 999,
+        created_at: new Date().toISOString(),
+        stats: {
+          ratingCount: 0,
+          productCount: 0,
+          followerCount: 0,
+          responseRate: 100,
+          responseTime: '即時',
+          joinTime: '初始建立',
+          averageRating: 5.0
+        }
+      });
+      await adminUser.save();
+      console.log(`✅ Admin account created: ${adminEmail}`);
+    } else {
+      console.log('✅ Admin account already exists.');
+    }
+  } catch (error) {
+    console.error('❌ Failed to initialize admin:', error);
+  }
+};
+
 // --- Start Server ---
 mongoose.connect(MONGODB_URI)
-  .then(() => {
+  .then(async () => {
     console.log('✅ Connected to MongoDB');
+    
+    // 初始化管理員帳號
+    await initializeAdmin();
+
     app.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
     });
