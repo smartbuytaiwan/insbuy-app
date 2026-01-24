@@ -59,6 +59,7 @@ const App: React.FC = () => {
 
   const logout = () => {
     setUser(null);
+    localStorage.removeItem('insbuy_user');
     setView(View.SHOP);
     setCart([]);
     showToast('已安全登出');
@@ -97,10 +98,10 @@ const App: React.FC = () => {
         {view === View.PRODUCT && selectedProduct && <ProductDetail product={selectedProduct} onAddToCart={(item) => { setCart([...cart, item]); showToast('已加入購物車！'); }} onNavigate={navigateTo} />}
         {view === View.CART && <Cart items={cart} onRemove={(idx) => { setCart(cart.filter((_, i) => i !== idx)); showToast('商品已移除', 'error'); }} onCheckout={() => navigateTo(View.CHECKOUT)} onClear={() => { setCart([]); showToast('購物車已清空'); }} />}
         {view === View.CHECKOUT && <Checkout cart={cart} user={user} onSubmit={(order) => { setOrders([order, ...orders]); setCart([]); showToast('訂單已提交！'); navigateTo(View.BUYER_DASHBOARD); }} />}
-        {view === View.AUTH && <AuthHub onLogin={(u) => { setUser(u); showToast(`歡迎回來，${u.name}！`); navigateTo(u.role === 'SELLER' ? View.ADMIN_HOME : View.SHOP); }} onNavigate={navigateTo} />}
+        {view === View.AUTH && <AuthHub onLogin={(u) => { setUser(u); localStorage.setItem('insbuy_user', JSON.stringify(u)); showToast(`歡迎回來，${u.name}！`); navigateTo(u.role === 'SELLER' ? View.ADMIN_HOME : View.SHOP); }} onNavigate={navigateTo} />}
         {view === View.REGISTER_BUYER && <RegisterBuyer onComplete={() => navigateTo(View.AUTH)} />}
         {view === View.REGISTER_SELLER && <RegisterSeller onComplete={() => navigateTo(View.AUTH)} />}
-        {view === View.ADMIN_HOME && user?.role === 'SELLER' && (
+        {view === View.ADMIN_HOME && user && user.role === 'SELLER' && (
           <AdminDashboard 
             user={user} 
             products={products.filter(p => p.shop_id === user.shop_id)}
@@ -117,15 +118,16 @@ const App: React.FC = () => {
         {view === View.CHAT && <ChatRoom targetId={chatTarget} currentProduct={selectedProduct} />}
       </main>
 
-      {/* 懸浮 AI 聊聊按鈕：點擊後切換至聊天視窗 */}
       <div className="fixed bottom-8 right-8 z-[999] flex flex-col gap-4 items-end">
         <button 
           onClick={() => navigateTo(View.CHAT)}
-          className="w-16 h-16 primary-gradient rounded-full shadow-2xl border-4 border-white flex flex-col items-center justify-center text-white hover:scale-110 transition-all active:scale-95 group relative"
+          className="w-16 h-16 primary-gradient rounded-full shadow-[0_10px_40px_rgba(238,77,45,0.4)] border-4 border-white flex flex-col items-center justify-center text-white hover:scale-110 hover:-translate-y-2 transition-all duration-300 active:scale-95 group relative"
         >
-          <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full border-2 border-white animate-bounce"></div>
-          <i className="fa-solid fa-comment-dots text-2xl"></i>
-          <span className="text-[10px] font-black">AI 助手</span>
+          <div className="absolute -top-1 -right-1 w-5 h-5 bg-yellow-400 rounded-full border-2 border-white animate-bounce shadow-sm flex items-center justify-center">
+            <span className="text-[8px] text-slate-800 font-black">AI</span>
+          </div>
+          <i className="fa-solid fa-wand-magic-sparkles text-2xl"></i>
+          <span className="text-[10px] font-black tracking-tighter mt-0.5">智能助教</span>
         </button>
       </div>
     </div>
