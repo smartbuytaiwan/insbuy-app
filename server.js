@@ -151,11 +151,20 @@ app.post('/api/auth/register', async (req, res) => {
 
 app.post('/api/auth/login', async (req, res) => {
   const { phoneOrEmail, password, role } = req.body;
-  const user = await User.findOne({ 
+  
+  // 特殊邏輯：允許 ADMIN 在商家登入頁面 (role=SELLER) 登入
+  const query = { 
     $or: [{ phone: phoneOrEmail }, { email: phoneOrEmail }],
-    password: password,
-    role: role
-  });
+    password: password
+  };
+
+  if (role === 'SELLER') {
+    query.role = { $in: ['SELLER', 'ADMIN'] };
+  } else {
+    query.role = role;
+  }
+
+  const user = await User.findOne(query);
   if (user) {
     res.json(user);
   } else {

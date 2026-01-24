@@ -1,11 +1,10 @@
-
 import React from 'react';
 import { View, User } from '../types';
 
 interface HeaderProps {
   user: User | null;
   cartCount: number;
-  onNavigate: (view: View, product?: any, targetId?: string) => void;
+  onNavigate: (view: View) => void;
   onLogout: () => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
@@ -14,82 +13,108 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, searchQuery, setSearchQuery, onShowHelp }) => {
   return (
-    <header className="flex flex-col">
-      {/* Top Bar */}
-      <div className="bg-[#d0011b] text-white text-[11px] md:text-[13px] py-1.5 md:py-2">
-        <div className="container mx-auto px-4 max-w-6xl flex justify-between">
-          <div className="flex gap-4 items-center">
-            <button onClick={() => onNavigate(View.REGISTER_SELLER)} className="hover:text-yellow-200 transition-colors font-bold">賣家中心</button>
-            <span className="opacity-50">|</span>
-            <span className="hover:opacity-80 cursor-pointer">下載 APP</span>
-            <span className="opacity-50">|</span>
-            <button onClick={onShowHelp} className="hover:text-yellow-200 transition-colors font-bold">幫助中心</button>
+    <header className="sticky top-0 z-50 bg-white shadow-sm border-b border-gray-100">
+      <div className="container mx-auto px-4 h-20 flex items-center justify-between gap-8">
+        {/* Logo */}
+        <div 
+          onClick={() => onNavigate(View.SHOP)}
+          className="flex items-center gap-2 cursor-pointer group"
+        >
+          <div className="w-10 h-10 primary-gradient rounded-xl flex items-center justify-center text-white text-xl font-bold shadow-lg group-hover:scale-105 transition-transform">
+            <i className="fa-solid fa-bag-shopping"></i>
           </div>
-          <div className="flex gap-4 font-bold">
-            {!user ? (
-              <span onClick={() => onNavigate(View.AUTH)} className="cursor-pointer hover:opacity-80">
-                <i className="fa-regular fa-circle-user mr-1"></i> 註冊 / 登入
-              </span>
-            ) : (
-              <div className="flex gap-3 items-center">
-                <span onClick={() => onNavigate(user.role === 'SELLER' ? View.ADMIN_HOME : View.BUYER_DASHBOARD)} className="cursor-pointer hover:opacity-80 flex items-center gap-1">
-                  <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center text-[10px]">{user.name[0]}</div>
-                  {user.name}
-                </span>
-                <span onClick={onLogout} className="cursor-pointer opacity-80 hover:opacity-100 bg-black/10 px-2 py-0.5 rounded">登出</span>
-              </div>
-            )}
-          </div>
+          <span className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-orange-600 to-red-600 tracking-tight">
+            InsBuy
+          </span>
         </div>
-      </div>
 
-      {/* Main Header */}
-      <div className="bg-[#EE4D2D] py-4 sticky top-0 z-50 shadow-md">
-        <div className="container mx-auto px-4 max-w-6xl flex items-center gap-3 md:gap-8">
-          <div 
-            className="text-white font-black text-2xl md:text-3xl italic tracking-tighter flex items-center gap-1 cursor-pointer shrink-0"
-            onClick={() => onNavigate(View.SHOP)}
+        {/* Search Bar */}
+        <div className="flex-1 max-w-2xl hidden md:block relative">
+          <input 
+            type="text" 
+            placeholder="搜尋商品、賣家或品牌..." 
+            className="w-full bg-slate-50 border border-slate-200 rounded-full py-3 px-6 pl-12 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all text-slate-700"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={onShowHelp}
+            className="w-10 h-10 rounded-full hover:bg-slate-50 flex items-center justify-center text-slate-600 transition"
+            title="幫助中心"
           >
-            <i className="fa-solid fa-bag-shopping"></i> 
-            <span className="hidden sm:inline">InsBuy</span>
-          </div>
+            <i className="fa-regular fa-circle-question text-xl"></i>
+          </button>
 
-          <div className="flex-1 relative">
-            <div className="bg-white rounded p-1 flex shadow-lg h-[40px] md:h-[46px] w-full items-center">
-              <input 
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-1 px-4 py-2 text-sm md:text-base outline-none text-slate-700 bg-transparent placeholder-slate-400" 
-                placeholder="搜尋團購好物..."
-              />
-              <button className="bg-[#EE4D2D] w-12 md:w-16 h-full rounded text-white hover:bg-[#d73211] flex items-center justify-center transition shadow-sm">
-                <i className="fa-solid fa-magnifying-glass text-lg"></i>
+          <button 
+            onClick={() => onNavigate(View.CART)}
+            className="w-10 h-10 rounded-full hover:bg-slate-50 flex items-center justify-center text-slate-600 transition relative"
+          >
+            <i className="fa-solid fa-cart-shopping text-xl"></i>
+            {cartCount > 0 && (
+              <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+                {cartCount}
+              </span>
+            )}
+          </button>
+
+          {user ? (
+            <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
+              
+              {user.role === 'ADMIN' && (
+                <button 
+                  onClick={() => onNavigate(View.ADMIN_HOME)}
+                  className="hidden md:flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-full shadow hover:bg-slate-700 transition mr-2"
+                >
+                  <i className="fa-solid fa-gauge-high"></i>
+                  管理後台
+                </button>
+              )}
+
+              <div 
+                onClick={() => user.role === 'BUYER' ? onNavigate(View.BUYER_DASHBOARD) : onNavigate(View.ADMIN_HOME)}
+                className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition"
+              >
+                <div className="w-9 h-9 rounded-full bg-slate-200 overflow-hidden border border-slate-300">
+                  {user.logo ? <img src={user.logo} alt="avatar" className="w-full h-full object-cover" /> : (
+                    <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white font-bold">
+                      {user.name[0]}
+                    </div>
+                  )}
+                </div>
+                <div className="hidden lg:block text-sm">
+                  <p className="font-bold text-slate-800 leading-tight">{user.name}</p>
+                  <p className="text-[10px] text-slate-500 font-medium">{user.role}</p>
+                </div>
+              </div>
+              <button 
+                onClick={onLogout}
+                className="w-9 h-9 rounded-full hover:bg-red-50 text-slate-400 hover:text-red-500 flex items-center justify-center transition"
+                title="登出"
+              >
+                <i className="fa-solid fa-arrow-right-from-bracket"></i>
               </button>
             </div>
-          </div>
-
-          <div className="flex items-center gap-4 md:gap-6 text-white">
-            <div 
-              className="shrink-0 relative cursor-pointer hover:scale-110 transition active:scale-95"
-              onClick={() => onNavigate(View.CHAT)}
-            >
-              <i className="fa-regular fa-comments text-xl md:text-2xl"></i>
-              <span className="absolute -top-1.5 -right-1.5 bg-yellow-400 text-slate-800 text-[10px] px-1 rounded-full font-bold border-2 border-[#EE4D2D]">1</span>
+          ) : (
+            <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
+              <button 
+                onClick={() => onNavigate(View.AUTH)}
+                className="px-5 py-2 text-sm font-bold text-slate-700 hover:text-orange-600 transition"
+              >
+                登入
+              </button>
+              <button 
+                onClick={() => onNavigate(View.AUTH)}
+                className="px-5 py-2 text-sm font-bold bg-slate-900 text-white rounded-full hover:bg-slate-800 transition shadow-lg shadow-slate-200"
+              >
+                註冊
+              </button>
             </div>
-            
-            <div 
-              className="shrink-0 relative cursor-pointer hover:scale-110 transition active:scale-95"
-              onClick={() => onNavigate(View.CART)}
-            >
-              <i className="fa-solid fa-cart-shopping text-xl md:text-2xl"></i>
-              {cartCount > 0 && (
-                <span className="absolute -top-2 -right-2 bg-white text-[#EE4D2D] text-xs px-1.5 min-w-[20px] h-[20px] flex items-center justify-center rounded-full font-bold border-2 border-[#EE4D2D] shadow-sm">
-                  {cartCount}
-                </span>
-              )}
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </header>
