@@ -5,22 +5,25 @@ import { View, User } from '../types';
 interface HeaderProps {
   user: User | null;
   cartCount: number;
-  onNavigate: (view: View) => void;
+  onNavigate: (view: View, product?: any, targetId?: string) => void;
   onLogout: () => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
+  onShowHelp: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, searchQuery, setSearchQuery }) => {
+const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, searchQuery, setSearchQuery, onShowHelp }) => {
   return (
     <header className="flex flex-col">
       {/* Top Bar */}
       <div className="bg-[#d0011b] text-white text-[11px] md:text-[13px] py-1.5 md:py-2">
         <div className="container mx-auto px-4 max-w-6xl flex justify-between">
-          <div className="flex gap-4">
-            <span className="hover:opacity-80 cursor-pointer">拍拍購官方</span>
+          <div className="flex gap-4 items-center">
+            <button onClick={() => onNavigate(View.REGISTER_SELLER)} className="hover:text-yellow-200 transition-colors font-bold">賣家中心</button>
             <span className="opacity-50">|</span>
-            <span className="hover:opacity-80 cursor-pointer">幫助中心</span>
+            <span className="hover:opacity-80 cursor-pointer">下載 APP</span>
+            <span className="opacity-50">|</span>
+            <button onClick={onShowHelp} className="hover:text-yellow-200 transition-colors font-bold">幫助中心</button>
           </div>
           <div className="flex gap-4 font-bold">
             {!user ? (

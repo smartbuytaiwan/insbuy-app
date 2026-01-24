@@ -9,31 +9,36 @@ interface CheckoutProps {
 }
 
 const Checkout: React.FC<CheckoutProps> = ({ cart, user, onSubmit }) => {
-  // 從第一件商品取得賣家設定的運費規則
+  // 檢查是否為純電子商品訂單
+  const isDigitalOrder = useMemo(() => cart.every(item => item.product_type === 'DIGITAL'), [cart]);
+
+  // 從第一件商品取得賣家設定的運費規則 (如果是電子商品，則不需要規則)
   const availableRules = useMemo(() => {
+    if (isDigitalOrder) return [];
     return cart[0]?.shipping_rules && cart[0].shipping_rules.length > 0 
       ? cart[0].shipping_rules 
       : [{ name: '宅配', fee: 100, free_threshold: 2000 }];
-  }, [cart]);
+  }, [cart, isDigitalOrder]);
 
   const [form, setForm] = useState({
     name: user?.name || '',
     phone: user?.phone || '',
-    method: availableRules[0].name,
-    store: '',
+    method: isDigitalOrder ? '電子傳輸' : availableRules[0]?.name || '',
+    store: isDigitalOrder ? '線上' : '',
     payment_method: 'TRANSFER' as 'TRANSFER' | 'COD',
     payment_note: ''
   });
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + item.finalPrice * item.qty, 0), [cart]);
 
-  // 需求 3: 根據選擇的運送方式即時計算精確運費
+  // 根據選擇的運送方式即時計算精確運費
   const shippingFee = useMemo(() => {
+    if (isDigitalOrder) return 0;
     // 尋找當前選擇的規則物件
     const rule = availableRules.find(r => r.name === form.method) || availableRules[0];
     // 檢查是否達到免運門檻
-    return cartTotal >= rule.free_threshold ? 0 : rule.fee;
-  }, [form.method, cartTotal, availableRules]);
+    return rule ? (cartTotal >= rule.free_threshold ? 0 : rule.fee) : 0;
+  }, [form.method, cartTotal, availableRules, isDigitalOrder]);
 
   const currentRule = useMemo(() => availableRules.find(r => r.name === form.method) || availableRules[0], [form.method, availableRules]);
 
@@ -46,7 +51,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, onSubmit }) => {
   };
 
   const handleSubmit = () => {
-    if (!form.name || !form.phone || !form.store) return alert('請填寫完整收件資訊');
+    if (!form.name || !form.phone || (!isDigitalOrder && !form.store)) return alert('請填寫完整資訊');
     if (form.payment_method === 'TRANSFER' && form.payment_note.length < 5) {
       return alert('請填寫匯款帳號末五碼以便對帳');
     }
@@ -73,10 +78,10 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, onSubmit }) => {
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-20 animate-fade-in">
       <div className="bg-white p-10 shadow-sm rounded-[2.5rem] border border-slate-100">
-        <h2 className="text-xl font-black border-l-4 border-[#EE4D2D] pl-3 mb-8 text-slate-800">1. 收件資訊與方式</h2>
+        <h2 className="text-xl font-black border-l-4 border-[#EE4D2D] pl-3 mb-8 text-slate-800">1. 收件資訊</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">收件人姓名</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">購買人姓名</label>
             <input type="text" placeholder="全名" className="w-full h-12 border rounded-2xl px-5 outline-none focus:border-[#EE4D2D] transition shadow-sm" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
           </div>
           <div className="space-y-1">
@@ -84,45 +89,58 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, onSubmit }) => {
             <input type="tel" placeholder="09XX-XXX-XXX" className="w-full h-12 border rounded-2xl px-5 outline-none focus:border-[#EE4D2D] transition shadow-sm" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
           </div>
         </div>
-        <div className="space-y-4">
-          <label className="block text-xs font-black text-slate-500 uppercase tracking-widest">選擇運送方式</label>
-          <div className="grid grid-cols-3 gap-3">
-            {availableRules.map(rule => (
-              <button 
-                key={rule.name} 
-                onClick={() => setForm({...form, method: rule.name})} 
-                className={`p-4 border-2 rounded-2xl font-black text-xs flex flex-col items-center gap-1 transition-all ${
-                  form.method === rule.name ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D] shadow-md' : 'border-slate-50 text-slate-400 hover:border-slate-100'
-                }`}
-              >
-                <span>{rule.name}</span>
-                <span className="text-[9px] opacity-60 font-bold">${rule.fee} / 滿 ${rule.free_threshold} 免運</span>
-              </button>
-            ))}
+        
+        {isDigitalOrder ? (
+          <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl text-blue-700 font-bold text-sm flex items-center gap-3">
+            <i className="fa-solid fa-circle-info text-xl"></i>
+            <div>
+              <p>此訂單包含電子商品，無需選擇運送方式。</p>
+              <p className="text-xs opacity-80 font-normal mt-1">付款完成後，賣家確認訂單即可下載檔案。</p>
+            </div>
           </div>
-          
-          <div className="pt-2">
-            {currentRule.pickup_address && (
-              <div className="mb-3 p-4 bg-orange-50 border border-orange-100 rounded-2xl text-[11px] font-black text-[#EE4D2D] flex items-center gap-2 animate-fade-in">
-                <i className="fa-solid fa-location-dot"></i> 自取地點：{currentRule.pickup_address}
-              </div>
-            )}
-            <input 
-              type="text" 
-              placeholder={form.method.includes('自取') ? "輸入自取聯絡資訊" : "配送門市名稱或詳細宅配地址"} 
-              className="w-full h-12 border rounded-2xl px-5 outline-none focus:border-[#EE4D2D] text-sm shadow-sm" 
-              value={form.store} 
-              onChange={e => setForm({...form, store: e.target.value})} 
-            />
+        ) : (
+          <div className="space-y-4">
+            <label className="block text-xs font-black text-slate-500 uppercase tracking-widest">選擇運送方式</label>
+            <div className="grid grid-cols-3 gap-3">
+              {availableRules.map(rule => (
+                <button 
+                  key={rule.name} 
+                  onClick={() => setForm({...form, method: rule.name})} 
+                  className={`p-4 border-2 rounded-2xl font-black text-xs flex flex-col items-center gap-1 transition-all ${
+                    form.method === rule.name ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D] shadow-md' : 'border-slate-50 text-slate-400 hover:border-slate-100'
+                  }`}
+                >
+                  <span>{rule.name}</span>
+                  <span className="text-[9px] opacity-60 font-bold">${rule.fee} / 滿 ${rule.free_threshold} 免運</span>
+                </button>
+              ))}
+            </div>
+            
+            <div className="pt-2">
+              {currentRule?.pickup_address && (
+                <div className="mb-3 p-4 bg-orange-50 border border-orange-100 rounded-2xl text-[11px] font-black text-[#EE4D2D] flex items-center gap-2 animate-fade-in">
+                  <i className="fa-solid fa-location-dot"></i> 自取地點：{currentRule.pickup_address}
+                </div>
+              )}
+              <input 
+                type="text" 
+                placeholder={form.method.includes('自取') ? "輸入自取聯絡資訊" : "配送門市名稱或詳細宅配地址"} 
+                className="w-full h-12 border rounded-2xl px-5 outline-none focus:border-[#EE4D2D] text-sm shadow-sm" 
+                value={form.store} 
+                onChange={e => setForm({...form, store: e.target.value})} 
+              />
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="bg-white p-10 shadow-sm rounded-[2.5rem] border border-slate-100">
         <h2 className="text-xl font-black border-l-4 border-[#EE4D2D] pl-3 mb-8 text-slate-800">2. 付款資訊</h2>
         <div className="flex gap-4 mb-6">
           <button onClick={() => setForm({...form, payment_method: 'TRANSFER'})} className={`flex-1 py-4 border-2 rounded-2xl font-black flex items-center justify-center gap-2 transition-all ${form.payment_method === 'TRANSFER' ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D] shadow-md' : 'border-slate-50 text-slate-400'}`}><i className="fa-solid fa-building-columns"></i> 銀行匯款</button>
-          <button onClick={() => setForm({...form, payment_method: 'COD'})} className={`flex-1 py-4 border-2 rounded-2xl font-black flex items-center justify-center gap-2 transition-all ${form.payment_method === 'COD' ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D] shadow-md' : 'border-slate-50 text-slate-400'}`}><i className="fa-solid fa-truck-ramp-box"></i> 貨到付款</button>
+          {!isDigitalOrder && (
+            <button onClick={() => setForm({...form, payment_method: 'COD'})} className={`flex-1 py-4 border-2 rounded-2xl font-black flex items-center justify-center gap-2 transition-all ${form.payment_method === 'COD' ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D] shadow-md' : 'border-slate-50 text-slate-400'}`}><i className="fa-solid fa-truck-ramp-box"></i> 貨到付款</button>
+          )}
         </div>
 
         {form.payment_method === 'TRANSFER' && (

@@ -1,6 +1,5 @@
-
 {
-  "name": "InsBuy 拍拍購 - 全台最大團購平台",
+  "name": "Copy of Copy of InsBuy 拍拍購 - 全台最大團購平台",
   "description": "一個功能齊全的團購電商平台，支援會員註冊、商家管理、商品上架、購物車及訂單追蹤功能，並整合 Gemini AI 協助商家撰寫商品文案。",
   "requestFramePermissions": [
     "camera"
