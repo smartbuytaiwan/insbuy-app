@@ -18,6 +18,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ product, onAddToCart, onN
   const currentPrice = product.price + (currentVariant?.price || 0);
   const currentStock = currentVariant?.stock ?? product.total_stock;
 
+  // 計算銷售進度
   const salesProgress = useMemo(() => {
     const goal = product.target_amount || 0;
     const current = product.current_amount || 0;
@@ -25,13 +26,14 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ product, onAddToCart, onN
     return { goal, current, percent };
   }, [product]);
 
-  const handleAddToCart = (shouldCheckout = false) => {
+  const handleAddToCart = (shouldNavigateToCart = false) => {
     if (product.variants.length > 0 && !selectedVariant) return alert('請選擇規格');
     const item: CartItem = { ...product, selectedVariant, qty, finalPrice: currentPrice, answers };
     onAddToCart(item);
     
-    if (shouldCheckout) {
-      onNavigate(View.CHECKOUT);
+    // 需求 1: 點擊「立即結帳」後跳轉到購物車
+    if (shouldNavigateToCart) {
+      onNavigate(View.CART);
     }
   };
 
@@ -66,6 +68,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ product, onAddToCart, onN
           </div>
         </div>
 
+        {/* 團購進度條 */}
         <div className="bg-slate-50 rounded-3xl p-6 mb-8 border border-slate-100">
            <div className="flex justify-between items-end mb-3">
               <span className="text-xs font-black text-slate-400 uppercase tracking-widest">目前銷售進度</span>
@@ -115,10 +118,16 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ product, onAddToCart, onN
         </div>
 
         <div className="flex gap-4 mt-12">
-          <button onClick={() => handleAddToCart(false)} className="flex-1 h-16 border-2 border-[#EE4D2D] bg-white text-[#EE4D2D] rounded-[1.5rem] font-black flex items-center justify-center gap-3 hover:bg-[#FFEEEC] transition-all active:scale-95 text-lg">
+          <button 
+            onClick={() => handleAddToCart(false)} 
+            className="flex-1 h-16 border-2 border-[#EE4D2D] bg-white text-[#EE4D2D] rounded-[1.5rem] font-black flex items-center justify-center gap-3 hover:bg-[#FFEEEC] transition-all active:scale-95 text-lg"
+          >
             <i className="fa-solid fa-cart-plus text-xl"></i> 加入購物車
           </button>
-          <button onClick={() => handleAddToCart(true)} className="flex-1 h-16 primary-gradient text-white rounded-[1.5rem] font-black shadow-[0_15px_30px_rgba(238,77,45,0.3)] hover:scale-[1.02] transition-all active:scale-95 text-xl flex items-center justify-center gap-3">
+          <button 
+            onClick={() => handleAddToCart(true)} 
+            className="flex-1 h-16 primary-gradient text-white rounded-[1.5rem] font-black shadow-[0_15px_30px_rgba(238,77,45,0.3)] hover:scale-[1.02] transition-all active:scale-95 text-xl flex items-center justify-center gap-3"
+          >
              立即結帳 <i className="fa-solid fa-arrow-right-long"></i>
           </button>
         </div>

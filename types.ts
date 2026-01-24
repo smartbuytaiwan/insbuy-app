@@ -52,7 +52,7 @@ export interface Product {
   bank_info?: BankInfo;
   end_time: string;
   target_amount: number; // 銷售目標金額
-  current_amount: number; // 當前銷售總額 (新增)
+  current_amount: number; // 當前銷售總額
   total_stock: number;
   is_pinned: boolean;
   questions?: ProductQuestion[];
@@ -80,13 +80,14 @@ export interface Order {
   total_amount: number;
   shipping_fee: number;
   payment_method: 'TRANSFER' | 'COD';
-  status: 'PENDING' | 'PAID' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED';
+  status: 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED';
   created_at: string;
   receiver_name: string;
   receiver_phone: string;
   ship_method: string;
   store_name: string;
   payment_note?: string;
+  shop_id: string; // 商家 ID，用於後台過濾
 }
 
 export interface ChatMessage {

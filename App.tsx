@@ -25,14 +25,20 @@ const App: React.FC = () => {
   const [chatTarget, setChatTarget] = useState<string | null>(null);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
-  // 初始載入與 Hash 路由監聽
+  // 初始化與路由監聽
   useEffect(() => {
     const savedUser = localStorage.getItem('insbuy_user');
     if (savedUser) setUser(JSON.parse(savedUser));
 
     const savedProducts = localStorage.getItem('insbuy_products');
-    const initialProducts = savedProducts ? JSON.parse(savedProducts) : MOCK_PRODUCTS;
-    setProducts(initialProducts);
+    let initialProducts = MOCK_PRODUCTS;
+    if (savedProducts) {
+      initialProducts = JSON.parse(savedProducts);
+      setProducts(initialProducts);
+    } else {
+      setProducts(MOCK_PRODUCTS);
+      localStorage.setItem('insbuy_products', JSON.stringify(MOCK_PRODUCTS));
+    }
 
     const savedOrders = localStorage.getItem('insbuy_orders');
     if (savedOrders) setOrders(JSON.parse(savedOrders));
@@ -40,53 +46,44 @@ const App: React.FC = () => {
     const savedCart = localStorage.getItem('insbuy_cart');
     if (savedCart) setCart(JSON.parse(savedCart));
 
-    // 處理初始 URL Hash
-    handleHashChange();
-
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    handleHashRouting(initialProducts);
+    const onHashChange = () => handleHashRouting();
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  // 當 products 改變時同步到 localStorage
+  // 資料持久化
   useEffect(() => {
-    if (products.length > 0) {
-      localStorage.setItem('insbuy_products', JSON.stringify(products));
-    }
+    if (products.length > 0) localStorage.setItem('insbuy_products', JSON.stringify(products));
   }, [products]);
 
-  // 當 cart 改變時同步到 localStorage
   useEffect(() => {
     localStorage.setItem('insbuy_cart', JSON.stringify(cart));
   }, [cart]);
 
-  // 當 orders 改變時同步
   useEffect(() => {
     localStorage.setItem('insbuy_orders', JSON.stringify(orders));
   }, [orders]);
 
-  const handleHashChange = () => {
+  const handleHashRouting = (currentProducts?: Product[]) => {
     const hash = window.location.hash.replace('#/', '');
     if (!hash) {
       setView(View.SHOP);
       return;
     }
 
-    const [viewName, id] = hash.split('/');
-    if (Object.values(View).includes(viewName as View)) {
-      const targetView = viewName as View;
-      setView(targetView);
+    const parts = hash.split('/');
+    const viewName = parts[0] as View;
+    const id = parts[1];
 
-      // 如果是產品頁，根據 ID 找商品
-      if (targetView === View.PRODUCT && id) {
-        const savedProducts = JSON.parse(localStorage.getItem('insbuy_products') || '[]');
-        const p = savedProducts.find((item: Product) => item.id === id);
+    if (Object.values(View).includes(viewName)) {
+      setView(viewName);
+      if (viewName === View.PRODUCT && id) {
+        const pool = currentProducts || products;
+        const p = pool.find(item => item.id === id);
         if (p) setSelectedProduct(p);
       }
-      
-      // 如果是聊天室
-      if (targetView === View.CHAT && id) {
-        setChatTarget(id);
-      }
+      if (viewName === View.CHAT && id) setChatTarget(id);
     }
   };
 
@@ -98,12 +95,8 @@ const App: React.FC = () => {
     } else if (targetId) {
       setChatTarget(targetId);
       hash += `/${targetId}`;
-    } else {
-      setChatTarget(null);
     }
-    
     window.location.hash = hash;
-    setView(newView);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -115,8 +108,8 @@ const App: React.FC = () => {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('insbuy_user');
-    setCart([]);
     navigateTo(View.SHOP);
+    setCart([]);
     showToast('已安全登出');
   };
 
@@ -139,48 +132,81 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <Header 
-        user={user} 
-        cartCount={cart.length} 
-        onNavigate={navigateTo} 
-        onLogout={logout}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-      />
+      <Header user={user} cartCount={cart.length} onNavigate={navigateTo} onLogout={logout} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
 
       <main className="container mx-auto px-4 py-8 flex-1 max-w-6xl pb-32">
         {view === View.SHOP && <Shop products={filteredProducts} onOpenProduct={(p) => navigateTo(View.PRODUCT, p)} />}
+        
         {view === View.PRODUCT && selectedProduct && (
           <ProductDetail 
             product={selectedProduct} 
             onAddToCart={(item) => { 
-              setCart(prev => [...prev, item]); 
+              setCart([...cart, item]); 
               showToast('已加入購物車！'); 
             }} 
             onNavigate={navigateTo} 
           />
         )}
-        {view === View.CART && <Cart items={cart} onRemove={(idx) => { setCart(cart.filter((_, i) => i !== idx)); showToast('商品已移除', 'error'); }} onCheckout={() => navigateTo(View.CHECKOUT)} onClear={() => { setCart([]); showToast('購物車已清空'); }} />}
-        {view === View.CHECKOUT && <Checkout cart={cart} user={user} onSubmit={(order) => { setOrders([order, ...orders]); setCart([]); showToast('訂單已提交！'); navigateTo(View.BUYER_DASHBOARD); }} />}
+
+        {view === View.CART && (
+          <Cart 
+            items={cart} 
+            onUpdateQty={(idx, newQty) => { 
+              // 需求 2: 數量 1 按 - 時移除商品
+              if (newQty < 1) {
+                setCart(cart.filter((_, i) => i !== idx));
+                showToast('商品已從購物車移除', 'error');
+              } else {
+                const n = [...cart]; 
+                n[idx].qty = newQty; 
+                setCart(n); 
+              }
+            }} 
+            onRemove={(idx) => { 
+              setCart(cart.filter((_, i) => i !== idx)); 
+              showToast('商品已移除', 'error'); 
+            }} 
+            onCheckout={() => navigateTo(View.CHECKOUT)} 
+            onClear={() => { 
+              setCart([]); 
+              showToast('購物車已清空'); 
+            }} 
+          />
+        )}
+
+        {view === View.CHECKOUT && (
+          <Checkout 
+            cart={cart} 
+            user={user} 
+            onSubmit={(order) => { 
+              // 需求 4: 將新訂單加入全域訂單管理
+              setOrders([order, ...orders]); 
+              setCart([]); 
+              showToast('訂單已提交！'); 
+              navigateTo(View.BUYER_DASHBOARD); 
+            }} 
+          />
+        )}
+
         {view === View.AUTH && <AuthHub onLogin={(u) => { setUser(u); localStorage.setItem('insbuy_user', JSON.stringify(u)); showToast(`歡迎回來，${u.name}！`); navigateTo(u.role === 'SELLER' ? View.ADMIN_HOME : View.SHOP); }} onNavigate={navigateTo} />}
         {view === View.REGISTER_BUYER && <RegisterBuyer onComplete={() => navigateTo(View.AUTH)} />}
         {view === View.REGISTER_SELLER && <RegisterSeller onComplete={() => navigateTo(View.AUTH)} />}
+        
         {view === View.ADMIN_HOME && user && user.role === 'SELLER' && (
           <AdminDashboard 
             user={user} 
             products={products.filter(p => p.shop_id === user.shop_id)}
-            orders={orders.filter(o => o.items.some(i => i.shop_id === user.shop_id))}
+            // 需求 4: 商家後台會過濾顯示該商家的訂單
+            orders={orders.filter(o => o.shop_id === user.shop_id)}
             onUpdateProducts={(newProducts) => {
-              const otherShopsProducts = products.filter(p => p.shop_id !== user.shop_id);
-              const updatedAll = [...otherShopsProducts, ...newProducts];
-              setProducts(updatedAll);
-              // 強制寫入一次確保及時性
-              localStorage.setItem('insbuy_products', JSON.stringify(updatedAll));
+              const others = products.filter(p => p.shop_id !== user.shop_id);
+              setProducts([...others, ...newProducts]);
             }}
             onUpdateOrderStatus={(id, status) => setOrders(prev => prev.map(o => o.id === id ? {...o, status} : o))}
             onNavigate={navigateTo}
           />
         )}
+
         {view === View.BUYER_DASHBOARD && user && <BuyerDashboard user={user} orders={orders.filter(o => o.receiver_phone === user.phone)} />}
         {view === View.CHAT && <ChatRoom targetId={chatTarget} currentProduct={selectedProduct} />}
       </main>

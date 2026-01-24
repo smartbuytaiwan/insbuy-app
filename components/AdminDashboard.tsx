@@ -35,6 +35,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
   const [aiLoading, setAiLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 需求 5: 訂單日期篩選狀態 (預設為今天)
+  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // 商家統計數據
   const stats = useMemo(() => {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
@@ -55,6 +59,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
     return { todaySales, monthSales };
   }, [orders]);
 
+  // 需求 5: 過濾後的訂單列表與當日小計
+  const filteredOrders = useMemo(() => {
+    return orders.filter(o => o.created_at.startsWith(filterDate));
+  }, [orders, filterDate]);
+
+  const dailyTotal = useMemo(() => {
+    return filteredOrders
+      .filter(o => o.status !== 'CANCELLED')
+      .reduce((sum, o) => sum + o.total_amount, 0);
+  }, [filteredOrders]);
+
+  // 表單初始狀態
   const getInitialForm = (): Partial<Product> => {
     const savedBank = localStorage.getItem('insbuy_saved_bank');
     let bankInfo = undefined;
@@ -82,6 +98,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
   const [form, setForm] = useState<Partial<Product>>(getInitialForm());
   const [saveBank, setSaveBank] = useState(!!localStorage.getItem('insbuy_saved_bank'));
 
+  // 規格操作
   const addVariant = () => {
     setForm(prev => ({
       ...prev,
@@ -105,18 +122,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
     });
   };
 
+  // 運費操作
   const addShippingRule = (customName?: string) => {
     const name = customName || '新運送方式';
-    const newRule: ShippingRule = { 
-      name, 
-      fee: customName === '自取' ? 0 : 60, 
-      free_threshold: 1000, 
-      limit_qty: 1,
-      pickup_address: '' 
-    };
+    const newRule: ShippingRule = { name, fee: 60, free_threshold: 1000, limit_qty: 1 };
     setForm(prev => ({ ...prev, shipping_rules: [...(prev.shipping_rules || []), newRule] }));
   };
 
+  // 圖片上傳
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
@@ -129,6 +142,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
   const handleSaveProduct = () => {
     if (!form.name || !form.price) return alert('請填寫商品名稱與價格');
     
+    // 儲存銀行資訊
     if (saveBank && form.bank_info) {
       localStorage.setItem('insbuy_saved_bank', JSON.stringify(form.bank_info));
     } else if (!saveBank) {
@@ -160,6 +174,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
 
   return (
     <div className="flex flex-col md:flex-row gap-6 animate-fade-in pb-20">
+      {/* 左側導航 */}
       <aside className="w-full md:w-64 space-y-2 shrink-0">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 sticky top-24">
           <div className="flex items-center gap-3 mb-6">
@@ -189,6 +204,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
         </div>
       </aside>
 
+      {/* 右側內容 */}
       <div className="flex-1 space-y-6">
         {activeTab !== 'create' && (
           <div className="grid grid-cols-2 gap-4">
@@ -211,6 +227,84 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
               </h2>
               <div className="p-12 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed">
                 這裡將顯示您的銷售趨勢圖表與經營分析。
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'orders' && (
+            <div className="p-8">
+              {/* 需求 5: 訂單篩選標題與日期選擇器 */}
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                <h2 className="text-xl font-bold text-slate-800 font-black">訂單管理系統</h2>
+                <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-2xl border border-slate-100">
+                  <span className="text-[10px] font-black text-slate-400 uppercase">日期查詢</span>
+                  <input 
+                    type="date" 
+                    className="bg-transparent text-sm font-bold outline-none text-slate-700" 
+                    value={filterDate}
+                    onChange={e => setFilterDate(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* 需求 5: 當日統計區塊 */}
+              <div className="mb-8 p-4 bg-[#FFEEEC] rounded-2xl border border-[#EE4D2D]/10 flex justify-between items-center">
+                <div className="text-xs font-bold text-slate-600">
+                  <span className="text-[#EE4D2D]">{filterDate}</span> 訂單總計: <span className="font-black ml-1">{filteredOrders.length} 筆</span>
+                </div>
+                <div className="text-sm font-black text-[#EE4D2D]">
+                  當日營收: ${dailyTotal.toLocaleString()}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {filteredOrders.length === 0 ? (
+                  <div className="py-20 text-center text-slate-300">
+                    <i className="fa-regular fa-calendar-xmark text-4xl mb-4 block opacity-20"></i>
+                    該日期尚無訂單資料
+                  </div>
+                ) : (
+                  filteredOrders.map(o => (
+                    <div key={o.id} className="p-5 border border-slate-100 rounded-3xl hover:bg-slate-50 transition shadow-sm bg-white">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <div className="text-[10px] font-black text-slate-400 mb-1">單號: {o.id}</div>
+                          <div className="font-bold text-slate-800">{o.receiver_name} ({o.ship_method})</div>
+                        </div>
+                        <select 
+                          className={`text-xs font-bold px-4 py-2 rounded-full outline-none border-none cursor-pointer ${
+                            o.status === 'PENDING' ? 'bg-orange-100 text-orange-600' : 
+                            o.status === 'SHIPPED' ? 'bg-blue-100 text-blue-600' : 
+                            o.status === 'COMPLETED' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'
+                          }`}
+                          value={o.status}
+                          onChange={e => onUpdateOrderStatus(o.id, e.target.value as any)}
+                        >
+                          <option value="PENDING">待處理</option>
+                          <option value="CONFIRMED">已確認</option>
+                          <option value="SHIPPED">已出貨</option>
+                          <option value="COMPLETED">已完成</option>
+                          <option value="CANCELLED">已取消</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2 mb-4">
+                        {o.items.map((it, i) => (
+                          <div key={i} className="text-xs text-slate-600 flex justify-between bg-slate-50/50 p-2 rounded-lg">
+                            <span>{it.name} | {it.selectedVariant} x {it.qty}</span>
+                            <span className="font-bold">${(it.finalPrice * it.qty).toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-between items-center pt-3 border-t border-slate-50">
+                        <div className="text-[10px] text-slate-400">
+                          <i className="fa-regular fa-clock mr-1"></i>
+                          {new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} | {o.store_name}
+                        </div>
+                        <div className="font-black text-[#EE4D2D] text-lg">總額 ${o.total_amount.toLocaleString()}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -250,6 +344,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
               <h2 className="text-2xl font-black text-slate-800 mb-8 border-l-4 border-[#EE4D2D] pl-4">{editingId ? '編輯商品資訊' : '發布新的團購'}</h2>
               
               <div className="max-w-3xl space-y-10">
+                {/* 1. 基本資訊 */}
                 <section className="space-y-6">
                   <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest border-b pb-2">Step 1. 商品基本資訊</div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -277,6 +372,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
                   </div>
                 </section>
 
+                {/* 2. 規格與庫存 */}
                 <section className="space-y-6">
                   <div className="flex justify-between items-center border-b pb-2">
                     <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest">Step 2. 規格與庫存設定</div>
@@ -303,6 +399,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
                   </div>
                 </section>
 
+                {/* 3. 圖片展示 */}
                 <section className="space-y-6">
                   <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest border-b pb-2">Step 3. 商品圖片 (支援手機拍照)</div>
                   <div className="flex flex-wrap gap-4">
@@ -336,6 +433,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
                   </div>
                 </section>
 
+                {/* 4. 運費設定 */}
                 <section className="space-y-6">
                   <div className="flex justify-between items-center border-b pb-2">
                     <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest">Step 4. 運送方式設定</div>
@@ -387,7 +485,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
                              }} />
                           </div>
                         </div>
-
                         {/* 自取地址輸入框：當名稱包含「自取」時顯示 */}
                         {(rule.name.includes('自取') || rule.name.toLowerCase().includes('pickup')) && (
                           <div className="pt-2 animate-fade-in-up">
@@ -412,6 +509,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, products, orders,
                   </div>
                 </section>
 
+                {/* 5. 銀行收款 */}
                 <section className="space-y-6">
                   <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest border-b pb-2">Step 5. 收款銀行帳號 (台灣常用銀行)</div>
                   <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
