@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Product, User, CartItem, Order } from './types';
 import Header from './components/Header';
@@ -24,30 +25,84 @@ const App: React.FC = () => {
   const [chatTarget, setChatTarget] = useState<string | null>(null);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
+  // 初始載入與 Hash 路由監聽
   useEffect(() => {
     const savedUser = localStorage.getItem('insbuy_user');
     if (savedUser) setUser(JSON.parse(savedUser));
 
     const savedProducts = localStorage.getItem('insbuy_products');
-    if (savedProducts) {
-      setProducts(JSON.parse(savedProducts));
-    } else {
-      setProducts(MOCK_PRODUCTS);
-      localStorage.setItem('insbuy_products', JSON.stringify(MOCK_PRODUCTS));
-    }
+    const initialProducts = savedProducts ? JSON.parse(savedProducts) : MOCK_PRODUCTS;
+    setProducts(initialProducts);
 
     const savedOrders = localStorage.getItem('insbuy_orders');
     if (savedOrders) setOrders(JSON.parse(savedOrders));
 
     const savedCart = localStorage.getItem('insbuy_cart');
     if (savedCart) setCart(JSON.parse(savedCart));
+
+    // 處理初始 URL Hash
+    handleHashChange();
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
+  // 當 products 改變時同步到 localStorage
+  useEffect(() => {
+    if (products.length > 0) {
+      localStorage.setItem('insbuy_products', JSON.stringify(products));
+    }
+  }, [products]);
+
+  // 當 cart 改變時同步到 localStorage
+  useEffect(() => {
+    localStorage.setItem('insbuy_cart', JSON.stringify(cart));
+  }, [cart]);
+
+  // 當 orders 改變時同步
+  useEffect(() => {
+    localStorage.setItem('insbuy_orders', JSON.stringify(orders));
+  }, [orders]);
+
+  const handleHashChange = () => {
+    const hash = window.location.hash.replace('#/', '');
+    if (!hash) {
+      setView(View.SHOP);
+      return;
+    }
+
+    const [viewName, id] = hash.split('/');
+    if (Object.values(View).includes(viewName as View)) {
+      const targetView = viewName as View;
+      setView(targetView);
+
+      // 如果是產品頁，根據 ID 找商品
+      if (targetView === View.PRODUCT && id) {
+        const savedProducts = JSON.parse(localStorage.getItem('insbuy_products') || '[]');
+        const p = savedProducts.find((item: Product) => item.id === id);
+        if (p) setSelectedProduct(p);
+      }
+      
+      // 如果是聊天室
+      if (targetView === View.CHAT && id) {
+        setChatTarget(id);
+      }
+    }
+  };
+
   const navigateTo = (newView: View, product?: Product, targetId?: string) => {
-    if (product) setSelectedProduct(product);
-    if (targetId) setChatTarget(targetId);
-    else if (newView !== View.CHAT) setChatTarget(null);
+    let hash = `#/${newView}`;
+    if (product) {
+      setSelectedProduct(product);
+      hash += `/${product.id}`;
+    } else if (targetId) {
+      setChatTarget(targetId);
+      hash += `/${targetId}`;
+    } else {
+      setChatTarget(null);
+    }
     
+    window.location.hash = hash;
     setView(newView);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -60,8 +115,8 @@ const App: React.FC = () => {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('insbuy_user');
-    setView(View.SHOP);
     setCart([]);
+    navigateTo(View.SHOP);
     showToast('已安全登出');
   };
 
@@ -95,7 +150,16 @@ const App: React.FC = () => {
 
       <main className="container mx-auto px-4 py-8 flex-1 max-w-6xl pb-32">
         {view === View.SHOP && <Shop products={filteredProducts} onOpenProduct={(p) => navigateTo(View.PRODUCT, p)} />}
-        {view === View.PRODUCT && selectedProduct && <ProductDetail product={selectedProduct} onAddToCart={(item) => { setCart([...cart, item]); showToast('已加入購物車！'); }} onNavigate={navigateTo} />}
+        {view === View.PRODUCT && selectedProduct && (
+          <ProductDetail 
+            product={selectedProduct} 
+            onAddToCart={(item) => { 
+              setCart(prev => [...prev, item]); 
+              showToast('已加入購物車！'); 
+            }} 
+            onNavigate={navigateTo} 
+          />
+        )}
         {view === View.CART && <Cart items={cart} onRemove={(idx) => { setCart(cart.filter((_, i) => i !== idx)); showToast('商品已移除', 'error'); }} onCheckout={() => navigateTo(View.CHECKOUT)} onClear={() => { setCart([]); showToast('購物車已清空'); }} />}
         {view === View.CHECKOUT && <Checkout cart={cart} user={user} onSubmit={(order) => { setOrders([order, ...orders]); setCart([]); showToast('訂單已提交！'); navigateTo(View.BUYER_DASHBOARD); }} />}
         {view === View.AUTH && <AuthHub onLogin={(u) => { setUser(u); localStorage.setItem('insbuy_user', JSON.stringify(u)); showToast(`歡迎回來，${u.name}！`); navigateTo(u.role === 'SELLER' ? View.ADMIN_HOME : View.SHOP); }} onNavigate={navigateTo} />}
@@ -108,7 +172,10 @@ const App: React.FC = () => {
             orders={orders.filter(o => o.items.some(i => i.shop_id === user.shop_id))}
             onUpdateProducts={(newProducts) => {
               const otherShopsProducts = products.filter(p => p.shop_id !== user.shop_id);
-              setProducts([...otherShopsProducts, ...newProducts]);
+              const updatedAll = [...otherShopsProducts, ...newProducts];
+              setProducts(updatedAll);
+              // 強制寫入一次確保及時性
+              localStorage.setItem('insbuy_products', JSON.stringify(updatedAll));
             }}
             onUpdateOrderStatus={(id, status) => setOrders(prev => prev.map(o => o.id === id ? {...o, status} : o))}
             onNavigate={navigateTo}
