@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState } from 'react';
 import { Category, Product } from '../types';
 import API from '../api';
 
@@ -8,371 +7,299 @@ interface CategoryManagementProps {
   categories: Category[];
   products: Product[];
   onUpdateCategories: (categories: Category[]) => void;
-  onNavigate?: (view: any) => void;
 }
 
-const CategoryManagement: React.FC<CategoryManagementProps> = ({ 
-  shopId,
-  categories, 
-  products, 
-  onUpdateCategories 
-}) => {
-  const [localCategories, setLocalCategories] = useState<Category[]>([]);
-  const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
-  const [editTab, setEditTab] = useState<'BASIC' | 'PRODUCTS' | 'LAYOUT'>('BASIC');
+const CategoryManagement: React.FC<CategoryManagementProps> = ({ shopId, categories, products, onUpdateCategories }) => {
+  // 控制新增輸入框的狀態: parentId 為 'ROOT' 代表主分類，為具體 ID 代表子分類
+  const [addingState, setAddingState] = useState<{ parentId: string | null; name: string } | null>(null);
   
-  const handleImageUpload = (file: File, field: 'image' | 'banner') => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (selectedCatId && reader.result) {
-        updateLocalCategory(selectedCatId, { [field]: reader.result as string });
-      }
-    };
-    reader.readAsDataURL(file);
-  };
+  // 控制編輯名稱的狀態
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [tempName, setTempName] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    setLocalCategories([...categories].sort((a, b) => a.sort_order - b.sort_order));
-  }, [categories]);
-
-  const activeCategory = useMemo(() => 
-    localCategories.find(c => c.id === selectedCatId), 
-  [localCategories, selectedCatId]);
-
-  const updateLocalCategory = (id: string, data: Partial<Category>) => {
-    setLocalCategories(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
-  };
-
-  const handleAddCategory = (parentId: string | null = null) => {
-    if (parentId) {
-      const subCount = localCategories.filter(c => c.parent_id === parentId).length;
-      if (subCount >= 10) return alert('子分類最多只能有 10 個');
+  // ★ 新增功能：手動重新整理分類
+  const handleRefresh = async () => {
+    try {
+      setIsRefreshing(true);
+      const freshCategories = await API.getCategories(shopId);
+      onUpdateCategories(freshCategories);
+    } catch (e) {
+      alert('重新整理失敗，請檢查網路連線');
+    } finally {
+      setIsRefreshing(false);
     }
+  };
 
+  // 處理新增分類 (核心修復邏輯)
+  const handleConfirmAdd = async () => {
+    if (!addingState || !addingState.name.trim()) return;
+
+    // 1. 建立新分類物件
     const newCat: Category = {
       id: `cat_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
       shop_id: shopId, 
-      name: parentId ? '新子分類' : '新主分類',
-      parent_id: parentId,
+      name: addingState.name,
+      parent_id: addingState.parentId === 'ROOT' ? null : addingState.parentId,
       type: 'MANUAL',
       product_ids: [],
       auto_rules: {},
-      sort_order: localCategories.length,
+      sort_order: categories.length, // 放在最後
       is_active: true,
       layout_style: 'STANDARD'
     };
     
-    setLocalCategories([...localCategories, newCat]);
-    setSelectedCatId(newCat.id);
-  };
-
-  const handleDeleteCategory = (id: string) => {
-    if (!confirm('確定要刪除此分類嗎？')) return;
-    setLocalCategories(prev => prev.filter(c => c.id !== id && c.parent_id !== id));
-    if (selectedCatId === id) setSelectedCatId(null);
-  };
-
-  const handleMove = (id: string, direction: 'UP' | 'DOWN') => {
-    const currentIndex = localCategories.findIndex(c => c.id === id);
-    if (currentIndex === -1) return;
-    
-    const target = localCategories[currentIndex];
-    const siblings = localCategories.filter(c => c.parent_id === target.parent_id);
-    const siblingIndex = siblings.findIndex(c => c.id === id);
-    
-    if (direction === 'UP' && siblingIndex > 0) {
-      const prevSibling = siblings[siblingIndex - 1];
-      updateLocalCategory(id, { sort_order: prevSibling.sort_order });
-      updateLocalCategory(prevSibling.id, { sort_order: target.sort_order });
-    } else if (direction === 'DOWN' && siblingIndex < siblings.length - 1) {
-      const nextSibling = siblings[siblingIndex + 1];
-      updateLocalCategory(id, { sort_order: nextSibling.sort_order });
-      updateLocalCategory(nextSibling.id, { sort_order: target.sort_order });
-    }
-  };
-
-  const handleSaveAll = async () => {
-    if (!shopId) {
-      alert('錯誤：找不到商店 ID，無法儲存分類。');
-      return;
-    }
+    // 2. 建構新的分類陣列
+    const newCategories = [...categories, newCat];
     
     try {
-      const sanitizedCategories = localCategories.map(c => ({
-        ...c,
-        shop_id: shopId
-      }));
+      // 3. 先更新畫面 (解決消失問題) - 讓使用者覺得反應即時
+      onUpdateCategories(newCategories);
+      
+      // 4. 清除輸入狀態
+      setAddingState(null);
 
-      // 1. 呼叫 API 儲存
-      await API.updateCategories(sanitizedCategories, shopId);
+      // 5. 後端儲存
+      await API.updateCategories(newCategories, shopId);
       
-      // 2. 關鍵：立即更新上層組件的狀態，讓變更即時反映在 APP 中
-      onUpdateCategories(sanitizedCategories);
-      
-      alert('分類設定已儲存！');
-    } catch (error) {
-      console.error('儲存失敗', error);
-      alert('儲存失敗，請檢查網路連線或稍後再試。');
+      // 6. 確保資料同步 (可選，再次從後端拉取以確保 ID 正確等)
+      // handleRefresh(); 
+    } catch (e) {
+      alert('儲存失敗，請檢查網路連線');
+      console.error(e);
     }
   };
 
-  const renderCategoryTree = (parentId: string | null) => {
-    const nodes = localCategories
+  // 處理刪除
+  const handleDeleteCategory = async (id: string) => {
+    if (!confirm('確定要刪除此分類嗎？(包含其子分類也會一併刪除)')) return;
+    
+    // 遞迴找出所有子分類 ID
+    const getAllChildIds = (pId: string): string[] => {
+      const children = categories.filter(c => c.parent_id === pId);
+      let ids = children.map(c => c.id);
+      children.forEach(c => ids = [...ids, ...getAllChildIds(c.id)]);
+      return ids;
+    };
+
+    const idsToRemove = [id, ...getAllChildIds(id)];
+    const filteredCategories = categories.filter(c => !idsToRemove.includes(c.id));
+    
+    try {
+      onUpdateCategories(filteredCategories); // 先更新畫面
+      await API.updateCategories(filteredCategories, shopId); // 再存檔
+    } catch (e) {
+      alert('刪除失敗');
+    }
+  };
+
+  // 處理更名
+  const handleRename = async (id: string) => {
+    if (!tempName.trim()) return;
+    const updatedCategories = categories.map(c => c.id === id ? { ...c, name: tempName } : c);
+    
+    try {
+      onUpdateCategories(updatedCategories);
+      setEditingNameId(null);
+      await API.updateCategories(updatedCategories, shopId);
+    } catch (e) {
+      alert('更新失敗');
+    }
+  };
+
+  // 處理排序 (上移/下移)
+  const handleMove = async (id: string, direction: 'UP' | 'DOWN') => {
+    const target = categories.find(c => c.id === id);
+    if (!target) return;
+
+    // 找出同層級的分類並排序
+    const siblings = categories
+      .filter(c => c.parent_id === target.parent_id)
+      .sort((a, b) => a.sort_order - b.sort_order);
+    
+    const currentIndex = siblings.findIndex(c => c.id === id);
+    if (currentIndex === -1) return;
+
+    let swapTarget: Category | null = null;
+    if (direction === 'UP' && currentIndex > 0) {
+      swapTarget = siblings[currentIndex - 1];
+    } else if (direction === 'DOWN' && currentIndex < siblings.length - 1) {
+      swapTarget = siblings[currentIndex + 1];
+    }
+
+    if (swapTarget) {
+      const newCategories = categories.map(c => {
+        if (c.id === id) return { ...c, sort_order: swapTarget!.sort_order };
+        if (c.id === swapTarget!.id) return { ...c, sort_order: target.sort_order };
+        return c;
+      });
+      
+      try {
+        onUpdateCategories(newCategories);
+        await API.updateCategories(newCategories, shopId);
+      } catch (e) { /* ignore */ }
+    }
+  };
+
+  // 渲染樹狀結構
+  const renderCategoryTree = (parentId: string | null, level = 0) => {
+    const nodes = categories
       .filter(c => c.parent_id === parentId)
       .sort((a, b) => a.sort_order - b.sort_order);
 
-    return nodes.map(node => (
-      <div key={node.id} className="ml-4 mb-2">
-        <div 
-          className={`flex items-center p-3 rounded-lg border cursor-pointer transition ${selectedCatId === node.id ? 'border-[#EE4D2D] bg-orange-50' : 'border-slate-200 hover:bg-slate-50'}`}
-          onClick={() => setSelectedCatId(node.id)}
-        >
-          <div className="mr-3 text-slate-400">
-             <i className="fa-solid fa-bars cursor-move"></i>
-          </div>
-          <div className="flex-1">
-             <div className="font-bold text-sm text-slate-700">{node.name}</div>
-             <div className="text-xs text-slate-400">
-               {node.type === 'MANUAL' ? '手動' : '自動'} • {node.is_active ? '顯示中' : '隱藏'}
-             </div>
-          </div>
-          <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-             <button onClick={() => handleMove(node.id, 'UP')} className="p-1 text-slate-400 hover:text-blue-500"><i className="fa-solid fa-chevron-up"></i></button>
-             <button onClick={() => handleMove(node.id, 'DOWN')} className="p-1 text-slate-400 hover:text-blue-500"><i className="fa-solid fa-chevron-down"></i></button>
-             <button onClick={() => handleDeleteCategory(node.id)} className="p-1 text-slate-400 hover:text-red-500"><i className="fa-solid fa-trash"></i></button>
-          </div>
-        </div>
-        {parentId === null && (
-          <div className="border-l-2 border-slate-100 ml-4 mt-2">
-            {renderCategoryTree(node.id)}
-            <button 
-              onClick={() => handleAddCategory(node.id)}
-              className="ml-4 mt-2 text-xs text-[#EE4D2D] font-bold flex items-center gap-1 hover:underline"
-            >
-              <i className="fa-solid fa-plus"></i> 新增子分類
-            </button>
-          </div>
-        )}
-      </div>
-    ));
-  };
-
-  const toggleProduct = (prodId: string) => {
-    if (!activeCategory) return;
-    const currentIds = activeCategory.product_ids || [];
-    if (currentIds.includes(prodId)) {
-      updateLocalCategory(activeCategory.id, { product_ids: currentIds.filter(id => id !== prodId) });
-    } else {
-      updateLocalCategory(activeCategory.id, { product_ids: [...currentIds, prodId] });
+    // 如果沒有子節點且不是正在新增子節點，則不渲染容器
+    if (nodes.length === 0 && parentId !== null && addingState?.parentId !== parentId) {
+        return null;
     }
+
+    return (
+        <div className={`${level > 0 ? 'ml-6 border-l-2 border-slate-100 pl-4 mt-2' : 'space-y-3'}`}>
+            {nodes.map(node => (
+                <div key={node.id} className="group">
+                    {/* 分類行本身 */}
+                    <div className={`flex items-center p-3 rounded-xl border transition-all bg-white hover:shadow-sm ${editingNameId === node.id ? 'border-[#EE4D2D]' : 'border-slate-200'}`}>
+                        <div className="mr-3 text-slate-300 cursor-move">
+                            <i className="fa-solid fa-grip-vertical"></i>
+                        </div>
+                        
+                        <div className="flex-1">
+                            {editingNameId === node.id ? (
+                                <div className="flex items-center gap-2">
+                                    <input 
+                                        autoFocus
+                                        className="border border-slate-300 rounded px-2 py-1 text-sm w-full outline-none focus:border-[#EE4D2D]"
+                                        value={tempName}
+                                        onChange={e => setTempName(e.target.value)}
+                                        onKeyDown={e => { if(e.key === 'Enter') handleRename(node.id); }}
+                                    />
+                                    <button onClick={() => handleRename(node.id)} className="text-green-600 hover:bg-green-50 p-1 rounded"><i className="fa-solid fa-check"></i></button>
+                                    <button onClick={() => setEditingNameId(null)} className="text-slate-400 hover:bg-slate-50 p-1 rounded"><i className="fa-solid fa-xmark"></i></button>
+                                </div>
+                            ) : (
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="font-bold text-slate-700 text-sm">{node.name}</div>
+                                        <div className="text-[10px] text-slate-400">
+                                            {node.type === 'MANUAL' ? '手動' : '自動'} • {node.is_active ? '顯示中' : '隱藏'}
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => { setEditingNameId(node.id); setTempName(node.name); }} className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded" title="編輯"><i className="fa-solid fa-pen text-xs"></i></button>
+                                        <button onClick={() => handleMove(node.id, 'UP')} className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded"><i className="fa-solid fa-chevron-up text-xs"></i></button>
+                                        <button onClick={() => handleMove(node.id, 'DOWN')} className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded"><i className="fa-solid fa-chevron-down text-xs"></i></button>
+                                        <button onClick={() => handleDeleteCategory(node.id)} className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded" title="刪除"><i className="fa-solid fa-trash-can text-xs"></i></button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* 子分類區域 */}
+                    <div className="mb-2">
+                        {/* 遞迴渲染子節點 */}
+                        {renderCategoryTree(node.id, level + 1)}
+
+                        {/* 如果正在此節點下新增 */}
+                        {addingState?.parentId === node.id && (
+                            <div className={`mt-2 ml-6 p-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 animate-fade-in`}>
+                                <div className="text-blue-300 pl-2"><i className="fa-solid fa-turn-up rotate-90"></i></div>
+                                <input 
+                                    autoFocus
+                                    type="text" 
+                                    placeholder={`輸入 [${node.name}] 的子分類名稱...`}
+                                    className="flex-1 bg-white border border-blue-200 rounded px-2 py-1 text-sm outline-none focus:border-blue-400"
+                                    value={addingState.name}
+                                    onChange={e => setAddingState({ ...addingState, name: e.target.value })}
+                                    onKeyDown={e => e.key === 'Enter' && handleConfirmAdd()}
+                                />
+                                <button onClick={handleConfirmAdd} className="text-xs bg-blue-500 text-white px-3 py-1.5 rounded font-bold hover:bg-blue-600">確認</button>
+                                <button onClick={() => setAddingState(null)} className="text-slate-400 hover:text-slate-600 px-2"><i className="fa-solid fa-xmark"></i></button>
+                            </div>
+                        )}
+
+                        {/* 新增子分類按鈕 (僅在非編輯狀態且是主分類時顯示) */}
+                        {parentId === null && addingState?.parentId !== node.id && (
+                            <button 
+                                onClick={() => setAddingState({ parentId: node.id, name: '' })}
+                                className="ml-6 mt-1 text-xs text-slate-400 hover:text-[#EE4D2D] font-bold flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-orange-50 w-fit"
+                            >
+                                <i className="fa-solid fa-plus"></i> 新增子分類
+                            </button>
+                        )}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
   };
 
   return (
-    <div className="flex h-[calc(100vh-100px)] gap-4">
-      <div className="w-1/4 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col">
-        <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-           <h3 className="font-bold text-slate-700">分類列表</h3>
-           <button onClick={() => handleAddCategory(null)} className="text-xs bg-[#EE4D2D] text-white px-2 py-1 rounded hover:bg-[#d73211]">
-             <i className="fa-solid fa-plus mr-1"></i>主分類
-           </button>
+    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8 min-h-[600px]">
+      <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <i className="fa-solid fa-list-ul text-[#EE4D2D]"></i>
+            商家分類管理
+          </h2>
+          <p className="text-xs text-slate-400 mt-1">建立您的專屬分類，方便買家搜尋商品</p>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
-           {renderCategoryTree(null)}
-        </div>
-        <div className="p-4 border-t border-slate-100">
-           <button onClick={handleSaveAll} className="w-full py-2 bg-slate-800 text-white rounded-lg font-bold">儲存變更</button>
+        
+        <div className="flex gap-2">
+            {/* ★ 新增：重新整理按鈕 */}
+            <button 
+                onClick={handleRefresh}
+                className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition flex items-center gap-2"
+                disabled={isRefreshing}
+            >
+                <i className={`fa-solid fa-rotate-right ${isRefreshing ? 'animate-spin' : ''}`}></i>
+                {isRefreshing ? '讀取中...' : '重新整理'}
+            </button>
+
+            {/* 新增主分類按鈕 */}
+            {addingState?.parentId !== 'ROOT' && (
+            <button 
+                onClick={() => setAddingState({ parentId: 'ROOT', name: '' })}
+                className="px-5 py-2.5 bg-[#EE4D2D] text-white rounded-xl font-bold shadow-md hover:bg-[#d73211] transition flex items-center gap-2"
+            >
+                <i className="fa-solid fa-plus"></i> 新增主分類
+            </button>
+            )}
         </div>
       </div>
 
-      <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-        {activeCategory ? (
-          <>
-            <div className="flex border-b border-slate-100">
-               <button onClick={() => setEditTab('BASIC')} className={`flex-1 py-3 text-sm font-bold border-b-2 ${editTab === 'BASIC' ? 'border-[#EE4D2D] text-[#EE4D2D]' : 'border-transparent text-slate-500'}`}>基本設定</button>
-               <button onClick={() => setEditTab('PRODUCTS')} className={`flex-1 py-3 text-sm font-bold border-b-2 ${editTab === 'PRODUCTS' ? 'border-[#EE4D2D] text-[#EE4D2D]' : 'border-transparent text-slate-500'}`}>商品選擇</button>
-               {!activeCategory.parent_id && (
-                 <button onClick={() => setEditTab('LAYOUT')} className={`flex-1 py-3 text-sm font-bold border-b-2 ${editTab === 'LAYOUT' ? 'border-[#EE4D2D] text-[#EE4D2D]' : 'border-transparent text-slate-500'}`}>賣場佈置</button>
-               )}
+      <div className="max-w-3xl mx-auto">
+        {/* 新增主分類的輸入框 (顯示在最上方) */}
+        {addingState?.parentId === 'ROOT' && (
+            <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-xl animate-fade-in shadow-sm">
+            <label className="text-xs font-bold text-[#EE4D2D] mb-2 block uppercase tracking-wider"><i className="fa-solid fa-layer-group mr-1"></i>建立新的主分類</label>
+            <div className="flex gap-3">
+                <input 
+                autoFocus
+                type="text" 
+                placeholder="請輸入主分類名稱..."
+                className="flex-1 border border-orange-200 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-orange-200 text-slate-700 font-bold"
+                value={addingState.name}
+                onChange={e => setAddingState({ ...addingState, name: e.target.value })}
+                onKeyDown={e => e.key === 'Enter' && handleConfirmAdd()}
+                />
+                <button onClick={handleConfirmAdd} className="px-6 py-2 bg-[#EE4D2D] text-white rounded-lg font-bold hover:shadow-lg transition">確認新增</button>
+                <button onClick={() => setAddingState(null)} className="px-4 py-2 bg-white text-slate-500 border border-slate-200 rounded-lg font-bold hover:bg-slate-50">取消</button>
             </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-               {editTab === 'BASIC' && (
-                 <div className="space-y-4 max-w-lg mx-auto">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">分類名稱</label>
-                      <input 
-                        type="text" 
-                        value={activeCategory.name} 
-                        onChange={e => updateLocalCategory(activeCategory.id, { name: e.target.value })}
-                        className="w-full p-2 border border-slate-300 rounded focus:border-[#EE4D2D] outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">啟用狀態</label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={activeCategory.is_active} 
-                          onChange={e => updateLocalCategory(activeCategory.id, { is_active: e.target.checked })}
-                          className="accent-[#EE4D2D]"
-                        />
-                        <span className="text-sm">在前台顯示此分類</span>
-                      </label>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">分類封面圖</label>
-                      <div className="flex items-center gap-4">
-                        <div className="w-20 h-20 bg-slate-100 rounded border border-slate-200 flex items-center justify-center overflow-hidden relative group">
-                          {activeCategory.image ? (
-                            <img src={activeCategory.image} className="w-full h-full object-cover" />
-                          ) : (
-                            <i className="fa-regular fa-image text-2xl text-slate-300"></i>
-                          )}
-                           <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => e.target.files?.[0] && handleImageUpload(e.target.files[0], 'image')} />
-                        </div>
-                        <div className="text-xs text-slate-400">
-                          {/* ★ 建議尺寸 */}
-                          <p className="font-bold text-[#EE4D2D]">建議尺寸: 500 x 500 px (正方形)</p>
-                          <p>支援 JPG, PNG</p>
-                        </div>
-                      </div>
-                    </div>
-                 </div>
-               )}
-
-               {editTab === 'PRODUCTS' && (
-                 <div className="space-y-6">
-                    <div className="flex gap-4 mb-4">
-                       <label className="flex items-center gap-2">
-                         <input type="radio" name="ctype" checked={activeCategory.type === 'MANUAL'} onChange={() => updateLocalCategory(activeCategory.id, { type: 'MANUAL' })} className="accent-[#EE4D2D]" />
-                         <span className="font-bold text-sm">手動選擇</span>
-                       </label>
-                       <label className="flex items-center gap-2">
-                         <input type="radio" name="ctype" checked={activeCategory.type === 'AUTO'} onChange={() => updateLocalCategory(activeCategory.id, { type: 'AUTO' })} className="accent-[#EE4D2D]" />
-                         <span className="font-bold text-sm">自動篩選</span>
-                       </label>
-                    </div>
-
-                    {activeCategory.type === 'MANUAL' ? (
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                        {products.map(p => (
-                          <div 
-                            key={p.id} 
-                            onClick={() => toggleProduct(p.id)}
-                            className={`p-2 border rounded-lg cursor-pointer flex items-center gap-2 transition ${activeCategory.product_ids?.includes(p.id) ? 'border-[#EE4D2D] bg-orange-50' : 'border-slate-200'}`}
-                          >
-                             <div className="w-10 h-10 bg-slate-200 rounded shrink-0 overflow-hidden">
-                               {p.images?.[0] && <img src={p.images[0]} className="w-full h-full object-cover"/>}
-                             </div>
-                             <div className="flex-1 min-w-0">
-                               <div className="text-xs font-bold truncate">{p.name}</div>
-                               <div className="text-xs text-slate-400">${p.price}</div>
-                             </div>
-                             {activeCategory.product_ids?.includes(p.id) && <i className="fa-solid fa-check-circle text-[#EE4D2D]"></i>}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="bg-slate-50 p-4 rounded-lg space-y-4">
-                        <div className="text-sm font-bold text-slate-700">自動篩選條件：</div>
-                        <div className="grid grid-cols-2 gap-4">
-                           <input 
-                             placeholder="關鍵字 (包含...)" 
-                             className="p-2 border rounded text-sm" 
-                             value={activeCategory.auto_rules?.keyword || ''}
-                             onChange={e => updateLocalCategory(activeCategory.id, { auto_rules: { ...activeCategory.auto_rules, keyword: e.target.value }})}
-                           />
-                           <div className="flex items-center gap-2">
-                             <input 
-                               type="number" 
-                               placeholder="最低價" 
-                               className="p-2 border rounded text-sm w-full" 
-                               value={activeCategory.auto_rules?.price_min || ''}
-                               onChange={e => updateLocalCategory(activeCategory.id, { auto_rules: { ...activeCategory.auto_rules, price_min: Number(e.target.value) }})}
-                             />
-                             <span>-</span>
-                             <input 
-                               type="number" 
-                               placeholder="最高價" 
-                               className="p-2 border rounded text-sm w-full" 
-                               value={activeCategory.auto_rules?.price_max || ''}
-                               onChange={e => updateLocalCategory(activeCategory.id, { auto_rules: { ...activeCategory.auto_rules, price_max: Number(e.target.value) }})}
-                             />
-                           </div>
-                        </div>
-                        <p className="text-xs text-slate-400">* 符合以上條件的商品將自動加入此分類</p>
-                      </div>
-                    )}
-                 </div>
-               )}
-
-               {editTab === 'LAYOUT' && !activeCategory.parent_id && (
-                 <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                       {[
-                         { id: 'STANDARD', name: '標準列表', icon: 'fa-list' },
-                         { id: 'TWO_COL', name: '雙欄圖片', icon: 'fa-table-cells-large' },
-                         { id: 'THREE_COL', name: '三欄圖片', icon: 'fa-table-cells' },
-                         { id: 'PRODUCT_LIST', name: '分類商品', icon: 'fa-layer-group' },
-                       ].map(layout => (
-                         <div 
-                           key={layout.id}
-                           onClick={() => updateLocalCategory(activeCategory.id, { layout_style: layout.id as any })}
-                           className={`p-4 border rounded-xl cursor-pointer text-center transition hover:shadow-md ${activeCategory.layout_style === layout.id ? 'border-[#EE4D2D] bg-orange-50 text-[#EE4D2D]' : 'border-slate-200 text-slate-500'}`}
-                         >
-                            <i className={`fa-solid ${layout.icon} text-2xl mb-2`}></i>
-                            <div className="font-bold text-sm">{layout.name}</div>
-                         </div>
-                       ))}
-                    </div>
-
-                    <div className="border-t border-slate-100 pt-4">
-                       <label className="block text-xs font-bold text-slate-500 mb-2">分類橫幅 (Banner)</label>
-                       <div className="w-full h-32 bg-slate-100 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center relative overflow-hidden group hover:border-[#EE4D2D] transition">
-                          {activeCategory.banner ? (
-                            <img src={activeCategory.banner} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="text-center text-slate-400">
-                              <i className="fa-solid fa-cloud-arrow-up text-2xl mb-1"></i>
-                              <div className="text-xs">點擊上傳橫幅圖片</div>
-                            </div>
-                          )}
-                          <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => e.target.files?.[0] && handleImageUpload(e.target.files[0], 'banner')} />
-                       </div>
-                       {/* ★ 建議尺寸 */}
-                       <p className="text-xs text-slate-500 mt-2 font-bold"><i className="fa-solid fa-circle-info mr-1"></i>建議尺寸: 800 x 300 px (長方形)</p>
-                    </div>
-                 </div>
-               )}
             </div>
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-300">
-             <i className="fa-solid fa-arrow-left text-4xl mb-4 animate-bounce-x"></i>
-             <p className="font-bold">請從左側選擇一個分類開始編輯</p>
-          </div>
         )}
-      </div>
 
-      <div className="w-[300px] bg-slate-800 rounded-[2rem] border-8 border-slate-900 shadow-2xl overflow-hidden relative hidden xl:block">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-6 bg-slate-900 rounded-b-xl z-10"></div>
-        <div className="h-full bg-white overflow-y-auto hide-scrollbar">
-           <div className="h-12 bg-[#EE4D2D] text-white flex items-center px-4 pt-4 text-sm font-bold shadow-md relative z-10">
-             {activeCategory ? activeCategory.name : '預覽賣場'}
-           </div>
-           {activeCategory?.banner && <img src={activeCategory.banner} className="w-full h-auto" />}
-           <div className="p-2 grid grid-cols-2 gap-2">
-             {[1,2,3,4].map(i => (
-               <div key={i} className="bg-white border border-slate-100 rounded shadow-sm overflow-hidden pb-2">
-                 <div className="h-24 bg-slate-200"></div>
-                 <div className="p-1">
-                   <div className="h-3 w-3/4 bg-slate-100 rounded mb-1"></div>
-                   <div className="h-3 w-1/2 bg-[#EE4D2D]/20 rounded"></div>
-                 </div>
-               </div>
-             ))}
-           </div>
-        </div>
+        {/* 分類列表區 */}
+        {categories.length === 0 && !addingState ? (
+            <div className="py-20 text-center text-slate-300 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+            <i className="fa-regular fa-folder-open text-4xl mb-3"></i>
+            <p>您尚未建立任何分類</p>
+            <p className="text-xs mt-1">點擊右上方按鈕開始建立</p>
+            </div>
+        ) : (
+            <div className="custom-scrollbar pr-2">
+                {renderCategoryTree(null)}
+            </div>
+        )}
       </div>
     </div>
   );

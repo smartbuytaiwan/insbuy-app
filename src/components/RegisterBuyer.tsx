@@ -1,11 +1,12 @@
-
 import React, { useState } from 'react';
-import { User } from '../types';
+import { User, SiteSettings } from '../types';
 
 interface RegisterBuyerProps {
   onComplete: (user: User) => void;
   onShowTerms: () => void;
   onShowDisclaimer: () => void;
+  onShowPrivacy?: () => void;
+  siteSettings: SiteSettings;
 }
 
 const InputField = ({ label, name, type = "text", placeholder, required = true, icon, value, onChange }: any) => (
@@ -28,7 +29,7 @@ const InputField = ({ label, name, type = "text", placeholder, required = true, 
   </div>
 );
 
-const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, onShowDisclaimer }) => {
+const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, onShowDisclaimer, siteSettings }) => {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -39,6 +40,20 @@ const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, 
 
   const [agreed, setAgreed] = useState(false);
 
+  // ★ 如果註冊功能關閉，直接返回阻擋畫面
+  if (siteSettings?.registrationEnabled === false) {
+    return (
+      <div className="max-w-md mx-auto my-20 animate-fade-in text-center p-8 bg-white rounded-[2rem] shadow-xl border border-slate-100">
+         <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <i className="fa-solid fa-ban text-4xl text-slate-400"></i>
+         </div>
+         <h2 className="text-2xl font-black text-slate-800 mb-2">註冊功能暫停</h2>
+         <p className="text-slate-500 mb-8">目前系統已暫停開放新會員註冊，<br/>請稍後再試或聯繫客服人員。</p>
+         <a href="#/auth" className="inline-block px-8 py-3 bg-slate-800 text-white rounded-xl font-bold">返回登入</a>
+      </div>
+    );
+  }
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -46,6 +61,13 @@ const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // ★ 修改：加入密碼強度檢查 (至少8碼，含英數)
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!passwordRegex.test(formData.password)) {
+        alert('為確保帳號安全，密碼需符合以下規則：\n\n1. 長度至少 8 碼\n2. 必須包含「英文」與「數字」');
+        return;
+    }
 
     if (formData.password !== formData.confirmPassword) {
       alert('兩次密碼輸入不一致');
@@ -58,8 +80,7 @@ const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, 
     }
 
     const newUser: User = {
-      // 使用手機號碼作為 ID，以便訂單系統能透過手機號碼正確對應到使用者進行聊聊
-      id: formData.phone,
+      id: '', // Empty ID, server will generate
       name: formData.name,
       phone: formData.phone,
       email: formData.email,
@@ -92,7 +113,7 @@ const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, 
           <InputField label="真實姓名" name="name" icon="fa-user" placeholder="請輸入中文姓名" value={formData.name} onChange={handleChange} />
           <InputField label="手機號碼 (登入帳號)" name="phone" icon="fa-mobile-screen" placeholder="0912-345-678" value={formData.phone} onChange={handleChange} />
           <InputField label="電子信箱 (選填)" name="email" icon="fa-envelope" placeholder="yourname@example.com" type="email" required={false} value={formData.email} onChange={handleChange} />
-          <InputField label="設定密碼" name="password" icon="fa-lock" placeholder="6 位數以上英數字" type="password" value={formData.password} onChange={handleChange} />
+          <InputField label="設定密碼" name="password" icon="fa-lock" placeholder="8 位數以上英數字" type="password" value={formData.password} onChange={handleChange} />
           <InputField label="確認密碼" name="confirmPassword" icon="fa-check-double" placeholder="再次輸入密碼" type="password" value={formData.confirmPassword} onChange={handleChange} />
 
           <div className="flex items-start gap-3 mt-4">

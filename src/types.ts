@@ -1,4 +1,3 @@
-
 export interface ProductVariant {
   name: string;
   price: number;
@@ -29,6 +28,15 @@ export interface Review {
   createdAt: string;
 }
 
+export interface ShopReview {
+  id: string;
+  userId: string;
+  userName: string;
+  rating: number; // 1-5
+  comment: string;
+  createdAt: string;
+}
+
 export interface Product {
   id: string;
   shop_id: string;
@@ -44,29 +52,66 @@ export interface Product {
   digital_files?: string[];
   variants: ProductVariant[];
   shipping_rules: ShippingRule[];
+  payment_methods?: string[]; 
   bank_info?: BankInfo;
   end_time?: string;
   target_amount?: number;
   current_amount?: number;
   total_stock: number;
   is_pinned?: boolean;
-  origin?: string; // 產地欄位
-  questions?: { title: string; required: boolean }[];
+  pin_rank?: number; // 1-99
+  origin?: string;
+  // ★ 新增：詳細出貨地點 (如：台北市中山區)
+  shipping_origin?: string;
+  questions?: { title: string, required: boolean }[];
   reviews?: Review[];
+}
+
+export interface OrderItem extends Product {
+  qty: number;
+  selectedVariant?: string; 
+  finalPrice: number;
+  isReviewed?: boolean;
+}
+
+export interface Order {
+  id: string;
+  items: OrderItem[];
+  total_amount: number;
+  shipping_fee: number;
+  payment_method: 'TRANSFER' | 'COD' | 'CASH';
+  status: 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED';
+  cancellation_reason?: string;
+  seller_note?: string; 
+  created_at: string;
+  receiver_name: string;
+  receiver_phone: string;
+  ship_method: string;
+  store_name?: string; 
+  payment_note?: string; 
+  remarks?: string; 
+  answers?: { question: string, answer: string }[]; 
+  shop_id: string; 
+}
+
+export interface CartItem extends Product {
+  qty: number;
+  selectedVariant?: string; 
 }
 
 export interface User {
   id: string;
   name: string;
-  shop_name?: string;
-  shop_description?: string;
-  phone?: string;
+  phone: string;
   email?: string;
-  password?: string;
+  password?: string; 
   role: 'BUYER' | 'SELLER' | 'ADMIN' | 'PERMISSION_EDITOR';
   level: number;
   shop_id?: string;
-  created_at: string;
+  shop_name?: string;
+  shop_description?: string;
+  tax_id?: string;
+  created_at?: string;
   logo?: string;
   banner?: string;
   stats?: {
@@ -79,40 +124,23 @@ export interface User {
     averageRating: number;
   };
   following?: string[];
-}
-
-export interface CartItem extends Product {
-  qty: number;
-  selectedVariant: string;
-  finalPrice: number;
-  isReviewed?: boolean;
-}
-
-export interface Order {
-  id: string;
-  items: CartItem[];
-  total_amount: number;
-  shipping_fee: number;
-  payment_method: string;
-  status: 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED';
-  cancellation_reason?: string; // 新增：取消原因
-  created_at: string;
-  receiver_name: string;
-  receiver_phone: string;
-  ship_method: string;
-  store_name: string;
-  payment_note: string;
-  shop_id: string;
+  is_suspended?: boolean;
+  google_map_url?: string;
+  line_url?: string;
+  facebook_url?: string;
+  instagram_url?: string;
+  threads_url?: string;
+  shop_reviews?: ShopReview[];
 }
 
 export interface Category {
   id: string;
-  shop_id: string;
+  shop_id: string; 
   name: string;
-  parent_id: string | null;
-  image?: string;
-  type: 'MANUAL' | 'AUTO';
-  product_ids: string[];
+  parent_id: string | null; 
+  image?: string; 
+  type: 'MANUAL' | 'AUTO'; 
+  product_ids: string[]; 
   auto_rules: {
     keyword?: string;
     price_min?: number;
@@ -120,8 +148,8 @@ export interface Category {
     is_discount?: boolean;
   };
   sort_order: number;
-  is_active: boolean;
-  layout_style: 'STANDARD' | 'TWO_COL' | 'THREE_COL' | 'PRODUCT_LIST';
+  is_active: boolean; 
+  layout_style: 'STANDARD' | 'GRID' | 'LIST';
   banner?: string;
 }
 
@@ -140,10 +168,27 @@ export interface LevelConfig {
 export interface SiteSettings {
   key?: string;
   termsOfService: string;
+  privacyPolicy: string;
   disclaimer: string;
   helpCenter: string;
   announcement: string;
+  announcementImage?: string;
   announcementActive: boolean;
+  registrationEnabled?: boolean;
+  antiScamMessage?: string;
+}
+
+export interface Report {
+  id: string;
+  type: 'SHOP' | 'PRODUCT';
+  targetId: string;
+  targetName: string;
+  subject: string;
+  reason: string;
+  reporterId: string;
+  reporterName: string;
+  status: 'PENDING' | 'RESOLVED' | 'DISMISSED';
+  created_at: string;
 }
 
 export enum View {
@@ -157,33 +202,18 @@ export enum View {
   ADMIN_HOME = 'ADMIN_HOME',
   BUYER_DASHBOARD = 'BUYER_DASHBOARD',
   CHAT = 'CHAT',
-  USER_MANAGEMENT = 'USER_MANAGEMENT',
+  USER_MANAGEMENT = 'USER_MANAGEMENT'
 }
 
 export const SYSTEM_CATEGORIES = [
-  "電子數位商品",
-  "3C與筆電",
-  "保健、護理",
-  "其他類別",
-  "女生衣著",
-  "女生包包/精品",
-  "男生衣著",
-  "男生包包與配件",
-  "男女鞋",
-  "女生配件/黃金",
-  "娛樂、收藏",
-  "嬰幼童與母親",
-  "家電影音",
-  "寵物",
-  "居家生活",
-  "戶外/旅行",
-  "手機平板與周邊",
-  "文創商品",
-  "書籍及雜誌期刊",
-  "服務、票券",
-  "汽機車零件百貨",
-  "美妝保養",
-  "美食、伴手禮",
-  "運動/健身",
-  "電玩遊戲"
+  '美食與伴手禮',
+  '居家生活',
+  '美妝保養',
+  '服飾配件',
+  '3C家電',
+  '母嬰用品',
+  '運動戶外',
+  '書籍文創',
+  '寵物用品',
+  '其他'
 ];

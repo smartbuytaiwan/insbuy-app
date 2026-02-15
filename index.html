@@ -2,46 +2,62 @@
 <html lang="zh-TW">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" href="/logo-new.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>拍拍購 InsBuy | 全台最大團購平台</title>
     
-    <script src="https://cdn.tailwindcss.com"></script>
-    
+    <meta property="og:title" content="InsBuy 拍拍購 - 企業團購與防災用品首選" />
+    <meta property="og:description" content="提供一站式企業採購、防災包客製化與各類團購商品。加入拍拍購，享受最優質的購物體驗！" />
+    <meta property="og:image" content="/logo-new.jpg" />
+    <meta property="og:type" content="website" />
+    <title>InsBuy 拍拍購</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
-    
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Noto Sans TC"', 'sans-serif'],
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.5s ease-out',
+              'fade-in-up': 'fadeInUp 0.5s ease-out',
+              'bounce-slow': 'bounce 3s infinite',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              fadeInUp: {
+                '0%': { opacity: '0', transform: 'translateY(20px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              }
+            }
+          }
+        }
+      }
+    </script>
     <style>
-        body {
-            font-family: 'Noto Sans TC', sans-serif;
-            background-color: #F8F9FA;
-            color: #333;
-            scroll-behavior: smooth;
-        }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        
-        @keyframes fade-in-up {
-            from { opacity: 0; transform: translateY(15px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in-up {
-            animation: fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-
-        .shopee-shadow {
-            box-shadow: 0 1px 12px 0 rgba(0,0,0,.05);
-        }
-
-        .glass-morphism {
-            background: rgba(255, 255, 255, 0.8);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-
-        .primary-gradient {
-            background: linear-gradient(135deg, #EE4D2D 0%, #ff7337 100%);
-        }
+      body {
+        background-color: #F8FAFC; 
+      }
+      .primary-gradient {
+        background: linear-gradient(135deg, #EE4D2D 0%, #FF7337 100%);
+      }
+      .text-gradient {
+        background: linear-gradient(135deg, #EE4D2D 0%, #FF7337 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+      }
+      .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+      }
     </style>
   </head>
   <body>

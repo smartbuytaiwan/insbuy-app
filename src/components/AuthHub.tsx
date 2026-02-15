@@ -1,6 +1,6 @@
-
 import React, { useState } from 'react';
 import { View, User } from '../types';
+import API from '../api';
 
 interface AuthHubProps {
   onLogin: (user: User) => void;
@@ -10,26 +10,42 @@ interface AuthHubProps {
 const AuthHub: React.FC<AuthHubProps> = ({ onLogin, onNavigate }) => {
   const [role, setRole] = useState<'BUYER' | 'SELLER'>('BUYER');
   const [form, setForm] = useState({ phoneOrEmail: '', password: '' });
+  
+  // ★ 新增：忘記密碼狀態
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
 
   const handleLogin = () => {
     if (!form.password || !form.phoneOrEmail) return alert('請填寫完整資訊');
     
-    // 將輸入資訊傳回 App.tsx 進行全域比對
     const loginData: User = {
-      id: '', // 由 App.tsx 判斷
+      id: '',
       name: '',
       phone: role === 'BUYER' ? form.phoneOrEmail : '',
       email: role === 'SELLER' ? form.phoneOrEmail : '',
       password: form.password,
       role: role,
-      level: 1, // default level to satisfy type constraint
-      created_at: '' // Added to satisfy type constraint
+      level: 1,
+      created_at: ''
     };
     onLogin(loginData);
   };
 
+  // ★ 新增：處理忘記密碼
+  const handleForgotPassword = async () => {
+    if (!forgotEmail) return alert('請輸入 Email');
+    try {
+      await API.forgotPassword(forgotEmail);
+      alert('密碼已發送至您的信箱！(請檢查 Console 如果沒有設定 SMTP)');
+      setShowForgotModal(false);
+      setForgotEmail('');
+    } catch (e: any) {
+      alert(e.response?.data?.message || '發送失敗，請確認 Email 是否正確或聯繫客服');
+    }
+  };
+
   return (
-    <div className="max-w-md mx-auto bg-white shadow-2xl rounded-[2.5rem] mt-10 border border-slate-100 overflow-hidden animate-fade-in-up">
+    <div className="max-w-md mx-auto bg-white shadow-2xl rounded-[2.5rem] mt-10 border border-slate-100 overflow-hidden animate-fade-in-up relative">
       <div className="flex border-b border-slate-50">
         <button 
           className={`flex-1 text-center py-5 font-black text-sm transition-all border-b-4 ${role === 'BUYER' ? 'text-[#EE4D2D] border-[#EE4D2D] bg-orange-50/30' : 'text-slate-300 border-transparent'}`}
@@ -52,9 +68,9 @@ const AuthHub: React.FC<AuthHubProps> = ({ onLogin, onNavigate }) => {
         
         <div className="space-y-4">
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">{role === 'BUYER' ? '手機號碼' : '註冊信箱'}</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">{role === 'BUYER' ? 'Email' : '註冊信箱 / ID'}</label>
             <input 
-              type={role === 'BUYER' ? 'tel' : 'email'}
+              type="text"
               placeholder={role === 'BUYER' ? '09xx-xxx-xxx' : 'example@insbuy.com'}
               className="w-full h-12 border border-slate-200 rounded-2xl px-5 outline-none focus:ring-2 focus:ring-indigo-100 transition shadow-sm"
               value={form.phoneOrEmail}
@@ -86,7 +102,11 @@ const AuthHub: React.FC<AuthHubProps> = ({ onLogin, onNavigate }) => {
             className="hover:text-[#EE4D2D] underline font-bold"
             onClick={() => onNavigate(role === 'BUYER' ? View.REGISTER_BUYER : View.REGISTER_SELLER)}
           >註冊新帳號</button>
-          <button className="hover:text-slate-600">忘記密碼？</button>
+          {/* ★ 修改：忘記密碼觸發 */}
+          <button 
+            className="hover:text-slate-600 cursor-pointer"
+            onClick={() => setShowForgotModal(true)}
+          >忘記密碼？</button>
         </div>
       </div>
       
@@ -96,6 +116,23 @@ const AuthHub: React.FC<AuthHubProps> = ({ onLogin, onNavigate }) => {
       >
         <i className="fa-solid fa-arrow-left mr-2"></i> 暫不登入，返回首頁
       </div>
+
+      {/* ★ 新增：忘記密碼彈窗 */}
+      {showForgotModal && (
+        <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-8 animate-fade-in">
+           <h3 className="text-xl font-black text-slate-800 mb-2">找回您的密碼</h3>
+           <p className="text-xs text-slate-400 mb-6 text-center">請輸入您註冊時使用的電子信箱<br/>系統將寄送原始密碼給您</p>
+           <input 
+             type="email" 
+             className="w-full h-12 border border-slate-200 rounded-2xl px-5 outline-none mb-4"
+             placeholder="輸入 Email"
+             value={forgotEmail}
+             onChange={e => setForgotEmail(e.target.value)}
+           />
+           <button onClick={handleForgotPassword} className="w-full h-12 bg-slate-800 text-white rounded-2xl font-bold mb-3 shadow-lg">發送密碼信</button>
+           <button onClick={() => setShowForgotModal(false)} className="text-slate-400 text-sm hover:underline">取消返回</button>
+        </div>
+      )}
     </div>
   );
 };

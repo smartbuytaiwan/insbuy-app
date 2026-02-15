@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, User } from '../types';
 
 interface HeaderProps {
@@ -9,108 +9,140 @@ interface HeaderProps {
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   onShowHelp: () => void;
+  onSearch: (q: string) => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, searchQuery, setSearchQuery, onShowHelp }) => {
+const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, searchQuery, setSearchQuery, onShowHelp, onSearch }) => {
+  const [isListening, setIsListening] = useState(false);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      onSearch(searchQuery);
+    }
+  };
+
+  // 保留語音輸入 (這是瀏覽器免費功能，好用且無成本)
+  const handleVoiceSearch = () => {
+    if (!('webkitSpeechRecognition' in window)) {
+      alert('您的瀏覽器不支援語音輸入，請使用 Chrome 或 Edge。');
+      return;
+    }
+
+    const recognition = new (window as any).webkitSpeechRecognition();
+    recognition.lang = 'zh-TW';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setSearchQuery(transcript);
+      onSearch(transcript); // 說完話直接搜
+    };
+
+    recognition.start();
+  };
+
   return (
     <header className="sticky top-0 z-50 bg-gradient-to-r from-[#EE4D2D] to-[#FF7337] shadow-lg">
-      <div className="container mx-auto px-4 h-20 flex items-center justify-between gap-8">
+      <div className="container mx-auto px-2 md:px-4 h-16 md:h-20 flex items-center justify-between gap-2 md:gap-8">
         
-        {/* Logo */}
+        {/* Logo: 手機版只顯示圖示，電腦版顯示圖示+文字 */}
         <div 
-          onClick={() => onNavigate(View.SHOP)}
-          className="flex items-center gap-2 cursor-pointer group"
+          onClick={() => {
+             setSearchQuery('');
+             onSearch(''); // 回首頁並清空搜尋
+             onNavigate(View.SHOP);
+          }}
+          className="flex items-center gap-2 cursor-pointer group shrink-0"
         >
-          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-[#EE4D2D] text-xl font-bold shadow-lg group-hover:scale-105 transition-transform">
-            <i className="fa-solid fa-bag-shopping"></i>
+          <div className="bg-white rounded-full p-0.5 shadow-sm group-hover:scale-105 transition-transform overflow-hidden">
+             <img 
+               src="/logo-new.png" 
+               alt="InsBuy" 
+               className="h-8 w-8 md:h-12 md:w-12 object-cover rounded-full" 
+             />
           </div>
-          <span className="text-2xl font-black text-white tracking-tight drop-shadow-sm">
+          <span className="text-xl md:text-2xl font-black text-white tracking-tight drop-shadow-sm hidden md:block">
             InsBuy
           </span>
         </div>
 
-        {/* Search Bar */}
-        <div className="flex-1 max-w-2xl hidden md:block relative">
+        {/* Search Bar: 手機版全寬顯示，不隱藏 */}
+        <div className="flex-1 max-w-2xl relative transition-all duration-300">
           <input 
             type="text" 
-            placeholder="搜尋商品、賣家或品牌..." 
-            className="w-full bg-white border-0 rounded-sm py-2.5 px-4 pl-4 pr-12 focus:outline-none focus:ring-2 focus:ring-orange-800/20 text-slate-800 shadow-sm placeholder:text-slate-400"
+            placeholder={isListening ? "聆聽中..." : "搜尋..."}
+            className={`w-full bg-white border-0 rounded-full py-2 pl-4 pr-20 md:py-2.5 md:pl-6 md:pr-16 text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-orange-300 text-slate-800 shadow-sm placeholder:text-slate-400 ${isListening ? 'ring-2 ring-red-400 animate-pulse' : ''}`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
           />
-          <button className="absolute right-1 top-1 bottom-1 bg-[#EE4D2D] text-white px-4 rounded-sm hover:opacity-90 transition-opacity flex items-center justify-center">
-             <i className="fa-solid fa-magnifying-glass"></i>
-          </button>
+          
+          <div className="absolute right-1 top-1 bottom-1 flex items-center gap-0.5 md:gap-1">
+             <button 
+               onClick={handleVoiceSearch}
+               className={`w-8 h-8 rounded-full text-slate-400 hover:text-[#EE4D2D] hover:bg-slate-100 transition flex items-center justify-center ${isListening ? 'text-red-500 bg-red-50' : ''}`}
+             >
+               <i className={`fa-solid ${isListening ? 'fa-microphone-lines animate-bounce' : 'fa-microphone'}`}></i>
+             </button>
+
+             <button 
+                onClick={() => onSearch(searchQuery)}
+                className="bg-gradient-to-r from-[#EE4D2D] to-[#FF7337] text-white w-8 h-8 md:w-10 md:h-full rounded-full hover:opacity-90 transition-opacity flex items-center justify-center shadow-md ml-1"
+             >
+                <i className="fa-solid fa-magnifying-glass text-xs md:text-base"></i>
+             </button>
+          </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={onShowHelp}
-            className="w-10 h-10 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition"
-            title="幫助中心"
-          >
-            <i className="fa-regular fa-circle-question text-xl"></i>
-          </button>
-
+        {/* Actions: 購物車與登入 */}
+        <div className="flex items-center gap-2 md:gap-4 shrink-0">
           <button 
             onClick={() => onNavigate(View.CART)}
-            className="w-10 h-10 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition relative"
+            className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition relative"
           >
-            <i className="fa-solid fa-cart-shopping text-xl"></i>
+            <i className="fa-solid fa-cart-shopping text-lg md:text-xl"></i>
             {cartCount > 0 && (
-              <span className="absolute top-0 right-0 w-5 h-5 bg-white text-[#EE4D2D] text-[10px] font-bold rounded-full flex items-center justify-center border border-[#EE4D2D]">
+              <span className="absolute top-0 right-0 w-4 h-4 md:w-5 md:h-5 bg-white text-[#EE4D2D] text-[10px] font-bold rounded-full flex items-center justify-center border border-white shadow-sm">
                 {cartCount}
               </span>
             )}
           </button>
 
           {user ? (
-            <div className="flex items-center gap-3 pl-4 border-l border-white/30">
-              {/* 已登入區域 */}
-              {user.role === 'ADMIN' && (
-                <button 
-                  onClick={() => onNavigate(View.ADMIN_HOME)}
-                  className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/20 text-white text-xs font-bold rounded-full shadow hover:bg-white/30 transition mr-2 backdrop-blur-sm"
-                >
-                  <i className="fa-solid fa-gauge-high"></i>
-                  管理後台
-                </button>
-              )}
-
+            <div className="flex items-center gap-2 pl-2 md:pl-4 border-l border-white/30">
               <div 
-                onClick={() => user.role === 'BUYER' ? onNavigate(View.BUYER_DASHBOARD) : onNavigate(View.ADMIN_HOME)}
-                className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition"
+                onClick={() => onNavigate(user.role === 'BUYER' ? View.BUYER_DASHBOARD : View.ADMIN_HOME)}
+                className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-white border-2 border-white/50 overflow-hidden cursor-pointer"
               >
-                <div className="w-9 h-9 rounded-full bg-white border-2 border-white/50 overflow-hidden">
-                  {user.logo ? <img src={user.logo} alt="avatar" className="w-full h-full object-cover" /> : (
-                    <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-600 font-bold">
-                      {user.name[0]}
-                    </div>
-                  )}
-                </div>
-                <div className="hidden lg:block text-sm">
-                  <p className="font-bold text-white leading-tight">{user.name}</p>
-                  <p className="text-[10px] text-white/80 font-medium">{user.role}</p>
-                </div>
+                {user.logo ? (
+                  <img src={user.logo} alt="avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-600 font-bold text-xs">
+                    {user.name[0]}
+                  </div>
+                )}
               </div>
+              
               <button 
                 onClick={onLogout}
-                className="w-9 h-9 rounded-full hover:bg-white/20 text-white/80 hover:text-white flex items-center justify-center transition"
+                className="hidden md:flex w-9 h-9 rounded-full hover:bg-white/20 text-white/80 hover:text-white items-center justify-center transition"
                 title="登出"
               >
                 <i className="fa-solid fa-arrow-right-from-bracket"></i>
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2 pl-4 border-l border-white/30">
-              {/* 未登入狀態：只保留登入按鈕 */}
+            <div className="flex items-center gap-2 pl-2 md:pl-4 border-l border-white/30">
               <button 
                 onClick={() => onNavigate(View.AUTH)}
-                className="px-5 py-2 text-sm font-bold text-white hover:opacity-80 transition flex items-center gap-2"
+                className="px-3 py-1.5 md:px-5 md:py-2 text-xs md:text-sm font-bold text-white hover:opacity-80 transition flex items-center gap-2 border border-white/40 rounded-full bg-white/10"
               >
                 <i className="fa-regular fa-user"></i>
-                登入
+                <span className="hidden md:inline">登入</span>
               </button>
             </div>
           )}
