@@ -1,31 +1,17 @@
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
-import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
-import react from '@vitejs/plugin-react';
-
-export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
-    return {
-      server: {
-        port: 3000,
-        host: '0.0.0.0',
-        proxy: {
-          '/api': {
-            target: 'http://localhost:3001',
-            changeOrigin: true,
-            secure: false,
-          }
-        }
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    proxy: {
+      '/api': {
+        // 關鍵在這裡！把目標指向您的雲端後端 (Render)
+        target: 'https://insbuy-backend.onrender.com',
+        changeOrigin: true,
+        secure: false,
       },
-      plugins: [react()],
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-      },
-      resolve: {
-        alias: {
-          '@': path.resolve(__dirname, '.'),
-        }
-      }
-    };
-});
+    },
+  },
+})

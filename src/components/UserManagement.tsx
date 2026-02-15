@@ -1,25 +1,28 @@
 
-import React, { useState } from 'react';
-import { User, View, LevelConfig, SiteSettings } from '../types';
+import React, { useState, useMemo } from 'react';
+import { User, View, LevelConfig, SiteSettings, Order } from '../types'; 
+import API from '../api';
 
 interface UserManagementProps {
   currentUser: User | null;
   users: User[];
+  orders: Order[]; // 新增：接收全部訂單資料
   permissions: LevelConfig[];
   siteSettings: SiteSettings;
   onUpdateUsers: (users: User[]) => void;
   onUpdatePermissions: (permissions: LevelConfig[]) => void;
   onUpdateSiteSettings: (settings: SiteSettings) => void;
   onNavigate: (view: View) => void;
+  onUpdateOrderStatus: (orderId: string, status: Order['status'], cancellationReason?: string) => void; // 新增：取消訂單用
 }
 
-const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, permissions, siteSettings, onUpdateUsers, onUpdatePermissions, onUpdateSiteSettings, onNavigate }) => {
-  const [activeTab, setActiveTab] = useState<'ADMIN' | 'SELLER' | 'BUYER' | 'PERMISSIONS' | 'WEBSITE'>('ADMIN');
+const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, orders, permissions, siteSettings, onUpdateUsers, onUpdatePermissions, onUpdateSiteSettings, onNavigate, onUpdateOrderStatus }) => {
+  const [activeTab, setActiveTab] = useState<'ADMIN' | 'SELLER' | 'BUYER' | 'PERMISSIONS' | 'WEBSITE' | 'FINANCE'>('ADMIN');
   
-  // 權限設定頁面內部的分頁狀態：控制顯示「商家等級」還是「會員等級」
+  // 權限設定頁面內部的分頁狀態
   const [permissionType, setPermissionType] = useState<'SELLER' | 'BUYER'>('SELLER');
 
-  // 網站設定內部的分頁狀態 (下拉選單控制)
+  // 網站設定內部的分頁狀態
   const [websiteSettingType, setWebsiteSettingType] = useState<'ANNOUNCEMENT' | 'TOS' | 'DISCLAIMER' | 'HELP'>('ANNOUNCEMENT');
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -33,6 +36,10 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
   // 網站設定編輯狀態
   const [settingsForm, setSettingsForm] = useState<SiteSettings>(siteSettings);
 
+  // 財務管理相關狀態
+  const [financeTimeRange, setFinanceTimeRange] = useState<'ALL' | 'YEAR' | 'MONTH' | 'TODAY'>('ALL');
+  const [expandedSellerId, setExpandedSellerId] = useState<string | null>(null);
+
   // 新增帳號相關 State
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newUser, setNewUser] = useState<Partial<User>>({
@@ -43,18 +50,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
     level: 1,
     role: 'BUYER'
   });
-
-  // 權限檢查
-  if (!currentUser) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl shadow-xl border border-slate-100">
-        <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 text-3xl"><i className="fa-solid fa-lock"></i></div>
-        <h2 className="text-xl font-black text-slate-800 mb-2">存取受限</h2>
-        <p className="text-slate-400 text-sm mb-8">請先登入後存取檔案。</p>
-        <button onClick={() => onNavigate(View.AUTH)} className="px-10 py-3 primary-gradient text-white font-bold rounded-2xl shadow-lg">前往登入</button>
-      </div>
-    );
-  }
 
   // ID 生成邏輯
   const generateUserId = (role: 'BUYER' | 'SELLER' | 'ADMIN') => {
@@ -79,17 +74,27 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
     return `${todayPrefix}${String(sequence).padStart(4, '0')}`;
   };
 
-  // 使用者編輯功能
+  // 使用者編輯功能 (開始編輯)
   const handleStartEdit = (user: User) => {
     setEditingId(user.id);
     setEditForm(user);
   };
 
-  const handleSave = (id: string) => {
+  const handleSave = async (id: string) => {
     if (!editForm.name) return;
-    const updated = users.map(u => u.id === id ? { ...u, ...editForm } : u);
-    onUpdateUsers(updated);
-    setEditingId(null);
+    try {
+      const userToUpdate = users.find(u => u.id === id);
+      if (userToUpdate) {
+         await API.updateUser({ ...userToUpdate, ...editForm });
+         const freshUsers = await API.getUsers();
+         onUpdateUsers(freshUsers);
+         setEditingId(null);
+         alert('更新成功！');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('更新失敗，請檢查後端連線');
+    }
   };
 
   const handleCancel = () => {
@@ -98,7 +103,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
   };
 
   const handleDelete = (id: string) => {
-    if (id === currentUser.id) return alert('無法刪除當前登入的帳號');
+    if (currentUser && id === currentUser.id) return alert('無法刪除當前登入的帳號');
     if (confirm('確定要刪除此資料列嗎？')) {
       onUpdateUsers(users.filter(u => u.id !== id));
     }
@@ -161,7 +166,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
 
   // 新增帳號相關功能
   const openCreateModal = () => {
-    const defaultRole = (activeTab === 'PERMISSIONS' || activeTab === 'WEBSITE') ? 'BUYER' : activeTab;
+    const defaultRole = (activeTab === 'PERMISSIONS' || activeTab === 'WEBSITE' || activeTab === 'FINANCE') ? 'BUYER' : activeTab;
     setNewUser({
       name: '',
       phone: '',
@@ -173,29 +178,124 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
     setShowCreateModal(true);
   };
 
-  const handleCreateUser = () => {
+  const handleCreateUser = async () => {
     if (!newUser.name || !newUser.phone || !newUser.password) {
       alert('請填寫姓名、電話與密碼');
       return;
     }
 
-    const role = newUser.role as 'ADMIN' | 'SELLER' | 'BUYER';
-    const newId = generateUserId(role);
+    try {
+      const role = newUser.role as 'ADMIN' | 'SELLER' | 'BUYER';
+      const newId = generateUserId(role);
 
-    const createdUser: User = {
-      id: newId,
-      name: newUser.name,
-      phone: newUser.phone,
-      email: newUser.email || '',
-      password: newUser.password,
-      role: role,
-      level: newUser.level || 1,
-      shop_id: role === 'SELLER' ? `S-${Date.now()}` : undefined,
-      created_at: new Date().toISOString()
-    };
+      const createdUser: User = {
+        id: newId,
+        name: newUser.name!,
+        phone: newUser.phone!,
+        email: newUser.email || '',
+        password: newUser.password!,
+        role: role,
+        level: newUser.level || 1,
+        shop_id: role === 'SELLER' ? `S-${Date.now()}` : undefined,
+        created_at: new Date().toISOString(),
+        stats: { ratingCount: 0, productCount: 0, followerCount: 0, responseRate: 100, responseTime: '1小時內', joinTime: new Date().toISOString(), averageRating: 0 },
+        following: []
+      };
 
-    onUpdateUsers([...users, createdUser]);
-    setShowCreateModal(false);
+      await API.createUser(createdUser);
+      const freshUsers = await API.getUsers();
+      onUpdateUsers(freshUsers);
+
+      setShowCreateModal(false);
+      alert('帳號建立成功！');
+      
+    } catch (error) {
+      console.error('建立失敗:', error);
+      alert('建立失敗，請查看 Console (F12)');
+    }
+  };
+
+  // --- 財務/營收相關邏輯 (Hooks 必須在 return 前執行) ---
+  
+  // 1. 根據時間範圍篩選訂單
+  const filteredFinanceOrders = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const thisMonthStr = todayStr.slice(0, 7);
+    const thisYearStr = todayStr.slice(0, 4);
+
+    return orders.filter(o => {
+      // 僅計算非取消且非待處理的訂單 (假設 CONFIRMED/SHIPPED/COMPLETED 算入業績)
+      if (o.status === 'CANCELLED') return false; 
+      
+      const dateStr = o.created_at.split('T')[0];
+      if (financeTimeRange === 'TODAY') return dateStr === todayStr;
+      if (financeTimeRange === 'MONTH') return dateStr.startsWith(thisMonthStr);
+      if (financeTimeRange === 'YEAR') return dateStr.startsWith(thisYearStr);
+      return true;
+    });
+  }, [orders, financeTimeRange]);
+
+  // 2. 依照賣家 ID 聚合資料
+  const aggregatedFinanceData = useMemo(() => {
+    const map: Record<string, {
+      shopId: string;
+      sellerName: string;
+      orderCount: number;
+      totalRevenue: number;
+      orders: Order[];
+    }> = {};
+
+    // 初始化所有賣家 (避免沒有訂單的賣家不顯示)
+    users.filter(u => u.role === 'SELLER').forEach(seller => {
+      const sId = seller.shop_id || seller.id;
+      map[sId] = {
+        shopId: sId,
+        sellerName: seller.shop_name || seller.name,
+        orderCount: 0,
+        totalRevenue: 0,
+        orders: []
+      };
+    });
+
+    // 填入訂單數據
+    filteredFinanceOrders.forEach(o => {
+      if (map[o.shop_id]) {
+        map[o.shop_id].orderCount += 1;
+        map[o.shop_id].totalRevenue += o.total_amount;
+        map[o.shop_id].orders.push(o);
+      }
+    });
+
+    return Object.values(map);
+  }, [filteredFinanceOrders, users]);
+
+  // 3. 匯出 CSV 功能
+  const handleExportCSV = () => {
+    const bom = '\uFEFF';
+    let csvContent = bom + "商家名稱,商家ID,訂單總數,總銷售額,統計區間\n";
+    
+    aggregatedFinanceData.forEach(row => {
+      csvContent += `"${row.sellerName}","${row.shopId}",${row.orderCount},${row.totalRevenue},${financeTimeRange}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `sales_report_${financeTimeRange}_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // 4. 管理員強制取消訂單
+  const handleAdminCancelOrder = (orderId: string) => {
+    const reason = prompt('請輸入取消原因 (將發送通知給買賣雙方):');
+    if (reason) {
+      onUpdateOrderStatus(orderId, 'CANCELLED', `[管理員操作] ${reason}`);
+      alert('訂單已強制取消');
+    }
   };
 
   const filteredUsers = users
@@ -209,6 +309,18 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
   const filteredPermissions = permissions
     .filter(p => p.target_role === permissionType)
     .sort((a, b) => a.level - b.level);
+
+  // 權限檢查 (移到底部，確保所有 Hooks 都已經執行過)
+  if (!currentUser) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl shadow-xl border border-slate-100">
+        <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 text-3xl"><i className="fa-solid fa-lock"></i></div>
+        <h2 className="text-xl font-black text-slate-800 mb-2">存取受限</h2>
+        <p className="text-slate-400 text-sm mb-8">請先登入後存取檔案。</p>
+        <button onClick={() => onNavigate(View.AUTH)} className="px-10 py-3 primary-gradient text-white font-bold rounded-2xl shadow-lg">前往登入</button>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in space-y-4 pb-20">
@@ -250,40 +362,161 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
           onClick={() => setActiveTab('ADMIN')}
           className={`flex-1 py-3 px-4 min-w-[120px] text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${activeTab === 'ADMIN' ? 'border-[#EE4D2D] text-[#EE4D2D] bg-orange-50/20' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
         >
-          <i className="fa-solid fa-user-shield"></i> 管理員 (Admin)
+          <i className="fa-solid fa-user-shield"></i> 管理員
         </button>
         <button 
           onClick={() => setActiveTab('SELLER')}
           className={`flex-1 py-3 px-4 min-w-[120px] text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${activeTab === 'SELLER' ? 'border-[#EE4D2D] text-[#EE4D2D] bg-orange-50/20' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
         >
-          <i className="fa-solid fa-store"></i> 商家夥伴 (Seller)
+          <i className="fa-solid fa-store"></i> 商家夥伴
         </button>
         <button 
           onClick={() => setActiveTab('BUYER')}
           className={`flex-1 py-3 px-4 min-w-[120px] text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${activeTab === 'BUYER' ? 'border-[#EE4D2D] text-[#EE4D2D] bg-orange-50/20' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
         >
-          <i className="fa-solid fa-users"></i> 一般會員 (Buyer)
+          <i className="fa-solid fa-users"></i> 一般會員
+        </button>
+        <button 
+          onClick={() => setActiveTab('FINANCE')}
+          className={`flex-1 py-3 px-4 min-w-[120px] text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${activeTab === 'FINANCE' ? 'border-[#EE4D2D] text-[#EE4D2D] bg-orange-50/20' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+        >
+          <i className="fa-solid fa-coins"></i> 營收與訂單
         </button>
         <button 
           onClick={() => setActiveTab('PERMISSIONS')}
           className={`flex-1 py-3 px-4 min-w-[120px] text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${activeTab === 'PERMISSIONS' ? 'border-[#EE4D2D] text-[#EE4D2D] bg-orange-50/20' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
         >
-          <i className="fa-solid fa-sliders"></i> 權限設定 (Perms)
+          <i className="fa-solid fa-sliders"></i> 權限設定
         </button>
         <button 
           onClick={() => setActiveTab('WEBSITE')}
           className={`flex-1 py-3 px-4 min-w-[120px] text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${activeTab === 'WEBSITE' ? 'border-[#EE4D2D] text-[#EE4D2D] bg-orange-50/20' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
         >
-          <i className="fa-solid fa-globe"></i> 網站設定 (Web)
+          <i className="fa-solid fa-globe"></i> 網站設定
         </button>
       </div>
+
+      {/* 財務與訂單管理 Tab */}
+      {activeTab === 'FINANCE' && (
+        <div className="bg-white border border-slate-300 shadow-sm min-h-[300px]">
+           <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+              <div className="flex gap-2">
+                 {['ALL', 'YEAR', 'MONTH', 'TODAY'].map(t => (
+                   <button 
+                     key={t}
+                     onClick={() => setFinanceTimeRange(t as any)}
+                     className={`px-4 py-2 text-xs font-bold rounded-lg border transition ${financeTimeRange === t ? 'bg-[#EE4D2D] text-white border-[#EE4D2D]' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'}`}
+                   >
+                     {t === 'ALL' ? '全部時段' : t === 'YEAR' ? '本年度' : t === 'MONTH' ? '本月' : '今日'}
+                   </button>
+                 ))}
+              </div>
+              <button 
+                onClick={handleExportCSV}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-xs flex items-center gap-2 shadow-sm"
+              >
+                <i className="fa-solid fa-file-csv"></i> 下載報表 (管理費計算)
+              </button>
+           </div>
+
+           <div className="overflow-x-auto">
+             <table className="w-full text-left border-collapse font-mono text-sm">
+               <thead>
+                 <tr className="bg-slate-100 text-slate-600 text-xs font-bold uppercase tracking-wider">
+                   <th className="border border-slate-300 px-4 py-3">商家名稱</th>
+                   <th className="border border-slate-300 px-4 py-3 text-center">訂單數</th>
+                   <th className="border border-slate-300 px-4 py-3 text-right">總銷售額</th>
+                   <th className="border border-slate-300 px-4 py-3 text-center">操作</th>
+                 </tr>
+               </thead>
+               <tbody>
+                 {aggregatedFinanceData.map((data, idx) => (
+                   <React.Fragment key={data.shopId}>
+                     <tr className={`hover:bg-blue-50/50 transition ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
+                        <td className="border border-slate-300 px-4 py-3 font-bold text-slate-700">
+                           {data.sellerName} <span className="text-xs text-slate-400 font-normal">({data.shopId})</span>
+                        </td>
+                        <td className="border border-slate-300 px-4 py-3 text-center">{data.orderCount}</td>
+                        <td className="border border-slate-300 px-4 py-3 text-right font-bold text-[#EE4D2D]">
+                           ${data.totalRevenue.toLocaleString()}
+                        </td>
+                        <td className="border border-slate-300 px-4 py-3 text-center">
+                           <button 
+                             onClick={() => setExpandedSellerId(expandedSellerId === data.shopId ? null : data.shopId)}
+                             className="text-blue-500 hover:text-blue-700 font-bold text-xs"
+                           >
+                             {expandedSellerId === data.shopId ? '收起訂單' : '查看訂單'}
+                           </button>
+                        </td>
+                     </tr>
+                     {expandedSellerId === data.shopId && (
+                       <tr>
+                         <td colSpan={4} className="border border-slate-300 bg-slate-50 p-4">
+                            <div className="max-h-60 overflow-y-auto">
+                              <table className="w-full text-xs bg-white rounded-lg overflow-hidden shadow-sm">
+                                <thead className="bg-slate-200 text-slate-600 font-bold">
+                                  <tr>
+                                    <th className="p-2">訂單編號</th>
+                                    <th className="p-2">日期</th>
+                                    <th className="p-2">狀態</th>
+                                    <th className="p-2 text-right">金額</th>
+                                    <th className="p-2 text-center">管理</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {data.orders.length === 0 ? (
+                                    <tr><td colSpan={5} className="p-4 text-center text-slate-400">無訂單資料</td></tr>
+                                  ) : (
+                                    data.orders.map(o => (
+                                      <tr key={o.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                                        <td className="p-2 font-mono">{o.id}</td>
+                                        <td className="p-2">{new Date(o.created_at).toLocaleDateString()}</td>
+                                        <td className="p-2">
+                                          <span className={`px-2 py-0.5 rounded text-[10px] ${
+                                            o.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                                            o.status === 'CANCELLED' ? 'bg-red-100 text-red-700' :
+                                            'bg-yellow-100 text-yellow-700'
+                                          }`}>
+                                            {o.status}
+                                          </span>
+                                        </td>
+                                        <td className="p-2 text-right font-bold">${o.total_amount.toLocaleString()}</td>
+                                        <td className="p-2 text-center">
+                                          {o.status !== 'CANCELLED' && o.status !== 'COMPLETED' && (
+                                            <button 
+                                              onClick={() => handleAdminCancelOrder(o.id)}
+                                              className="text-red-500 hover:text-red-700 border border-red-200 px-2 py-0.5 rounded hover:bg-red-50 transition"
+                                            >
+                                              取消
+                                            </button>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                         </td>
+                       </tr>
+                     )}
+                   </React.Fragment>
+                 ))}
+                 {aggregatedFinanceData.length === 0 && (
+                   <tr><td colSpan={4} className="p-8 text-center text-slate-400">目前無銷售數據</td></tr>
+                 )}
+               </tbody>
+             </table>
+           </div>
+        </div>
+      )}
 
       {/* 內容區域 - 網站設定 */}
       {activeTab === 'WEBSITE' && (
         <div className="bg-white p-8 border border-slate-300 shadow-sm min-h-[300px] animate-fade-in">
+          {/* ... (Existing website settings content) ... */}
+          {/* 為了節省篇幅，此處省略未變動的 JSX 結構，與上方原始碼保持一致 */}
           <div className="max-w-4xl mx-auto space-y-8">
-            
-            {/* 設定功能選擇 (下拉選單) */}
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center gap-4">
               <label className="font-bold text-slate-600 text-sm whitespace-nowrap">
                 <i className="fa-solid fa-gear mr-2"></i>選擇設定項目：
@@ -300,10 +533,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
               </select>
             </div>
 
-            {/* 根據選擇顯示對應內容 */}
             <div className="bg-white rounded-xl border border-slate-100 p-1">
-              
-              {/* 公告設定 */}
               {websiteSettingType === 'ANNOUNCEMENT' && (
                 <div className="space-y-6 p-4 animate-fade-in">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-4">
@@ -331,8 +561,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
                   ></textarea>
                 </div>
               )}
-
-              {/* 服務條款 */}
               {websiteSettingType === 'TOS' && (
                 <div className="space-y-2 p-4 animate-fade-in">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">
@@ -346,8 +574,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
                   ></textarea>
                 </div>
               )}
-
-              {/* 免責聲明 */}
               {websiteSettingType === 'DISCLAIMER' && (
                 <div className="space-y-2 p-4 animate-fade-in">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">
@@ -361,8 +587,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
                   ></textarea>
                 </div>
               )}
-
-              {/* 幫助中心 */}
               {websiteSettingType === 'HELP' && (
                 <div className="space-y-2 p-4 animate-fade-in">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">
@@ -376,7 +600,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
                   ></textarea>
                 </div>
               )}
-
             </div>
 
             <div className="flex justify-end pt-4 border-t border-slate-100">
@@ -391,10 +614,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
         </div>
       )}
 
-      {/* ... (其餘權限設定、使用者列表、新增彈窗代碼保持不變) ... */}
+      {/* 權限表格內容 */}
       {activeTab === 'PERMISSIONS' && (
         <div className="bg-white border border-slate-300 shadow-sm overflow-x-auto min-h-[300px]">
            {/* ... (Permission Tab Content) ... */}
+           {/* 為了節省篇幅，此處省略未變動的 JSX 結構，與上方原始碼保持一致 */}
            <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
              <div className="flex gap-2">
                <button 
@@ -447,16 +671,16 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
                   <tr key={currentKey} className={`hover:bg-blue-50/50 transition ${isEditing ? 'bg-yellow-50' : index % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
                     <td className="border border-slate-300 px-2 py-2 text-center font-bold text-slate-500">{p.level}</td>
                     <td className="border border-slate-300 px-0 py-0 relative">
-                       {isEditing ? (
+                        {isEditing ? (
                         <input 
                           type="text"
                           className="w-full h-full px-3 py-2 bg-yellow-50 outline-none text-blue-700 font-bold inset-0 absolute"
                           value={permissionForm.role_name}
                           onChange={e => setPermissionForm({...permissionForm, role_name: e.target.value})}
                         />
-                       ) : (
+                        ) : (
                         <div className="px-3 py-2 font-bold text-slate-700">{p.role_name}</div>
-                       )}
+                        )}
                     </td>
                     {permissionType === 'SELLER' && (
                       <>
@@ -562,7 +786,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
         </div>
       )}
 
-      {/* ... (User Lists and Create Modal Content remains same) ... */}
+      {/* 使用者列表 (Admin, Seller, Buyer) */}
       {(activeTab === 'ADMIN' || activeTab === 'SELLER' || activeTab === 'BUYER') && (
         <div className="bg-white border border-slate-300 shadow-sm overflow-x-auto min-h-[300px]">
           <table className="w-full text-left border-collapse font-mono text-sm">
@@ -656,6 +880,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
         </div>
       )}
 
+      {/* 新增帳號彈窗 */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 z-[1100] flex items-center justify-center backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up">
@@ -679,7 +904,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, per
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500">電話 (帳號)</label>
-                  <input type="text" className="w-full p-2Dn border border-slate-200 rounded-lg text-sm outline-none focus:border-[#EE4D2D]" value={newUser.phone} onChange={e => setNewUser({...newUser, phone: e.target.value})} placeholder="09xxxxxxxx" />
+                  <input type="text" className="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-[#EE4D2D]" value={newUser.phone} onChange={e => setNewUser({...newUser, phone: e.target.value})} placeholder="09xxxxxxxx" />
                 </div>
               </div>
               <div className="space-y-1">

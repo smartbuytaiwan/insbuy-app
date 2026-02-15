@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { View, User } from '../types';
 
@@ -21,7 +22,8 @@ const AuthHub: React.FC<AuthHubProps> = ({ onLogin, onNavigate }) => {
       email: role === 'SELLER' ? form.phoneOrEmail : '',
       password: form.password,
       role: role,
-      level: 1 // default level to satisfy type constraint
+      level: 1, // default level to satisfy type constraint
+      created_at: '' // Added to satisfy type constraint
     };
     onLogin(loginData);
   };

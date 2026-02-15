@@ -2,14 +2,15 @@
 import axios from 'axios';
 import { User, Product, Order, Category, SiteSettings, LevelConfig } from './types';
 
+// 設定後端連線基礎網址
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: 'http://localhost:3001/api', 
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// 回應攔截器 (可選：處理全域錯誤)
+// 回應攔截器 (方便除錯)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -32,7 +33,11 @@ export const API = {
   },
 
   // 商品相關
-  getProducts: () => api.get<Product[]>('/products').then(res => res.data),
+  // 修正：支援 shopId 參數
+  getProducts: (shopId?: string) => {
+    const url = shopId ? `/products?shop_id=${shopId}` : '/products';
+    return api.get<Product[]>(url).then(res => res.data);
+  },
   createProduct: (product: Product) => api.post<Product>('/products', product).then(res => res.data),
   updateProduct: (product: Product) => api.put<Product>(`/products/${product.id}`, product).then(res => res.data),
   deleteProduct: (id: string) => api.delete(`/products/${id}`),
@@ -40,18 +45,33 @@ export const API = {
   // 使用者相關
   login: (credentials: { phoneOrEmail: string; password: string; role: string }) => 
     api.post<User>('/auth/login', credentials).then(res => res.data),
+    
   register: (user: User) => api.post<User>('/auth/register', user).then(res => res.data),
+  
+  // ★★★ 關鍵修正：您剛剛缺的就是這一行！ ★★★
+  createUser: (user: User) => api.post<User>('/users', user).then(res => res.data),
+  
   updateUser: (user: User) => api.put<User>(`/users/${user.id}`, user).then(res => res.data),
-  getUsers: () => api.get<User[]>('/users').then(res => res.data), // Admin用
+  getUsers: () => api.get<User[]>('/users').then(res => res.data), 
 
   // 訂單相關
   createOrder: (order: Order) => api.post<Order>('/orders', order).then(res => res.data),
   getOrders: () => api.get<Order[]>('/orders').then(res => res.data),
-  updateOrder: (orderId: string, status: string) => api.patch(`/orders/${orderId}/status`, { status }).then(res => res.data),
+  updateOrder: (orderId: string, status: string, cancellationReason?: string) => 
+    api.patch(`/orders/${orderId}/status`, { status, cancellation_reason: cancellationReason }).then(res => res.data),
 
   // 設定與分類
   updateSettings: (settings: SiteSettings) => api.put('/settings', settings).then(res => res.data),
-  updateCategories: (categories: Category[]) => api.post('/categories/bulk', { categories }).then(res => res.data),
+  
+  // 修正：獨立的 getCategories，支援 shopId
+  getCategories: (shopId?: string) => {
+    const url = shopId ? `/categories?shop_id=${shopId}` : '/categories';
+    return api.get<Category[]>(url).then(res => res.data);
+  },
+
+  // 更新分類列表 (包含新增、修改、排序、刪除)
+  // 修正：增加 shopId 參數，避免空列表時無法識別商家
+  updateCategories: (categories: Category[], shopId: string) => api.post('/categories/bulk', { categories, shopId }).then(res => res.data),
   updatePermissions: (permissions: LevelConfig[]) => api.post('/permissions/bulk', { permissions }).then(res => res.data),
 };
 

@@ -50,7 +50,7 @@ export interface Product {
   current_amount?: number;
   total_stock: number;
   is_pinned?: boolean;
-  origin?: string; // 新增產地欄位
+  origin?: string; // 產地欄位
   questions?: { title: string; required: boolean }[];
   reviews?: Review[];
 }
@@ -95,6 +95,7 @@ export interface Order {
   shipping_fee: number;
   payment_method: string;
   status: 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED';
+  cancellation_reason?: string; // 新增：取消原因
   created_at: string;
   receiver_name: string;
   receiver_phone: string;
