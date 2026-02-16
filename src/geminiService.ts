@@ -1,12 +1,15 @@
+/// <reference types="vite/client" />
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // ★ 修復重點：建立一個安全的函數來取得 API Key
 // 瀏覽器環境 (Vite) 必須用 import.meta.env
 // 後端環境 (Node) 用 process.env
 const getApiKey = () => {
+  // 透過最上方的 reference指令，TypeScript 現在看得懂 import.meta.env 了
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
     return import.meta.env.VITE_API_KEY;
   }
+  
   // @ts-ignore
   if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
     // @ts-ignore

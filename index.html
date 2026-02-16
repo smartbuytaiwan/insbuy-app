@@ -48,8 +48,12 @@
       }
       .text-gradient {
         background: linear-gradient(135deg, #EE4D2D 0%, #FF7337 100%);
+        /* 針對 Chrome, Safari, Edge 的前綴寫法 */
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+        /* ★ 新增標準寫法，消除警告並增加相容性 */
+        background-clip: text;
+        color: transparent;
       }
       .scrollbar-hide::-webkit-scrollbar {
           display: none;
