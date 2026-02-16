@@ -23,7 +23,7 @@ interface AdminDashboardProps {
   initialTab?: string | null;
   viewedOrderIds?: string[];
   onMarkAsViewed?: (id: string) => void;
-  onLogout?: () => void; // 新增 Logout Prop
+  onLogout?: () => void;
 }
 
 const TAIWAN_BANKS = [
@@ -507,7 +507,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const summary: Record<string, number> = {};
         ordersToExport.forEach(o => {
             o.items.forEach(item => {
-                const key = `${item.name}${item.variantName ? ` (${item.variantName})` : ''}`;
+                // ★ 修正錯誤：將 variantName 改為 selectedVariant
+                const key = `${item.name}${item.selectedVariant ? ` (${item.selectedVariant})` : ''}`;
                 summary[key] = (summary[key] || 0) + item.qty;
             });
         });
@@ -1391,7 +1392,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {o.items.map((it, i) => (
                         <div key={i} className="flex gap-3 mb-2 bg-slate-50 p-2 rounded-lg items-center">
                            <div className="w-10 h-10 rounded overflow-hidden shrink-0 border border-slate-200 bg-white">
-                              <img src={it.image || it.images?.[0] || 'https://placehold.co/100'} className="w-full h-full object-cover" alt={it.name} />
+                              {/* ★ 修正圖片讀取錯誤：移除 it.image，改用標準陣列讀取 */}
+                              <img src={it.images?.[0] || 'https://placehold.co/100'} className="w-full h-full object-cover" alt={it.name} />
                            </div>
                            <div className="flex-1 min-w-0">
                                <div className="text-xs font-bold text-slate-700 truncate">{it.name}</div>

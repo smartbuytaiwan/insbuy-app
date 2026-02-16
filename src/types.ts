@@ -98,7 +98,9 @@ export interface Order {
 
 export interface CartItem extends Product {
   qty: number;
-  selectedVariant?: string; 
+  selectedVariant?: string;
+  // ★ 修正：加入 finalPrice 以解決 Checkout.tsx 的錯誤
+  finalPrice: number;
 }
 
 export interface User {
