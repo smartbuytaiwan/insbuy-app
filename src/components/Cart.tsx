@@ -161,6 +161,11 @@ const Cart: React.FC<CartProps> = ({ items, allUsers, onUpdateQty, onRemove, onC
                       const globalIdx = group.originalIndices[localIdx]; 
                       const isChecked = checkedIndices.has(globalIdx);
 
+                      // ★ 修改：優先讀取 image，若無則讀取 images[0]，解決圖片不顯示問題
+                      const displayImage = item.image || (item.images && item.images.length > 0 ? item.images[0] : 'https://placehold.co/150');
+                      // ★ 修改：優先讀取 variantName，若無則讀取 selectedVariant
+                      const displayVariant = item.variantName || item.selectedVariant;
+
                       return (
                         <div key={localIdx} className="flex gap-4 items-center">
                             {/* 商品勾選框 */}
@@ -172,11 +177,11 @@ const Cart: React.FC<CartProps> = ({ items, allUsers, onUpdateQty, onRemove, onC
                             />
 
                             <div className="w-20 h-20 bg-slate-50 rounded-xl overflow-hidden shrink-0 border border-slate-100">
-                                <img src={item.image || 'https://placehold.co/150'} alt={item.name} className="w-full h-full object-cover" />
+                                <img src={displayImage} alt={item.name} className="w-full h-full object-cover" />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <h3 className="font-bold text-slate-700 truncate">{item.name}</h3>
-                                <div className="text-xs text-slate-400 mt-1">{item.variantName ? `規格: ${item.variantName}` : '單一規格'}</div>
+                                <div className="text-xs text-slate-400 mt-1">{displayVariant ? `規格: ${displayVariant}` : '單一規格'}</div>
                                 <div className="text-sm font-black text-[#EE4D2D] mt-1">${item.finalPrice.toLocaleString()}</div>
                             </div>
                             <div className="flex flex-col items-end gap-3">

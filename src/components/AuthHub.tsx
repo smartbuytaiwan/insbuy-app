@@ -18,6 +18,7 @@ const AuthHub: React.FC<AuthHubProps> = ({ onLogin, onNavigate }) => {
   const handleLogin = () => {
     if (!form.password || !form.phoneOrEmail) return alert('請填寫完整資訊');
     
+    // 這裡維持原邏輯，後端會同時搜尋 phone, email, id
     const loginData: User = {
       id: '',
       name: '',
@@ -68,10 +69,12 @@ const AuthHub: React.FC<AuthHubProps> = ({ onLogin, onNavigate }) => {
         
         <div className="space-y-4">
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">{role === 'BUYER' ? 'Email' : '註冊信箱 / ID'}</label>
+            {/* ★ 修改：統一顯示「註冊信箱 / ID」 */}
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">註冊信箱 / ID</label>
             <input 
               type="text"
-              placeholder={role === 'BUYER' ? '09xx-xxx-xxx' : 'example@insbuy.com'}
+              // ★ 修改：統一提示為 Email 格式
+              placeholder="example@insbuy.com"
               className="w-full h-12 border border-slate-200 rounded-2xl px-5 outline-none focus:ring-2 focus:ring-indigo-100 transition shadow-sm"
               value={form.phoneOrEmail}
               onChange={(e) => setForm({...form, phoneOrEmail: e.target.value})}

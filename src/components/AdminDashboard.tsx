@@ -892,6 +892,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     alert('備註已更新');
   };
 
+  // ★ 新增：切換是否已收到貨款
+  const handleTogglePaid = async (orderId: string, currentStatus: boolean) => {
+    const newStatus = !currentStatus;
+    try {
+        // 呼叫後端 API 更新
+        await API.updateOrder(orderId, { is_paid: newStatus } as any);
+        // 因為無法直接更新 props 的 orders，呼叫 onUpdateOrderStatus 觸發上層刷新 (傳入原本的 status)
+        const currentOrder = orders.find(o => o.id === orderId);
+        if (currentOrder) {
+            onUpdateOrderStatus(orderId, currentOrder.status); 
+        }
+    } catch (e) {
+        console.error(e);
+        alert('更新付款狀態失敗');
+    }
+  };
+
   const handleAddSystemCategory = (parentId: string | null = null) => {
     const name = parentId ? prompt("請輸入子分類名稱：") : newSystemCatName;
     if (!name || !name.trim()) return;
@@ -1300,6 +1317,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded text-slate-500">訂單編號 #{o.id.slice(-6)}</span>
                           <span className="font-bold text-slate-800">{o.receiver_name}</span>
                         </div>
+                        {/* ★ 新增：已收到貨款勾選 */}
+                        <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-1 rounded-lg border border-slate-200 w-fit mt-2 hover:bg-slate-100" onClick={e => e.stopPropagation()}>
+                           <input 
+                              type="checkbox" 
+                              className="accent-green-600 w-4 h-4 cursor-pointer"
+                              checked={(o as any).is_paid || false}
+                              onChange={(e) => handleTogglePaid(o.id, (o as any).is_paid)}
+                           />
+                           <span className="text-xs font-bold text-slate-600">已收到貨款</span>
+                        </label>
                       </div>
                       <select 
                         className={`text-xs font-bold px-4 py-2 rounded-full outline-none border-none cursor-pointer ${
@@ -1503,10 +1530,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
              <div className="max-w-3xl space-y-10">
                 <section className="space-y-6"><div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest border-b pb-2">Step 1. 商品基本資訊</div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="md:col-span-2"><label className="text-xs font-bold text-slate-500 mb-2 block">商品名稱</label><input type="text" className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm outline-none focus:border-[#EE4D2D]" value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
                 <div className="md:col-span-2"><label className="text-xs font-bold text-slate-500 mb-2 block">商品分類 (可多選)</label><div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-6"><div><label className="text-[10px] font-bold text-slate-400 mb-1 block uppercase tracking-wider">平台全域分類</label><div className="flex flex-col md:flex-row gap-3"><select className="flex-1 h-10 border border-slate-300 rounded-lg px-3 text-sm outline-none" value={selectedMainCat} onChange={(e) => { setSelectedMainCat(e.target.value); setSelectedSubCat(''); }}><option value="">選擇主分類...</option>{systemCategories?.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>{selectedMainCat && (<select className="flex-1 h-10 border border-slate-300 rounded-lg px-3 text-sm outline-none" value={selectedSubCat} onChange={(e) => setSelectedSubCat(e.target.value)}><option value="">選擇子分類 (可選)</option>{systemCategories?.filter(c => c.parent_id === selectedMainCat).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}</select>)}<button onClick={() => handleAddCategoryTag('SYSTEM')} className="px-4 py-2 bg-slate-800 text-white rounded-lg font-bold text-sm hover:bg-slate-700 disabled:opacity-50" disabled={!selectedMainCat}>加入平台分類</button></div></div><div className="pt-4 border-t border-slate-200"><label className="text-[10px] font-bold text-slate-400 mb-1 block uppercase tracking-wider">我的賣場分類</label>{categories.length > 0 ? (<div className="flex flex-col md:flex-row gap-3"><select className="flex-1 h-10 border border-slate-300 rounded-lg px-3 text-sm outline-none" value={selectedShopMainCat} onChange={(e) => { setSelectedShopMainCat(e.target.value); setSelectedShopSubCat(''); }}><option value="">選擇自訂分類...</option>{categories.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>{selectedShopMainCat && (<select className="flex-1 h-10 border border-slate-300 rounded-lg px-3 text-sm outline-none" value={selectedShopSubCat} onChange={(e) => setSelectedShopSubCat(e.target.value)}><option value="">選擇子分類 (可選)</option>{categories.filter(c => c.parent_id === selectedShopMainCat).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}</select>)}<button onClick={() => handleAddCategoryTag('SHOP')} className="px-4 py-2 bg-[#EE4D2D] text-white rounded-lg font-bold text-sm hover:bg-[#d73211] disabled:opacity-50" disabled={!selectedShopMainCat}>加入自訂分類</button></div>) : (<div className="text-sm text-slate-400">您尚未建立自訂分類，請至「分類管理」新增。</div>)}</div><div className="flex flex-wrap gap-2 pt-2">{form.category_ids?.map(id => (<div key={id} className="bg-white border border-[#EE4D2D] text-[#EE4D2D] px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2 shadow-sm"><span>{categories.find(c=>c.id===id)?.name || systemCategories?.find(c=>c.id===id)?.name || id}</span><button onClick={() => removeCategoryTag(id)} className="hover:text-red-500"><i className="fa-solid fa-xmark"></i></button></div>))}</div></div></div>
-                <div className="md:col-span-2"><label className="text-xs font-bold text-slate-500 mb-2 block">商品產地</label><div className="flex flex-wrap gap-2 mb-2">{COMMON_ORIGINS.map(origin => (<button key={origin} onClick={() => setForm({ ...form, origin })} className={`px-4 py-2 rounded-lg text-xs font-bold border transition ${form.origin === origin ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>{origin}</button>))}<button onClick={() => setForm({ ...form, origin: '' })} className={`px-4 py-2 rounded-lg text-xs font-bold border transition ${!COMMON_ORIGINS.includes(form.origin || '') ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>其他</button></div>{!COMMON_ORIGINS.includes(form.origin || '') && (<input type="text" placeholder="請輸入產地" className="w-full h-10 border border-slate-200 rounded-xl px-4 text-xs outline-none focus:border-[#EE4D2D]" value={form.origin || ''} onChange={e => setForm({ ...form, origin: e.target.value })} />)}</div><div><label className="text-xs font-bold text-slate-500 mb-2 block">團購基礎價</label><input type="number" className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm font-black text-[#EE4D2D]" value={form.price} onChange={e => setForm({...form, price: parseInt(e.target.value) || 0})} /></div><div><label className="text-xs font-bold text-slate-500 mb-2 block">市場參考價</label><input type="number" className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm text-slate-400 line-through" value={form.original_price} onChange={e => setForm({...form, original_price: parseInt(e.target.value) || 0})} /></div><div className="md:col-span-2"><label className="text-xs font-bold text-slate-500 mb-2 block">商品詳情文案</label><div className="relative"><textarea className="w-full h-40 border border-slate-200 rounded-2xl p-5 text-sm outline-none resize-none" value={form.description} onChange={e => setForm({...form, description: e.target.value})} /><button onClick={async () => { setAiLoading(true); setForm({...form, description: await generateMarketingCopy(form.name || '', form.description || '')}); setAiLoading(false); }} className="absolute bottom-4 right-4 primary-gradient text-white text-[10px] px-4 py-2 rounded-full font-bold shadow-lg flex items-center gap-2">{aiLoading ? <i className="fa-solid fa-spinner animate-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>} AI 修飾</button></div></div></div></section>
+                <div className="md:col-span-2"><label className="text-xs font-bold text-slate-500 mb-2 block">商品產地</label><div className="flex flex-wrap gap-2 mb-2">{COMMON_ORIGINS.map(origin => (<button key={origin} onClick={() => setForm({ ...form, origin })} className={`px-4 py-2 rounded-lg text-xs font-bold border transition ${form.origin === origin ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>{origin}</button>))}<button onClick={() => setForm({ ...form, origin: '' })} className={`px-4 py-2 rounded-lg text-xs font-bold border transition ${!COMMON_ORIGINS.includes(form.origin || '') ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>其他</button></div>{!COMMON_ORIGINS.includes(form.origin || '') && (<input type="text" placeholder="請輸入產地" className="w-full h-10 border border-slate-200 rounded-xl px-4 text-xs outline-none focus:border-[#EE4D2D]" value={form.origin || ''} onChange={e => setForm({ ...form, origin: e.target.value })} />)}</div>
+                
+                {/* ★ 修改：優化價格輸入，若為 0 顯示空白，避免卡住 */}
+                <div>
+                   <label className="text-xs font-bold text-slate-500 mb-2 block">團購基礎價</label>
+                   <input 
+                      type="number" 
+                      className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm font-black text-[#EE4D2D]" 
+                      value={form.price || ''} 
+                      onChange={e => setForm({...form, price: parseInt(e.target.value) || 0})} 
+                   />
+                </div>
+                <div>
+                   <label className="text-xs font-bold text-slate-500 mb-2 block">市場參考價</label>
+                   <input 
+                      type="number" 
+                      className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm text-slate-400 line-through" 
+                      value={form.original_price || ''} 
+                      onChange={e => setForm({...form, original_price: parseInt(e.target.value) || 0})} 
+                   />
+                </div>
+                
+                <div className="md:col-span-2">
+                   <label className="text-xs font-bold text-slate-500 mb-2 block">商品詳情文案</label>
+                   <div className="relative">
+                      {/* ★ 修改：移除 AI 修飾按鈕 */}
+                      <textarea 
+                         className="w-full h-40 border border-slate-200 rounded-2xl p-5 text-sm outline-none resize-none" 
+                         value={form.description} 
+                         onChange={e => setForm({...form, description: e.target.value})} 
+                      />
+                   </div>
+                </div>
+                
+                </div></section>
                 <section className="space-y-6"><div className="flex justify-between items-center border-b pb-2"><div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest">Step 2. 規格與庫存設定</div><button onClick={addVariant} className="text-[11px] font-bold text-blue-500 hover:underline">+ 新增規格選項</button></div><div className="space-y-3">{form.variants?.map((v, i) => (<div key={i} className="flex flex-wrap md:flex-nowrap gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 items-center"><input type="text" className="flex-1 h-10 border border-slate-200 rounded-xl px-4 text-xs" value={v.name} onChange={e => updateVariant(i, 'name', e.target.value)} placeholder="規格名稱" /><input type="number" className="w-32 h-10 border border-slate-200 rounded-xl px-4 text-xs" value={v.price === 0 ? '' : v.price} onChange={e => updateVariant(i, 'price', e.target.value === '' ? 0 : parseInt(e.target.value))} placeholder="加價" /><input type="number" className="w-32 h-10 border border-slate-200 rounded-xl px-4 text-xs" value={v.stock === 0 ? '' : v.stock} onChange={e => updateVariant(i, 'stock', e.target.value === '' ? 0 : parseInt(e.target.value))} placeholder="庫存" /><button onClick={() => removeVariant(i)} className="text-slate-400 hover:text-red-500"><i className="fa-solid fa-xmark"></i></button></div>))}</div></section>
                 <section className="space-y-6">
-                 <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest border-b pb-2">Step 3. 商品圖片與影片</div>
+                 <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest">Step 3. 商品圖片與影片</div>
                  <div className="text-xs text-slate-400 mb-2 font-bold">
                     <i className="fa-solid fa-circle-info mr-1"></i> 
                     建議圖片尺寸：800x800 px (1:1) 。點擊已上傳的圖片可重新裁切。

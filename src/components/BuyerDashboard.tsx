@@ -246,13 +246,23 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
                                    <i className="fa-regular fa-comments mr-1"></i>愛聊
                                 </button>
                              </div>
-                             <span className={`text-xs font-bold px-3 py-1 rounded-full ${
-                                order.status === 'COMPLETED' ? 'bg-green-100 text-green-600' :
-                                order.status === 'CANCELLED' ? 'bg-slate-200 text-slate-500' :
-                                'bg-orange-100 text-[#EE4D2D]'
-                             }`}>
-                                {BUYER_ORDER_STATUS_OPTIONS.find(o => o.value === order.status)?.label}
-                             </span>
+                             
+                             <div className="flex items-center gap-2">
+                                {/* ★ 新增：顯示已收到貨款標籤 */}
+                                {(order as any).is_paid && (
+                                   <span className="text-[10px] bg-green-100 text-green-600 px-2 py-1 rounded border border-green-200 flex items-center gap-1 font-bold">
+                                      <i className="fa-solid fa-check-circle"></i> 已收到貨款
+                                   </span>
+                                )}
+
+                                <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                                    order.status === 'COMPLETED' ? 'bg-green-100 text-green-600' :
+                                    order.status === 'CANCELLED' ? 'bg-slate-200 text-slate-500' :
+                                    'bg-orange-100 text-[#EE4D2D]'
+                                }`}>
+                                    {BUYER_ORDER_STATUS_OPTIONS.find(o => o.value === order.status)?.label}
+                                </span>
+                             </div>
                           </div>
 
                           <div className="p-4">
@@ -441,7 +451,7 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
               />
               
               <div className="flex gap-2">
-                 <button onClick={handleSubmitReview} className="flex-1 py-2 bg-[#EE4D2D] text-white rounded-lg font-bold text-sm">送出評價</button>
+                 <button onClick={handleSubmitReview} className="flex-1 py-2 bg-[#EE4D2D] text-white rounded-lg font-bold text-sm\">送出評價</button>
                  <button onClick={() => setReviewModalOpen(false)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg font-bold text-sm">取消</button>
               </div>
             </div>
