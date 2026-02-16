@@ -37,7 +37,10 @@ const App: React.FC = () => {
   const [checkoutItems, setCheckoutItems] = useState<CartItem[]>([]); 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  
+  const [searchQuery, setSearchQuery] = useState(''); 
+  const [appliedSearch, setAppliedSearch] = useState(''); 
+
   const [chatTarget, setChatTarget] = useState<string | null>(null);
   const [currentShopId, setCurrentShopId] = useState<string | null>(null); 
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
@@ -55,6 +58,12 @@ const App: React.FC = () => {
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [fetchError, setFetchError] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // 功能按鈕展開狀態
+  const [isFabOpen, setIsFabOpen] = useState(false);
+  
+  // ★ 新增：商店重置 Key，用於強制刷新 Shop 元件回到預設狀態
+  const [shopRefreshKey, setShopRefreshKey] = useState(0);
 
   const [viewedOrderIds, setViewedOrderIds] = useState<string[]>(() => {
     try {
@@ -214,9 +223,12 @@ const App: React.FC = () => {
         
         const count = allMsgs.filter((m: any) => {
            if (m.receiverId !== myId) return false;
+           // 正在聊天的對象不計入未讀
            if (chatTarget && m.senderId === chatTarget) return false;
+           
            if (m.isRead) return false;
 
+           // ★ 嚴格檢查本地最後讀取時間
            const lastRead = localStorage.getItem(`insbuy_last_read_${myId}_${m.senderId}`);
            if (lastRead && new Date(m.timestamp) <= new Date(lastRead)) {
                return false; 
@@ -311,6 +323,7 @@ const App: React.FC = () => {
       // 如果回到首頁且沒有指定 ID，清空搜尋
       if (!targetId) {
         setSearchQuery('');
+        setAppliedSearch(''); // 重置搜尋
       }
     }
     
@@ -318,20 +331,19 @@ const App: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // ★ 核心修改：處理搜尋請求 (連接 API 與 UI)
   const handleSearch = async (query: string) => {
     try {
-      setIsDataLoaded(false); // 顯示載入動畫
-      setSearchQuery(query);  // 更新 Header 搜尋框文字
+      setIsDataLoaded(false); 
       
-      // 切換回首頁，確保能顯示搜尋結果
+      setAppliedSearch(query); 
+      setSearchQuery(query); 
+      
       setCurrentShopId(null);
       setView(View.SHOP);
 
-      // ★ 呼叫後端 API 進行搜尋
       const searchResults = await API.getProducts(undefined, query);
       
-      setProducts(searchResults); // 直接用後端回傳的結果取代商品列表
+      setProducts(searchResults); 
       showToast(query ? `搜尋完成：${query}` : '已顯示所有商品');
     } catch (e) {
       showToast('搜尋發生錯誤', 'error');
@@ -464,7 +476,6 @@ const App: React.FC = () => {
     }
   };
 
-  // ★ 修正：移除前端文字過濾邏輯，只保留狀態與店家過濾
   const filteredProducts = useMemo(() => {
     let list = products.filter(p => p.status === 'OPEN' && p.total_stock > 0);
     if (currentShopId) list = list.filter(p => p.shop_id === currentShopId);
@@ -569,7 +580,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* 將 handleSearch 傳入 Header */}
+      {/* Header 接收 searchQuery (輸入框顯示) 與 handleSearch (按下搜尋) */}
       <Header 
          user={user} 
          cartCount={cart.length} 
@@ -579,6 +590,7 @@ const App: React.FC = () => {
          setSearchQuery={setSearchQuery} 
          onShowHelp={() => setModalContent({ title: '幫助中心', content: siteSettings.helpCenter || '暫無內容' })} 
          onSearch={handleSearch}
+         onReset={() => setShopRefreshKey(prev => prev + 1)} // ★ 點擊 Logo 時更新 Key
       />
 
       <main className="container mx-auto px-4 py-8 flex-1 max-w-7xl pb-32">
@@ -586,7 +598,8 @@ const App: React.FC = () => {
           <div className="flex justify-center items-center h-64 text-slate-400 font-bold animate-pulse">正在載入資料...</div>
         ) : (
           <>
-            {view === View.SHOP && <Shop products={filteredProducts} categories={categories.filter(c => currentShopId ? c.shop_id === currentShopId : true)} systemCategories={systemCategories} currentShop={currentShop || undefined} currentUser={user} orders={orders} onOpenProduct={(p) => navigateTo(View.PRODUCT, p)} onFollowShop={handleFollowShop} onNavigate={navigateTo} />}
+            {/* ★ 關鍵：使用 key 強制重置 Shop 元件狀態 */}
+            {view === View.SHOP && <Shop key={currentShopId || `home-${shopRefreshKey}`} products={filteredProducts} categories={categories.filter(c => currentShopId ? c.shop_id === currentShopId : true)} systemCategories={systemCategories} currentShop={currentShop || undefined} currentUser={user} orders={orders} searchQuery={appliedSearch} onOpenProduct={(p) => navigateTo(View.PRODUCT, p)} onFollowShop={handleFollowShop} onNavigate={navigateTo} />}
             
             {view === View.PRODUCT && selectedProduct && (
                 <ProductDetail 
@@ -713,6 +726,7 @@ const App: React.FC = () => {
                 initialTab={adminTab}
                 viewedOrderIds={viewedOrderIds}
                 onMarkAsViewed={handleMarkAsViewed}
+                onLogout={logout} 
               />
             )}
             
@@ -744,29 +758,71 @@ const App: React.FC = () => {
       </main>
       
       <div className="fixed bottom-8 right-8 z-[999] flex flex-col gap-4 items-end">
+        {/* 管理員按鈕 (維持獨立) */}
         {user && user.role === 'ADMIN' && <button onClick={() => navigateTo(View.USER_MANAGEMENT)} className="px-4 py-2 bg-slate-800 text-white rounded-full text-[10px] font-black shadow-xl hover:bg-slate-700 transition flex items-center gap-2 mb-2"><i className="fa-solid fa-users-gear"></i> 使用者管理 (ADMIN)</button>}
         
-        {user && (user.role === 'SELLER' || user.role === 'ADMIN') && (
-          <button onClick={() => navigateTo(View.ADMIN_HOME, undefined, 'create')} className="w-16 h-16 bg-white text-slate-700 rounded-full shadow-lg border border-slate-200 flex flex-col items-center justify-center hover:scale-110 hover:shadow-xl transition-all relative group">
-            <i className="fa-solid fa-plus text-xl text-[#EE4D2D]"></i>
-            <span className="text-[9px] font-bold mt-0.5">上架</span>
-          </button>
-        )}
+        {/* 整合功能選單 */}
+        <div className="relative flex flex-col items-end gap-3">
+            
+            {/* 展開的子按鈕 */}
+            {isFabOpen && (
+               <>
+                  {/* 上架按鈕 */}
+                  {user && (user.role === 'SELLER' || user.role === 'ADMIN') && (
+                    <button 
+                        onClick={() => {
+                            navigateTo(View.ADMIN_HOME, undefined, 'create');
+                            setIsFabOpen(false);
+                        }} 
+                        className="w-12 h-12 bg-white text-slate-700 rounded-full shadow-lg border border-slate-200 flex flex-col items-center justify-center hover:scale-110 transition-all animate-fade-in-up"
+                    >
+                        <i className="fa-solid fa-plus text-lg text-[#EE4D2D]"></i>
+                        <span className="text-[8px] font-bold">上架</span>
+                    </button>
+                  )}
 
-        {/* 訂單通知按鈕 */}
-        {user && (user.role === 'SELLER' || user.role === 'ADMIN') && (
-          <button onClick={() => navigateTo(View.ADMIN_HOME, undefined, 'orders')} className="w-16 h-16 bg-white text-slate-700 rounded-full shadow-lg border border-slate-200 flex flex-col items-center justify-center hover:scale-110 hover:shadow-xl transition-all relative group">
-            {pendingOrderCount > 0 && <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full border border-white flex items-center justify-center animate-bounce z-10 shadow-sm"><span className="text-[10px] text-white font-black">{pendingOrderCount > 99 ? '99+' : pendingOrderCount}</span></div>}
-            <i className="fa-solid fa-clipboard-list text-xl text-[#EE4D2D]"></i>
-            <span className="text-[9px] font-bold mt-0.5">訂單</span>
-          </button>
-        )}
+                  {/* 訂單通知按鈕 */}
+                  {user && (user.role === 'SELLER' || user.role === 'ADMIN') && (
+                    <button 
+                        onClick={() => {
+                            navigateTo(View.ADMIN_HOME, undefined, 'orders');
+                            setIsFabOpen(false);
+                        }} 
+                        className="w-12 h-12 bg-white text-slate-700 rounded-full shadow-lg border border-slate-200 flex flex-col items-center justify-center hover:scale-110 transition-all relative animate-fade-in-up"
+                    >
+                        {pendingOrderCount > 0 && <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border border-white flex items-center justify-center animate-bounce z-10 shadow-sm"><span className="text-[8px] text-white font-black">{pendingOrderCount > 99 ? '99+' : pendingOrderCount}</span></div>}
+                        <i className="fa-solid fa-clipboard-list text-lg text-[#EE4D2D]"></i>
+                        <span className="text-[8px] font-bold">訂單</span>
+                    </button>
+                  )}
 
-        {/* 愛聊按鈕 */}
-        <button onClick={() => navigateTo(View.CHAT)} className="w-16 h-16 primary-gradient rounded-full shadow-[0_10px_40px_rgba(238,77,45,0.4)] border-4 border-white flex flex-col items-center justify-center text-white hover:scale-110 hover:-translate-y-2 transition-all group relative">
-          {unreadCount > 0 && <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full border-2 border-white flex items-center justify-center animate-bounce z-10 shadow-sm"><span className="text-[10px] text-white font-black">{unreadCount > 99 ? '99+' : unreadCount}</span></div>}
-          <i className="fa-regular fa-comments text-2xl"></i><span className="text-[10px] font-black mt-0.5">愛聊</span>
-        </button>
+                  {/* 愛聊按鈕 */}
+                  <button 
+                      onClick={() => {
+                          navigateTo(View.CHAT);
+                          setIsFabOpen(false);
+                      }} 
+                      className="w-12 h-12 bg-white text-slate-700 rounded-full shadow-lg border border-slate-200 flex flex-col items-center justify-center hover:scale-110 transition-all relative animate-fade-in-up"
+                  >
+                    {unreadCount > 0 && <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border border-white flex items-center justify-center animate-bounce z-10 shadow-sm"><span className="text-[8px] text-white font-black">{unreadCount > 99 ? '99+' : unreadCount}</span></div>}
+                    <i className="fa-regular fa-comments text-lg text-[#EE4D2D]"></i><span className="text-[8px] font-bold">愛聊</span>
+                  </button>
+               </>
+            )}
+
+            {/* 主功能開關按鈕 */}
+            <button 
+                onClick={() => setIsFabOpen(!isFabOpen)} 
+                className={`w-16 h-16 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.3)] border-4 border-white flex flex-col items-center justify-center text-white hover:scale-110 transition-all z-20 ${isFabOpen ? 'bg-slate-800' : 'primary-gradient'}`}
+            >
+              {/* 如果收合時有通知，在主按鈕顯示紅點 */}
+              {!isFabOpen && (pendingOrderCount > 0 || unreadCount > 0) && (
+                  <div className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full border border-white animate-pulse"></div>
+              )}
+              <i className={`fa-solid ${isFabOpen ? 'fa-xmark' : 'fa-bars'} text-2xl`}></i>
+              <span className="text-[10px] font-black mt-0.5">{isFabOpen ? '關閉' : '功能'}</span>
+            </button>
+        </div>
       </div>
     </div>
   );

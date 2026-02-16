@@ -31,8 +31,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   
-  // 紀錄每個聯絡人的最後訊息時間，用於排序
+  // 紀錄每個聯絡人的最後訊息時間與內容
   const [contactLastTime, setContactLastTime] = useState<Record<string, number>>({});
+  const [lastMessages, setLastMessages] = useState<Record<string, string>>({}); // ★ 新增：最後訊息預覽
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({}); 
   
   // 輔助功能狀態
@@ -45,18 +46,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
   const activeContactIdRef = useRef<string | null>(targetId);
   const pollingRef = useRef<any>(null);
 
-  // 同步 activeContactId
-  useEffect(() => {
-    activeContactIdRef.current = activeContactId;
-    if (activeContactId && !readOnly) {
-        markAsRead(activeContactId);
-    }
-  }, [activeContactId, readOnly]);
-
-  // 當外部 targetId 改變時切換
-  useEffect(() => {
-    if (targetId) setActiveContactId(targetId);
-  }, [targetId]);
+  const getMyId = () => {
+    if (!currentUser) return '';
+    return currentUser.shop_id || currentUser.id;
+  };
 
   // 讀取/儲存 ChatMetadata
   useEffect(() => {
@@ -74,14 +67,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
       localStorage.setItem(`insbuy_chat_meta_${currentUser.id}`, JSON.stringify(chatMeta));
     }
   }, [chatMeta, currentUser]);
-
-  // ★ 功能4 修復：統一 ID 邏輯，確保一個帳號只有一個頻道
-  // 如果我是賣家，我強制使用 shop_id 作為我的身分 ID 與人對話，這樣買家敲我店鋪時我也收得到
-  // 如果我是純買家，則使用 id
-  const getMyId = () => {
-    if (!currentUser) return '';
-    return currentUser.shop_id || currentUser.id;
-  };
 
   const mapMessageData = (m: any): Message => {
     return {
@@ -102,8 +87,41 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
   const updateLastReadTime = (contactId: string) => {
       const myId = getMyId();
       localStorage.setItem(`insbuy_last_read_${myId}_${contactId}`, new Date().toISOString());
+      
+      // ★ 觸發全域事件，通知 App.tsx 更新全域紅點
       window.dispatchEvent(new Event('insbuy_message_read'));
   };
+
+  // ★ 新增：確實呼叫 API 將訊息設為已讀
+  const markAsRead = async (contactId: string) => {
+     if(readOnly || !currentUser) return;
+     
+     const myId = getMyId();
+     
+     // 1. 本地更新狀態 (即時消失紅點)
+     setUnreadCounts(prev => ({ ...prev, [contactId]: 0 }));
+     updateLastReadTime(contactId);
+
+     // 2. 呼叫後端 API
+     try {
+        await API.markMessagesRead(contactId, myId);
+     } catch (e) {
+        // silent fail
+     }
+  };
+
+  // 同步 activeContactId 並執行已讀邏輯
+  useEffect(() => {
+    activeContactIdRef.current = activeContactId;
+    if (activeContactId && !readOnly) {
+        markAsRead(activeContactId);
+    }
+  }, [activeContactId, readOnly]);
+
+  // 當外部 targetId 改變時切換
+  useEffect(() => {
+    if (targetId) setActiveContactId(targetId);
+  }, [targetId]);
 
   // 輪詢邏輯
   useEffect(() => {
@@ -112,38 +130,48 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
 
     const fetchData = async () => {
       try {
-        // 抓取所有與我 (myId) 有關的訊息
         const allMyMessages = await API.getAllUserMessages(myId);
         
         if (Array.isArray(allMyMessages)) {
             const counts: Record<string, number> = {};
             const times: Record<string, number> = {}; 
+            const lastMsgs: Record<string, string> = {}; // ★ 暫存最後訊息文字
 
             allMyMessages.forEach((m: any) => {
                 const safeMsg = mapMessageData(m);
-                // 判斷對話對象 ID
                 const partnerId = (safeMsg.senderId === myId) ? safeMsg.receiverId : safeMsg.senderId;
                 
-                // 更新該聯絡人的最後訊息時間
+                // 更新該聯絡人的最後訊息時間與內容
                 const msgTime = new Date(safeMsg.timestamp).getTime();
                 if (!times[partnerId] || msgTime > times[partnerId]) {
                     times[partnerId] = msgTime;
+                    // ★ 處理預覽文字：若是圖片或連結，可做特殊顯示
+                    let preview = safeMsg.text;
+                    if (preview.startsWith('[系統通知]')) preview = '[系統通知]';
+                    else if (preview.includes('#/PRODUCT/')) preview = '[商品連結]';
+                    lastMsgs[partnerId] = preview;
                 }
 
-                // 計算未讀 (我是接收者且未讀)
+                // 計算未讀 (嚴格檢查 isRead 欄位 與 本地最後讀取時間)
                 if (safeMsg.receiverId === myId) {
+                    // 如果 API 說未讀，且時間晚於我最後讀取的時間 (或者我從未讀過)
                     const lastRead = getLastReadTime(safeMsg.senderId);
-                    const isNew = !lastRead || new Date(safeMsg.timestamp) > new Date(lastRead);
                     
-                    if (!safeMsg.isRead && isNew) {
-                        counts[safeMsg.senderId] = (counts[safeMsg.senderId] || 0) + 1;
+                    if (!safeMsg.isRead) {
+                        // 如果有 lastRead 紀錄，且訊息時間早於 lastRead，則視為已讀 (前端修正)
+                        if (lastRead && new Date(safeMsg.timestamp) <= new Date(lastRead)) {
+                             // skip
+                        } else {
+                             counts[safeMsg.senderId] = (counts[safeMsg.senderId] || 0) + 1;
+                        }
                     }
                 }
             });
             
             setContactLastTime(times);
+            setLastMessages(lastMsgs); // ★ 更新狀態
 
-            // 當前對話視為已讀
+            // 如果當前正在跟某人聊天，該人的未讀數強制為 0
             const currentTarget = activeContactIdRef.current;
             if (currentTarget && !readOnly) {
                 counts[currentTarget] = 0; 
@@ -151,10 +179,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
             setUnreadCounts(counts);
         }
 
-        // 抓取當前聊天室的詳細訊息
         const currentTarget = activeContactIdRef.current;
         if (currentTarget) {
-            // 注意：這裡使用 myId 確保身分一致
             const dbMessages = await API.getMessages(myId, currentTarget);
             if (Array.isArray(dbMessages)) {
                 const formattedMessages = dbMessages.map(mapMessageData);
@@ -213,6 +239,11 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
     };
     
     setMessages(prev => [...prev, tempMessage]);
+    
+    // 立即更新列表預覽
+    setLastMessages(prev => ({...prev, [activeContactId]: input}));
+    setContactLastTime(prev => ({...prev, [activeContactId]: Date.now()}));
+
     const msgToSend = input;
     setInput(''); 
 
@@ -228,15 +259,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
     }
   };
 
-  const markAsRead = (contactId: string) => {
-     if(readOnly) return;
-     updateLastReadTime(contactId);
-     setUnreadCounts(prev => ({ ...prev, [contactId]: 0 }));
-  };
-
   const handleContactClick = (contactId: string) => {
     setActiveContactId(contactId);
     markAsRead(contactId);
+  };
+
+  // ★ 新增：返回聯絡人列表 (手機版專用)
+  const handleBackToList = () => {
+      setActiveContactId(null);
   };
 
   const togglePending = (contactId: string) => {
@@ -311,12 +341,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
      const idA = a.shop_id || a.id;
      const idB = b.shop_id || b.id;
 
+     // 有未讀的排前面
      const unreadA = (unreadCounts[idA] || 0) > 0 ? 1 : 0;
      const unreadB = (unreadCounts[idB] || 0) > 0 ? 1 : 0;
      if (unreadA !== unreadB) {
          return unreadB - unreadA; 
      }
 
+     // 依時間排序
      const timeA = contactLastTime[idA] || 0;
      const timeB = contactLastTime[idB] || 0;
      return timeB - timeA;
@@ -351,17 +383,24 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
         </div>
       )}
 
-      {/* 左側聯絡人列表 */}
-      <div className="w-1/3 md:w-1/4 border-r bg-slate-50 flex flex-col">
-        <div className="p-4 border-b font-bold text-slate-700 flex justify-between items-center bg-slate-50 sticky top-0 z-10">
-            <span>{readOnly ? '歷史紀錄對象' : '聊聊訊息'}</span>
-            <span className="text-[10px] bg-slate-200 px-2 py-1 rounded text-slate-600">{contacts.length}</span>
+      {/* ★ 左側聯絡人列表 
+         - 手機版：若有 activeContactId (進入聊天)，則隱藏此區塊
+         - 電腦版：永遠顯示，佔 1/4 寬度
+      */}
+      <div className={`flex-col bg-slate-50 md:w-1/4 md:border-r md:flex ${activeContactId ? 'hidden' : 'w-full flex'}`}>
+        <div className="p-4 border-b font-bold text-slate-700 flex justify-between items-center bg-slate-50 sticky top-0 z-10 shrink-0 h-16">
+            <span className="flex items-center gap-2">
+                <i className="fa-regular fa-comments"></i> 
+                {readOnly ? '歷史紀錄' : '訊息列表'}
+            </span>
+            <span className="text-[10px] bg-slate-200 px-2 py-1 rounded-full text-slate-600 font-bold">{contacts.length}</span>
         </div>
-        {/* ★ 功能5: 增加可以拉的捲軸 (overflow-y-auto) */}
+        
         <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
           {contacts.map(u => {
             const contactId = u.shop_id || u.id;
             const unread = (activeContactId === contactId || readOnly) ? 0 : (unreadCounts[contactId] || 0);
+            const previewText = lastMessages[contactId] || "尚無訊息";
             
             return (
                 <div 
@@ -371,35 +410,60 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
                         e.preventDefault(); 
                         if(!readOnly) setContextMenu({x:e.clientX, y:e.clientY, contactId})
                     }} 
-                    className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-white transition-colors border-b border-transparent relative group ${activeContactId === contactId ? 'bg-white border-l-4 border-l-[#EE4D2D] shadow-sm' : ''}`}
+                    className={`p-4 flex items-center gap-3 cursor-pointer hover:bg-white transition-colors border-b border-slate-100 relative group ${activeContactId === contactId ? 'bg-white border-l-4 border-l-[#EE4D2D] shadow-sm' : ''}`}
                 >
-                <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden flex-shrink-0 border border-slate-100 relative">
-                    <img src={u.logo || 'https://placehold.co/100'} className="w-full h-full object-cover" alt="avatar"/>
-                </div>
-                
-                <div className="flex-1 min-w-0 pr-6 relative">
-                    <div className="font-bold text-sm text-slate-700 truncate">{u.shop_name || u.name}</div>
-                    <div className="flex items-center gap-1 mt-1">
-                        {chatMeta[contactId]?.status === 'PENDING' && <span className="text-[9px] bg-yellow-100 text-yellow-600 px-1 rounded border border-yellow-200">待處理</span>}
-                        {chatMeta[contactId]?.note && <span className="text-[9px] bg-blue-50 text-blue-600 px-1 rounded max-w-[80px] truncate">{chatMeta[contactId].note}</span>}
+                    <div className="w-12 h-12 rounded-full bg-slate-200 overflow-hidden flex-shrink-0 border border-slate-200 relative">
+                        <img src={u.logo || 'https://placehold.co/100'} className="w-full h-full object-cover" alt="avatar"/>
+                        {unread > 0 && (
+                            <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
+                        )}
                     </div>
-                    {unread > 0 && (
-                        <div className="absolute top-0 right-0 -mt-1 -mr-2 bg-[#EE4D2D] text-white text-[9px] font-black px-1.5 py-0.5 rounded-full border border-white shadow-sm min-w-[18px] text-center z-10 animate-bounce-short">
-                            {unread > 99 ? '99+' : unread}
+                    
+                    <div className="flex-1 min-w-0 pr-2">
+                        <div className="flex justify-between items-center mb-0.5">
+                            <div className="font-bold text-sm text-slate-800 truncate max-w-[70%]">{u.shop_name || u.name}</div>
+                            {contactLastTime[contactId] && (
+                                <div className="text-[10px] text-slate-400">
+                                    {new Date(contactLastTime[contactId]).toLocaleDateString() === new Date().toLocaleDateString() 
+                                        ? new Date(contactLastTime[contactId]).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+                                        : new Date(contactLastTime[contactId]).toLocaleDateString()}
+                                </div>
+                            )}
                         </div>
-                    )}
-                </div>
+                        
+                        <div className="flex justify-between items-center">
+                            <div className={`text-xs truncate max-w-[85%] ${unread > 0 ? 'text-slate-800 font-bold' : 'text-slate-500'}`}>
+                                {previewText}
+                            </div>
+                            {unread > 0 && (
+                                <div className="bg-[#EE4D2D] text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center shadow-sm">
+                                    {unread > 99 ? '99+' : unread}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-1 mt-1">
+                            {chatMeta[contactId]?.status === 'PENDING' && <span className="text-[9px] bg-yellow-100 text-yellow-600 px-1.5 rounded border border-yellow-200">待處理</span>}
+                            {chatMeta[contactId]?.note && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 rounded max-w-[80px] truncate border border-blue-100"><i className="fa-solid fa-note-sticky mr-1"></i>{chatMeta[contactId].note}</span>}
+                        </div>
+                    </div>
                 </div>
             );
           })}
           {contacts.length === 0 && (
-            <div className="p-8 text-center text-slate-400 text-xs">暫無聯絡人</div>
+            <div className="p-10 text-center text-slate-400 text-xs">
+                <i className="fa-regular fa-paper-plane text-3xl mb-2 opacity-30"></i>
+                <div>暫無聯絡人</div>
+            </div>
           )}
         </div>
       </div>
 
-      {/* 右側對話框 */}
-      <div className="flex-1 flex flex-col bg-white">
+      {/* ★ 右側對話視窗
+         - 手機版：若無 activeContactId，隱藏此區塊。若有，全螢幕顯示。
+         - 電腦版：若無 activeContactId，顯示預設畫面 (佔 3/4)。若有，顯示對話。
+      */}
+      <div className={`flex-col bg-white md:flex-1 md:flex ${activeContactId ? 'w-full flex' : 'hidden'}`}>
         {readOnly && (
             <div className="bg-red-50 text-red-600 px-4 py-2 text-xs font-bold border-b border-red-100 text-center">
                 <i className="fa-solid fa-eye mr-2"></i> 管理員唯讀模式 (僅供查閱)
@@ -408,52 +472,76 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
         
         {activeUser ? (
           <>
-            <div className="border-b flex items-center px-6 py-4 bg-white shrink-0 font-bold justify-between sticky top-0 z-20">
-                <span className="text-lg text-slate-800">{activeUser.shop_name || activeUser.name}</span>
+            {/* 聊天室 Header */}
+            <div className="border-b flex items-center px-4 py-3 bg-white shrink-0 font-bold sticky top-0 z-20 shadow-sm h-16">
+                {/* ★ 手機版返回按鈕 */}
+                <button onClick={handleBackToList} className="md:hidden mr-3 w-8 h-8 flex items-center justify-center rounded-full active:bg-slate-100 text-slate-600">
+                    <i className="fa-solid fa-chevron-left text-lg"></i>
+                </button>
+                
+                <div className="w-9 h-9 rounded-full bg-slate-100 overflow-hidden border border-slate-200 mr-3">
+                    <img src={activeUser.logo || 'https://placehold.co/100'} className="w-full h-full object-cover" />
+                </div>
+                <div className="flex-1">
+                    <div className="text-sm md:text-base text-slate-800">{activeUser.shop_name || activeUser.name}</div>
+                    <div className="text-[10px] text-green-500 flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div> 線上
+                    </div>
+                </div>
+                <button className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-50 transition">
+                    <i className="fa-solid fa-ellipsis-vertical"></i>
+                </button>
             </div>
 
+            {/* 防詐騙警語 */}
             {siteSettings?.antiScamMessage && (
-                <div className="bg-red-50 text-red-600 px-6 py-3 text-xs font-bold border-b border-red-100 flex items-center gap-2">
-                    <i className="fa-solid fa-triangle-exclamation"></i>
-                    <span className="flex-1 whitespace-pre-wrap">{siteSettings.antiScamMessage}</span>
+                <div className="bg-orange-50 text-orange-700 px-4 py-2 text-[10px] md:text-xs font-bold border-b border-orange-100 flex items-start gap-2">
+                    <i className="fa-solid fa-shield-halved mt-0.5"></i>
+                    <span className="flex-1 whitespace-pre-wrap leading-tight">{siteSettings.antiScamMessage}</span>
                 </div>
             )}
 
+            {/* 商品卡片 (若有) */}
             {currentProduct && !readOnly && (
-                <div className="bg-slate-50 border-b border-slate-100 px-6 py-3 flex items-center gap-4 animate-fade-in">
-                    <div className="w-12 h-12 bg-white rounded-lg border border-slate-200 overflow-hidden shrink-0">
+                <div className="bg-white border-b border-slate-100 p-3 m-2 rounded-xl shadow-sm border flex items-center gap-3 animate-fade-in relative">
+                    <button onClick={() => setInput('')} className="absolute top-1 right-1 text-slate-300 hover:text-slate-500 px-2"><i className="fa-solid fa-xmark"></i></button>
+                    <div className="w-12 h-12 bg-slate-50 rounded-lg border border-slate-100 overflow-hidden shrink-0">
                         <img src={currentProduct.images[0] || 'https://placehold.co/100'} className="w-full h-full object-cover" />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold text-slate-700 truncate">{currentProduct.name}</div>
+                        <div className="text-xs font-bold text-slate-700 truncate">{currentProduct.name}</div>
                         <div className="text-xs text-[#EE4D2D] font-black">${currentProduct.price.toLocaleString()}</div>
                     </div>
                     <button 
                         onClick={handlePasteProductInfo}
-                        className="px-4 py-2 bg-white border border-[#EE4D2D] text-[#EE4D2D] rounded-lg text-xs font-bold hover:bg-orange-50 transition shadow-sm flex items-center gap-2"
+                        className="px-3 py-1.5 bg-[#EE4D2D] text-white rounded-lg text-xs font-bold shadow-sm hover:bg-[#d73211] transition"
                     >
-                        <i className="fa-solid fa-link"></i> 傳送連結
+                        傳送連結
                     </button>
                 </div>
             )}
             
-            {/* ★ 功能5: 訊息列表增加可以拉的捲軸 */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/30 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
+            {/* 訊息列表 */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
               {messages.map((m, i) => {
                 const safeText = m.text || "";
                 const isSystem = safeText.startsWith('[系統通知]');
-                // 判斷是否為自己 (包含 ID 或 Shop ID)
                 const isMe = !isSystem && (m.senderId === currentUser.id || m.senderId === currentUser.shop_id);
                 
                 return (
                   <div key={i} className={`flex ${isSystem ? 'justify-center' : isMe ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[70%] p-3 rounded-2xl text-sm shadow-sm whitespace-pre-wrap ${
-                        isSystem ? 'bg-orange-50 text-slate-600 border border-orange-200 text-xs py-1 px-4 rounded-full' : 
+                    {!isMe && !isSystem && (
+                        <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden mr-2 self-end mb-1 shadow-sm border border-white">
+                            <img src={activeUser.logo || 'https://placehold.co/100'} className="w-full h-full object-cover" />
+                        </div>
+                    )}
+                    <div className={`max-w-[75%] md:max-w-[60%] p-3 rounded-2xl text-sm shadow-sm whitespace-pre-wrap leading-relaxed ${
+                        isSystem ? 'bg-black/5 text-slate-500 text-xs py-1 px-4 rounded-full border border-slate-200/50 my-2' : 
                         isMe ? 'bg-[#EE4D2D] text-white rounded-br-none' : 
                         'bg-white border border-slate-200 text-slate-700 rounded-bl-none'
                     }`}>
                       {renderMessageContent(safeText)}
-                      {!isSystem && <div className={`text-[10px] text-right mt-1 ${isMe ? 'text-white/70' : 'text-slate-400'}`}>{formatMessageTime(m.timestamp)}</div>}
+                      {!isSystem && <div className={`text-[9px] text-right mt-1 ${isMe ? 'text-white/70' : 'text-slate-400'}`}>{formatMessageTime(m.timestamp)}</div>}
                     </div>
                   </div>
                 );
@@ -461,25 +549,32 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
               <div ref={messagesEndRef} />
             </div>
 
+            {/* 輸入框 */}
             {!readOnly && (
-                <div className="p-4 border-t shrink-0 flex gap-2 bg-white">
-                  <textarea 
-                    className="flex-1 bg-slate-100 rounded-xl px-4 py-2 outline-none focus:ring-2 focus:ring-orange-100 transition-all resize-none h-12 pt-3" 
-                    value={input} 
-                    onChange={e => setInput(e.target.value)} 
-                    onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                    placeholder="輸入訊息..." 
-                  />
-                  <button onClick={handleSend} className="w-12 h-12 bg-[#EE4D2D] text-white rounded-full flex items-center justify-center hover:shadow-lg hover:scale-105 transition-all">
-                    <i className="fa-solid fa-paper-plane"></i>
+                <div className="p-3 md:p-4 border-t shrink-0 flex gap-2 bg-white items-end">
+                  <div className="flex-1 bg-slate-100 rounded-2xl px-4 py-2 flex items-center gap-2 border border-transparent focus-within:border-orange-200 focus-within:bg-white transition-all">
+                      <textarea 
+                        className="flex-1 bg-transparent outline-none resize-none text-sm max-h-24 py-1" 
+                        value={input} 
+                        rows={1}
+                        onChange={e => setInput(e.target.value)} 
+                        onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                        placeholder="輸入訊息..." 
+                      />
+                  </div>
+                  <button onClick={handleSend} className="w-10 h-10 md:w-11 md:h-11 bg-[#EE4D2D] text-white rounded-full flex items-center justify-center shadow-lg hover:bg-[#d73211] active:scale-95 transition-all flex-shrink-0">
+                    <i className="fa-solid fa-paper-plane text-sm md:text-base"></i>
                   </button>
                 </div>
             )}
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-300">
-            <i className="fa-regular fa-comments text-6xl mb-4 text-slate-200"></i>
-            <div className="font-bold">請從左側選擇聯絡人</div>
+          /* 電腦版未選擇聯絡人時的預設畫面 */
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-300 bg-slate-50/30 hidden md:flex">
+            <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-slate-300">
+                <i className="fa-regular fa-comments text-4xl"></i>
+            </div>
+            <div className="font-bold text-slate-400">請從左側選擇聯絡人開始聊天</div>
           </div>
         )}
       </div>

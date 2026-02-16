@@ -23,6 +23,7 @@ interface AdminDashboardProps {
   initialTab?: string | null;
   viewedOrderIds?: string[];
   onMarkAsViewed?: (id: string) => void;
+  onLogout?: () => void; // 新增 Logout Prop
 }
 
 const TAIWAN_BANKS = [
@@ -255,6 +256,7 @@ const ProductImageCropper = ({ src, onComplete, onCancel }: { src: string, onCom
   );
 };
 
+// ... (exportToExcelXML 函數保持不變) ...
 const exportToExcelXML = (orders: Order[], selectedStatuses: string[], fileName: string) => {
   let xml = '<?xml version="1.0"?>\n';
   xml += '<?mso-application progid="Excel.Sheet"?>\n';
@@ -267,10 +269,8 @@ const exportToExcelXML = (orders: Order[], selectedStatuses: string[], fileName:
 
   selectedStatuses.forEach(status => {
      const statusLabel = SELLER_ORDER_STATUS_OPTIONS.find(o => o.value === status)?.label || status;
-     // 支援匯出 ALL 時的分頁邏輯
      let sheetOrders: Order[] = [];
      if (status === 'ALL') {
-         // 不會發生，因為在呼叫前會轉換
          sheetOrders = orders;
      } else {
          sheetOrders = orders.filter(o => o.status === status);
@@ -320,11 +320,13 @@ const exportToExcelXML = (orders: Order[], selectedStatuses: string[], fileName:
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   user, products, orders, buyOrders = [], categories, systemCategories = [], allUsers, onUpdateSystemCategories, 
   onUpdateProducts, onUpdateOrderStatus, onUpdateCategories, onUpdateUser, onNavigate, initialTab,
-  viewedOrderIds = [], onMarkAsViewed
+  viewedOrderIds = [], onMarkAsViewed, onLogout
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'products' | 'create' | 'categories' | 'settings' | 'system_cats' | 'buying_account' | 'buying_orders' | 'buying_reports' | 'reports'>('overview');
+  // ★ 新增：手機版導航狀態，預設為 true (顯示選單)
+  const [showMobileMenu, setShowMobileMenu] = useState(true);
+
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -345,21 +347,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   
   const [tempSellerNotes, setTempSellerNotes] = useState<Record<string, string>>({});
 
-  // 出貨地點與區域設定狀態
   const [originSelect, setOriginSelect] = useState('台北市');
   const [originDistrictSelect, setOriginDistrictSelect] = useState('');
   const [originManual, setOriginManual] = useState('');
 
-  // 全域商品搜尋 ID
   const [globalSearchId, setGlobalSearchId] = useState('');
 
-  // 修正 1：只顯示自己的商品 (myShopProducts)
   const myShopProducts = useMemo(() => {
-      // 否則只顯示自己的商品
       return products.filter(p => p.shop_id === (user.shop_id || user.id));
   }, [products, user]);
 
-  // 庫存警示：計算已售完的商品
   const outOfStockProducts = useMemo(() => {
       return myShopProducts.filter(p => p.total_stock <= 0 && p.status === 'OPEN');
   }, [myShopProducts]);
@@ -370,8 +367,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       initialTab === 'create' || initialTab === 'categories' || initialTab === 'settings'
     )) {
       setActiveTab(initialTab as any);
+      setShowMobileMenu(false); // 若有初始 Tab，直接進入內容
     }
   }, [initialTab]);
+
+  // 切換 Tab 的處理函數，手機上點擊後隱藏選單
+  const handleTabChange = (tab: typeof activeTab) => {
+      setActiveTab(tab);
+      setEditingId(null);
+      setShowMobileMenu(false); 
+  };
 
   useEffect(() => {
     if (activeTab === 'reports' && user.role === 'ADMIN') {
@@ -407,6 +412,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const shopId = user.shop_id || user.id;
 
   const overviewData = useMemo(() => {
+    // ... (overviewData calculation remains same) ...
     const salesTrend = [];
     const statusCount: Record<string, number> = {};
     let totalSales = 0;
@@ -440,6 +446,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [orders, overviewRange]);
 
   const filteredOrders = useMemo(() => {
+     // ... (filteredOrders logic remains same) ...
     const s = new Date(orderRange.start).setHours(0,0,0,0);
     const e = new Date(orderRange.end).setHours(23,59,59,999);
     
@@ -472,7 +479,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const totalOrderPages = Math.ceil(filteredOrders.length / ORDERS_PER_PAGE);
 
-  // 修正 3：新訂單紅點計算 (只算自己的 + 未讀的 + 待處理的)
   const pendingNotificationCount = useMemo(() => {
       return orders.filter(o => 
           (o.shop_id === (user.shop_id || user.id)) && 
@@ -482,6 +488,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [orders, user, viewedOrderIds]);
 
   const handleExportConfirm = () => {
+     // ... (Export logic remains same) ...
     let ordersToExport = filteredOrders;
     
     if (!exportStatuses.has('ALL')) {
@@ -540,6 +547,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [buyOrders, buyOrderStatusFilter]);
 
   const buyReportData = useMemo(() => {
+     // ... (Buy report logic remains same) ...
     const s = new Date(reportStartDate).getTime();
     const e = new Date(reportEndDate).getTime() + 86400000;
     const validOrders = buyOrders.filter(o => {
@@ -577,6 +585,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const totalReportPages = Math.ceil(reports.length / REPORTS_PER_PAGE);
 
+  // ... (Methods handleUpdateReportStatus, handleDeleteReport, handleViewReportTarget, getInitialForm, etc. remain same) ...
   const handleUpdateReportStatus = async (reportId: string, newStatus: 'PENDING' | 'RESOLVED' | 'DISMISSED') => {
       try {
           await API.updateReport(reportId, { status: newStatus });
@@ -610,6 +619,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const getInitialForm = (): Partial<Product> => {
+     // ... (getInitialForm logic) ...
     const savedBank = localStorage.getItem('insbuy_saved_bank');
     let bankInfo: BankInfo | undefined = undefined;
     if (savedBank) {
@@ -634,6 +644,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       questions: [],
       origin: '台灣',
       shipping_origin: '台北市', 
+      keywords: [], // ★ 新增初始化
       target_amount: 50000,
       current_amount: 0,
       end_time: new Date(Date.now() + 86400000 * 7).toISOString(),
@@ -649,6 +660,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedShopMainCat, setSelectedShopMainCat] = useState<string>('');
   const [selectedShopSubCat, setSelectedShopSubCat] = useState<string>('');
 
+  // ... (Other form helper functions: addVariant, removeVariant, updateVariant, addShippingRule etc.) ...
   const addVariant = () => {
     setForm(prev => ({ ...prev, variants: [...(prev.variants || []), { name: '', price: 0, stock: 0 }] }));
   };
@@ -768,15 +780,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }));
   };
 
-  const getCategoryName = (id: string) => {
-    const shopCat = categories.find(c => c.id === id);
-    if (shopCat) return shopCat.name;
-    const sysCat = systemCategories.find(c => c.id === id);
-    if (sysCat) return sysCat.name;
-    return id; 
-  };
-
   const handleSaveProduct = async () => {
+     // ... (save product logic) ...
     if (!form.name || !form.price) return alert('請填寫商品名稱與價格');
     if (form.product_type === 'PHYSICAL' && (!form.shipping_rules || form.shipping_rules.length === 0)) {
        if(!confirm('您尚未設定任何運送方式，確定要發布嗎？')) return;
@@ -826,8 +831,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setOriginDistrictSelect('');
     setOriginManual('');
     setEditingId(null);
-    setGlobalSearchId(''); // 搜尋結束
+    setGlobalSearchId(''); 
     setActiveTab('products'); 
+    setShowMobileMenu(false); 
   };
 
   const handleDeleteProduct = async (id: string) => {
@@ -842,6 +848,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const notifyBuyer = (orderId: string, newStatus: string, receiverPhone: string) => {
+     // ... (notifyBuyer) ...
     const msgs = JSON.parse(localStorage.getItem('insbuy_chat_messages') || '[]');
     const statusLabel = SELLER_ORDER_STATUS_OPTIONS.find(opt => opt.value === newStatus)?.label || newStatus;
     const targetOrder = orders.find(o => o.id === orderId);
@@ -892,13 +899,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     alert('備註已更新');
   };
 
-  // ★ 新增：切換是否已收到貨款
   const handleTogglePaid = async (orderId: string, currentStatus: boolean) => {
     const newStatus = !currentStatus;
     try {
-        // 呼叫後端 API 更新
         await API.updateOrder(orderId, { is_paid: newStatus } as any);
-        // 因為無法直接更新 props 的 orders，呼叫 onUpdateOrderStatus 觸發上層刷新 (傳入原本的 status)
         const currentOrder = orders.find(o => o.id === orderId);
         if (currentOrder) {
             onUpdateOrderStatus(orderId, currentOrder.status); 
@@ -910,6 +914,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleAddSystemCategory = (parentId: string | null = null) => {
+     // ... (Category logic) ...
     const name = parentId ? prompt("請輸入子分類名稱：") : newSystemCatName;
     if (!name || !name.trim()) return;
 
@@ -966,31 +971,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     ));
   };
 
-  // ★ 修改：全域商品搜尋處理 (Fix 2: 改為跳轉到商品詳情頁)
   const handleGlobalProductSearch = () => {
       if(!globalSearchId) return alert('請輸入商品編號');
       const target = products.find(p => p.id === globalSearchId);
       if(target) {
-          // 直接導航到前台商品頁
           onNavigate(View.PRODUCT, target);
       } else {
           alert('找不到該商品編號，請確認後再試。');
       }
   };
 
-  return (
-    <div className="flex flex-col md:flex-row gap-6 animate-fade-in pb-20">
-      
-      {cropModal.isOpen && (
-         <ProductImageCropper 
-            src={cropModal.src} 
-            onComplete={handleCropComplete} 
-            onCancel={() => setCropModal({ isOpen: false, src: '', editIndex: null })} 
-         />
-      )}
+  // 定義導航項目
+  const navItems = [
+    { id: 'overview', icon: 'fa-chart-pie', label: '經營概況' },
+    { id: 'orders', icon: 'fa-receipt', label: '訂單管理' },
+    { id: 'products', icon: 'fa-box-open', label: '商品管理' },
+    { id: 'categories', icon: 'fa-list-ul', label: '分類管理' },
+    { id: 'settings', icon: 'fa-store', label: '商店設定' },
+    { id: 'create', icon: 'fa-plus-circle', label: editingId ? '編輯商品' : '新增商品' },
+  ];
 
-      <aside className="w-full md:w-64 space-y-2 shrink-0">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 sticky top-24">
+  // ★ 手機版：選單渲染邏輯
+  const renderSidebar = () => (
+      <div className={`bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 md:sticky md:top-24 h-fit ${showMobileMenu ? 'block' : 'hidden md:block'}`}>
           <div className="flex items-center gap-3 mb-6">
             <img src={user.logo || 'https://placehold.co/100'} className="w-10 h-10 rounded-xl object-cover bg-slate-100 border" />
             <div>
@@ -999,14 +1002,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
           <nav className="space-y-1">
-            {[
-              { id: 'overview', icon: 'fa-chart-pie', label: '經營概況' },
-              { id: 'orders', icon: 'fa-receipt', label: '訂單管理' },
-              { id: 'products', icon: 'fa-box-open', label: '商品管理' },
-              { id: 'categories', icon: 'fa-list-ul', label: '分類管理' },
-              { id: 'settings', icon: 'fa-store', label: '商店設定' },
-              { id: 'create', icon: 'fa-plus-circle', label: editingId ? '編輯商品' : '新增商品' },
-            ].map(item => (
+            {navItems.map(item => (
               <button 
                 key={item.id}
                 onClick={() => { 
@@ -1018,14 +1014,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         setEditingId(null);
                         setGlobalSearchId('');
                         setActiveTab('create');
+                        setShowMobileMenu(false); // 手機點擊後隱藏選單
                     } else {
-                        setActiveTab(item.id as any); 
+                        handleTabChange(item.id as any);
                         if(item.id !== 'create') setEditingId(null); 
                     }
                 }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all relative ${activeTab === item.id ? 'bg-[#EE4D2D] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
               >
-                {/* 修正 3：訂單管理紅點 */}
                 {item.id === 'orders' && pendingNotificationCount > 0 && (
                     <div className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 border border-white rounded-full"></div>
                 )}
@@ -1037,14 +1033,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {user.role === 'ADMIN' && (
               <>
                 <button 
-                    onClick={() => setActiveTab('system_cats')}
+                    onClick={() => handleTabChange('system_cats')}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'system_cats' ? 'bg-[#EE4D2D] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                 >
                     <i className="fa-solid fa-sitemap w-5"></i>
                     平台分類管理
                 </button>
                 <button 
-                    onClick={() => setActiveTab('reports')}
+                    onClick={() => handleTabChange('reports')}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'reports' ? 'bg-red-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                 >
                     <i className="fa-solid fa-triangle-exclamation w-5"></i>
@@ -1062,7 +1058,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                ].map(item => (
                  <button 
                    key={item.id}
-                   onClick={() => setActiveTab(item.id as any)}
+                   onClick={() => handleTabChange(item.id as any)}
                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === item.id ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                  >
                    <i className={`fa-solid ${item.icon} w-5`}></i>
@@ -1080,12 +1076,54 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 前往我的賣場
               </button>
             </div>
+
+            {/* 手機版登出按鈕 */}
+            <div className="pt-4 md:hidden">
+              <button 
+                 onClick={onLogout} 
+                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-600"
+              >
+                 <i className="fa-solid fa-right-from-bracket w-5"></i>
+                 登出系統
+              </button>
+            </div>
           </nav>
         </div>
+  );
+
+  return (
+    <div className="flex flex-col md:flex-row gap-6 animate-fade-in pb-20">
+      
+      {cropModal.isOpen && (
+         <ProductImageCropper 
+            src={cropModal.src} 
+            onComplete={handleCropComplete} 
+            onCancel={() => setCropModal({ isOpen: false, src: '', editIndex: null })} 
+         />
+      )}
+
+      <aside className="w-full md:w-64 space-y-2 shrink-0">
+        {renderSidebar()}
       </aside>
 
-      <div className="flex-1 space-y-6">
+      {/* 手機版顯示邏輯：
+         如果 showMobileMenu 為 true，則隱藏主要內容區 (只顯示 Sidebar)
+         如果 showMobileMenu 為 false，則顯示主要內容區 (隱藏 Sidebar)
+         電腦版：永遠顯示 (md:block)
+      */}
+      <div className={`flex-1 space-y-6 ${showMobileMenu ? 'hidden md:block' : 'block'}`}>
         
+        {/* 手機版：返回選單按鈕 */}
+        <div className="md:hidden mb-4">
+           <button 
+              onClick={() => setShowMobileMenu(true)}
+              className="flex items-center gap-2 text-slate-600 font-bold bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100"
+           >
+              <i className="fa-solid fa-chevron-left"></i>
+              返回功能選單
+           </button>
+        </div>
+
         {outOfStockProducts.length > 0 && (
            <div className="bg-red-50 border border-red-100 p-4 rounded-xl flex items-center justify-between animate-pulse mb-6">
               <div className="flex items-center gap-3 text-red-600">
@@ -1181,10 +1219,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
         {activeTab === 'reports' && user.role === 'ADMIN' && (
-           <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8">
+           <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 md:p-8">
               <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2"><i className="fa-solid fa-triangle-exclamation text-red-500"></i> 檢舉案件管理</h2>
               <div className="overflow-x-auto">
-                 <table className="w-full text-left border-collapse">
+                 <table className="w-full text-left border-collapse whitespace-nowrap">
                     <thead>
                        <tr className="bg-slate-100 text-slate-600 text-sm">
                           <th className="p-3 rounded-tl-xl">日期</th>
@@ -1247,14 +1285,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {activeTab === 'orders' && (
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8">
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 md:p-8">
              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4 pb-6 border-b border-slate-100">
               <h2 className="text-xl font-bold text-slate-800 font-black">訂單管理系統 (銷售)</h2>
-              <div className="flex items-center gap-2 text-sm bg-slate-50 p-2 rounded-xl">
-                  <span className="text-slate-500 font-bold px-2">訂單日期:</span>
-                  <input type="date" value={orderRange.start} onChange={e => setOrderRange({...orderRange, start: e.target.value})} className="border border-slate-300 rounded-lg px-2 py-1 outline-none text-slate-600 font-bold" />
-                  <span className="text-slate-300">~</span>
-                  <input type="date" value={orderRange.end} onChange={e => setOrderRange({...orderRange, end: e.target.value})} className="border border-slate-300 rounded-lg px-2 py-1 outline-none text-slate-600 font-bold" />
+              <div className="flex flex-col md:flex-row items-start md:items-center gap-2 text-sm bg-slate-50 p-2 rounded-xl w-full md:w-auto">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500 font-bold px-2">訂單日期:</span>
+                    <input type="date" value={orderRange.start} onChange={e => setOrderRange({...orderRange, start: e.target.value})} className="border border-slate-300 rounded-lg px-2 py-1 outline-none text-slate-600 font-bold" />
+                    <span className="text-slate-300">~</span>
+                  </div>
+                  <input type="date" value={orderRange.end} onChange={e => setOrderRange({...orderRange, end: e.target.value})} className="border border-slate-300 rounded-lg px-2 py-1 outline-none text-slate-600 font-bold w-full md:w-auto" />
                </div>
             </div>
 
@@ -1271,13 +1311,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  ))}
                </div>
                
-               <div className="flex gap-2">
-                 <div className="relative">
+               <div className="flex gap-2 w-full md:w-auto">
+                 <div className="relative flex-1 md:flex-none">
                     <i className="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-sm"></i>
                     <input 
                       type="text" 
                       placeholder="搜尋商品/訂單/客戶..." 
-                      className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-[#EE4D2D] w-64"
+                      className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-[#EE4D2D] w-full md:w-64"
                       value={orderSearchTerm}
                       onChange={e => setOrderSearchTerm(e.target.value)}
                     />
@@ -1286,7 +1326,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                    onClick={() => setShowExportModal(true)}
                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-sm shadow-sm flex items-center gap-2 whitespace-nowrap"
                  >
-                   <i className="fa-solid fa-file-excel"></i> 匯出 Excel
+                   <i className="fa-solid fa-file-excel"></i> <span className="hidden md:inline">匯出 Excel</span>
                  </button>
                </div>
             </div>
@@ -1311,8 +1351,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="absolute top-0 right-0 bg-[#EE4D2D] text-white text-[10px] font-black px-3 py-1 rounded-bl-xl shadow-md z-10 animate-pulse">NEW</div>
                     )}
 
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
+                    <div className="flex flex-col md:flex-row justify-between items-start mb-2 gap-2">
+                      <div className="w-full md:w-auto">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded text-slate-500">訂單編號 #{o.id.slice(-6)}</span>
                           <span className="font-bold text-slate-800">{o.receiver_name}</span>
@@ -1328,21 +1368,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                            <span className="text-xs font-bold text-slate-600">已收到貨款</span>
                         </label>
                       </div>
-                      <select 
-                        className={`text-xs font-bold px-4 py-2 rounded-full outline-none border-none cursor-pointer ${
-                          o.status === 'PENDING' ? 'bg-orange-100 text-orange-600' : 
-                          o.status === 'CONFIRMED' ? 'bg-indigo-100 text-indigo-600' :
-                          o.status === 'SHIPPED' ? 'bg-blue-100 text-blue-600' : 
-                          o.status === 'COMPLETED' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'
-                        }`}
-                        value={o.status}
-                        onClick={e => e.stopPropagation()} 
-                        onChange={e => handleUpdateOrderStatus(o.id, e.target.value as any)}
-                      >
-                        {SELLER_ORDER_STATUS_OPTIONS.filter(opt => opt.value !== 'ALL' && opt.value !== 'NEW').map(opt => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
+                      <div className="w-full md:w-auto flex justify-end">
+                        <select 
+                          className={`text-xs font-bold px-4 py-2 rounded-full outline-none border-none cursor-pointer w-full md:w-auto text-center ${
+                            o.status === 'PENDING' ? 'bg-orange-100 text-orange-600' : 
+                            o.status === 'CONFIRMED' ? 'bg-indigo-100 text-indigo-600' :
+                            o.status === 'SHIPPED' ? 'bg-blue-100 text-blue-600' : 
+                            o.status === 'COMPLETED' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'
+                          }`}
+                          value={o.status}
+                          onClick={e => e.stopPropagation()} 
+                          onChange={e => handleUpdateOrderStatus(o.id, e.target.value as any)}
+                        >
+                          {SELLER_ORDER_STATUS_OPTIONS.filter(opt => opt.value !== 'ALL' && opt.value !== 'NEW').map(opt => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
 
                     <div className="space-y-1 mb-2">
@@ -1421,7 +1463,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {activeTab === 'products' && (
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8">
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 md:p-8">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-slate-800 font-black">您的商品列表</h2>
               <button onClick={() => setActiveTab('create')} className="px-5 py-2 primary-gradient text-white rounded-xl text-xs font-bold shadow-md">+ 新增團購</button>
@@ -1452,7 +1494,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {myShopProducts.length === 0 ? <div className="py-20 text-center text-slate-300">目前沒有商品</div> : 
               myShopProducts.slice((productPage - 1) * PRODUCTS_PER_PAGE, productPage * PRODUCTS_PER_PAGE).map(p => (
                   <div key={p.id} className="flex items-center gap-4 p-4 border border-slate-50 rounded-2xl hover:bg-slate-50 transition group">
-                    <div className="w-16 h-16 rounded-xl overflow-hidden border bg-slate-100"><img src={p.images[0] || 'https://placehold.co/100'} className="w-full h-full object-cover" /></div>
+                    <div className="w-16 h-16 rounded-xl overflow-hidden border bg-slate-100 shrink-0"><img src={p.images[0] || 'https://placehold.co/100'} className="w-full h-full object-cover" /></div>
                     <div className="flex-1 min-w-0">
                         <div className="font-bold text-slate-800 text-sm truncate">{p.name}</div>
                         <div className="text-[10px] text-slate-400 mt-1">分類: {p.category_ids?.map(id => {
@@ -1476,7 +1518,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
                         )}
                     </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                    <div className="flex gap-1 md:opacity-0 group-hover:opacity-100 transition">
                       <button onClick={() => { 
                           setEditingId(p.id); 
                           setForm({ ...p, payment_methods: p.payment_methods && p.payment_methods.length > 0 ? p.payment_methods : ['BANK', 'COD', 'CASH'] }); 
@@ -1503,8 +1545,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               setOriginDistrictSelect('');
                               setOriginManual('');
                           }
-
-                          setActiveTab('create'); 
+                          // 在編輯商品時，也要關閉手機選單，直接進入 create Tab
+                          setActiveTab('create');
+                          setShowMobileMenu(false);
                       }} className="p-2 text-slate-400 hover:text-blue-500"><i className="fa-solid fa-pen-to-square"></i></button>
                       <button onClick={() => handleDeleteProduct(p.id)} className="p-2 text-slate-400 hover:text-red-500"><i className="fa-solid fa-trash-can"></i></button>
                     </div>
@@ -1523,7 +1566,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* ... (其餘 activeTab 保持不變，包含 create, buying_account 等，因用戶要求完整代碼，以下保留原代碼) ... */}
         {activeTab === 'create' && (
-           <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8">
+           <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 md:p-8">
              <h2 className="text-2xl font-black text-slate-800 mb-8 border-l-4 border-[#EE4D2D] pl-4">{editingId ? '編輯商品資訊' : '發布新的團購'}</h2>
              
              {/* 確保 Create 表單內容與之前一致 (省略重複代碼，因為用戶要求完整代碼，這裡直接展開) */}
@@ -1562,6 +1605,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                          onChange={e => setForm({...form, description: e.target.value})} 
                       />
                    </div>
+                </div>
+
+                {/* ★ 新增：SEO 關鍵字欄位 (Step 1 最下方) */}
+                <div className="md:col-span-2">
+                    <label className="text-xs font-bold text-slate-500 mb-2 block">SEO 關鍵字 (AI 搜尋優化)</label>
+                    <input 
+                        type="text"
+                        className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm outline-none focus:border-[#EE4D2D]"
+                        placeholder="例如：團購美食, 辦公室零食, 下午茶 (請以逗號隔開)"
+                        value={form.keywords?.join(', ') || ''}
+                        onChange={e => {
+                            const val = e.target.value;
+                            // 支援全形逗號與半形逗號
+                            const keywords = val.split(/[,，]/).map(k => k.trim()).filter(k => k);
+                            setForm({...form, keywords: keywords});
+                        }}
+                    />
+                    <div className="text-[10px] text-slate-400 mt-2 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <i className="fa-solid fa-circle-info mr-1 text-[#EE4D2D]"></i>
+                        <b>填寫說明：</b>請輸入 3-10 個與商品高度相關的關鍵字，並以「半形逗號(,)」或「全形逗號(，)」隔開。
+                        <br/>
+                        例如：<code>手工餅乾, 伴手禮, 下午茶, 減糖甜點</code>
+                        <br/>
+                        完善的關鍵字能讓您的商品更容易被 Google 爬蟲抓取，以及在拍拍購站內搜尋與 AI 推薦系統中獲得更高的曝光機會。
+                    </div>
                 </div>
                 
                 </div></section>
@@ -1664,7 +1732,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {activeTab === 'buying_orders' && (
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8">
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 md:p-8">
             <h2 className="text-2xl font-black text-slate-800 mb-8 border-l-4 border-slate-800 pl-4">我的購買清單</h2>
             <div className="flex overflow-x-auto pb-2 mb-6 gap-2 scrollbar-hide">
               {BUYER_ORDER_STATUS_OPTIONS.map(opt => (

@@ -89,6 +89,7 @@ const productSchema = new mongoose.Schema({
   pin_rank: { type: Number, default: null },
   origin: String,
   shipping_origin: String, 
+  keywords: [String], // ★ 新增關鍵字欄位
   questions: [{ title: String, required: Boolean }],
   reviews: [{ id: String, userId: String, userName: String, rating: Number, comment: String, createdAt: String }]
 });
@@ -278,13 +279,14 @@ app.get('/api/products', async (req, res) => {
       query.shop_id = shop_id;
     }
 
-    // ★ 關鍵：如果有搜尋詞，使用 Regex 進行模糊搜尋
+    // ★ 關鍵：如果有搜尋詞，使用 Regex 進行模糊搜尋，加入關鍵字搜尋
     if (q) {
       console.log(`正在搜尋: ${q}`);
       const regex = new RegExp(q, 'i'); // 'i' 代表不分大小寫
       query.$or = [
         { name: regex },
-        { description: regex }
+        { description: regex },
+        { keywords: regex } // 支援搜尋關鍵字
       ];
     }
 

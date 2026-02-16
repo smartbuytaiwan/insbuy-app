@@ -9,6 +9,7 @@ interface ShopProps {
   currentShop?: User; 
   currentUser?: User | null;
   orders?: Order[]; // 接收訂單以計算銷量
+  searchQuery?: string; // 接收全域搜尋字串，用於自動解除熱銷鎖定
   onOpenProduct: (product: Product) => void;
   onFollowShop: (shopId: string) => void;
   onNavigate?: (view: View, product?: Product, targetId?: string) => void; 
@@ -17,199 +18,236 @@ interface ShopProps {
 const COMMON_ORIGINS = ["台灣", "美國", "日本", "韓國", "中國", "馬來西亞", "越南", "印尼", "印度"];
 const PRODUCTS_PER_PAGE = 12; // 每頁顯示 12 個
 
-// 台灣行政區資料，用於搜尋篩選
-const TAIWAN_DISTRICTS: Record<string, string[]> = {
-    "基隆市": ["仁愛區", "信義區", "中正區", "中山區", "安樂區", "暖暖區", "七堵區"],
-    "台北市": ["中正區", "大同區", "中山區", "松山區", "大安區", "萬華區", "信義區", "士林區", "北投區", "內湖區", "南港區", "文山區"],
-    "新北市": ["板橋區", "新莊區", "中和區", "永和區", "土城區", "樹林區", "三峽區", "鶯歌區", "三重區", "蘆洲區", "五股區", "泰山區", "林口區", "淡水區", "金山區", "八里區", "萬里區", "石門區", "三芝區", "瑞芳區", "汐止區", "平溪區", "貢寮區", "雙溪區", "深坑區", "石碇區", "新店區", "坪林區", "烏來區"],
-    "桃園市": ["桃園區", "中壢區", "平鎮區", "八德區", "楊梅區", "蘆竹區", "大溪區", "龍潭區", "龜山區", "大園區", "觀音區", "新屋區", "復興區"],
-    "新竹市": ["東區", "北區", "香山區"],
-    "新竹縣": ["竹北市", "竹東鎮", "新埔鎮", "關西鎮", "湖口鄉", "新豐鄉", "芎林鄉", "橫山鄉", "北埔鄉", "寶山鄉", "峨眉鄉", "尖石鄉", "五峰鄉"],
-    "苗栗縣": ["苗栗市", "頭份市", "竹南鎮", "後龍鎮", "通霄鎮", "苑裡鎮", "卓蘭鎮", "造橋鄉", "西湖鄉", "頭屋鄉", "公館鄉", "銅鑼鄉", "三義鄉", "大湖鄉", "獅潭鄉", "三灣鄉", "南庄鄉", "泰安鄉"],
-    "台中市": ["中區", "東區", "南區", "西區", "北區", "北屯區", "西屯區", "南屯區", "太平區", "大里區", "霧峰區", "烏日區", "豐原區", "后里區", "石岡區", "東勢區", "和平區", "新社區", "潭子區", "大雅區", "神岡區", "大肚區", "沙鹿區", "龍井區", "梧棲區", "清水區", "大甲區", "外埔區", "大安區"],
-    "彰化縣": ["彰化市", "員林市", "和美鎮", "鹿港鎮", "溪湖鎮", "二林鎮", "田中鎮", "北斗鎮", "花壇鄉", "芬園鄉", "大村鄉", "永靖鄉", "伸港鄉", "線西鄉", "福興鄉", "秀水鄉", "埔心鄉", "埔鹽鄉", "大城鄉", "芳苑鄉", "二水鄉", "社頭鄉", "田尾鄉", "埤頭鄉", "溪州鄉", "竹塘鄉"],
-    "南投縣": ["南投市", "埔里鎮", "草屯鎮", "竹山鎮", "集集鎮", "名間鄉", "鹿谷鄉", "中寮鄉", "魚池鄉", "國姓鄉", "水里鄉", "信義鄉", "仁愛鄉"],
-    "雲林縣": ["斗六市", "斗南鎮", "虎尾鎮", "西螺鎮", "土庫鎮", "北港鎮", "林內鄉", "古坑鄉", "大埤鄉", "莿桐鄉", "褒忠鄉", "二崙鄉", "崙背鄉", "麥寮鄉", "臺西鄉", "東勢鄉", "元長鄉", "四湖鄉", "口湖鄉", "水林鄉"],
-    "嘉義市": ["東區", "西區"],
-    "嘉義縣": ["太保市", "朴子市", "布袋鎮", "大林鎮", "民雄鄉", "溪口鄉", "新港鄉", "六腳鄉", "東石鄉", "義竹鄉", "鹿草鄉", "水上鄉", "中埔鄉", "竹崎鄉", "梅山鄉", "番路鄉", "大埔鄉", "阿里山鄉"],
-    "台南市": ["中西區", "東區", "南區", "北區", "安平區", "安南區", "永康區", "歸仁區", "新化區", "左鎮區", "玉井區", "楠西區", "南化區", "仁德區", "關廟區", "龍崎區", "官田區", "麻豆區", "佳里區", "西港區", "七股區", "將軍區", "學甲區", "北門區", "新營區", "後壁區", "白河區", "東山區", "六甲區", "下營區", "柳營區", "鹽水區", "善化區", "大內區", "山上區", "新市區", "安定區"],
-    "高雄市": ["楠梓區", "左營區", "鼓山區", "三民區", "鹽埕區", "前金區", "新興區", "苓雅區", "前鎮區", "旗津區", "小港區", "鳳山區", "大寮區", "鳥松區", "林園區", "仁武區", "大樹區", "大社區", "岡山區", "路竹區", "橋頭區", "梓官區", "彌陀區", "永安區", "燕巢區", "田寮區", "阿蓮區", "茄萣區", "湖內區", "旗山區", "美濃區", "內門區", "杉林區", "甲仙區", "六龜區", "茂林區", "桃源區", "那瑪夏區"],
-    "屏東縣": ["屏東市", "潮州鎮", "東港鎮", "恆春鎮", "萬丹鄉", "長治鄉", "麟洛鄉", "九如鄉", "里港鄉", "鹽埔鄉", "高樹鄉", "萬巒鄉", "內埔鄉", "竹田鄉", "新埤鄉", "枋寮鄉", "新園鄉", "崁頂鄉", "林邊鄉", "南州鄉", "佳冬鄉", "琉球鄉", "車城鄉", "滿州鄉", "枋山鄉", "霧台鄉", "瑪家鄉", "泰武鄉", "來義鄉", "春日鄉", "獅子鄉", "牡丹鄉", "三地門鄉"],
-    "宜蘭縣": ["宜蘭市", "羅東鎮", "蘇澳鎮", "頭城鎮", "礁溪鄉", "壯圍鄉", "員山鄉", "冬山鄉", "五結鄉", "三星鄉", "大同鄉", "南澳鄉"],
-    "花蓮縣": ["花蓮市", "鳳林鎮", "玉里鎮", "新城鄉", "吉安鄉", "壽豐鄉", "光復鄉", "豐濱鄉", "瑞穗鄉", "富里鄉", "秀林鄉", "萬榮鄉", "卓溪鄉"],
-    "台東縣": ["台東市", "成功鎮", "關山鎮", "長濱鄉", "池上鄉", "東河鄉", "鹿野鄉", "卑南鄉", "大武鄉", "綠島鄉", "太麻里鄉", "海端鄉", "延平鄉", "金峰鄉", "達仁鄉", "蘭嶼鄉"],
-    "澎湖縣": ["馬公市", "湖西鄉", "白沙鄉", "西嶼鄉", "望安鄉", "七美鄉"],
-    "金門縣": ["金城鎮", "金湖鎮", "金沙鎮", "金寧鄉", "烈嶼鄉", "烏坵鄉"],
-    "連江縣": ["南竿鄉", "北竿鄉", "莒光鄉", "東引鄉"]
-};
-
 const Shop: React.FC<ShopProps> = ({ 
   products, 
   categories, 
-  systemCategories = [], 
+  systemCategories = [],
   currentShop, 
-  currentUser,
+  currentUser, 
   orders = [],
-  onOpenProduct,
+  onOpenProduct, 
   onFollowShop,
-  onNavigate
+  onNavigate,
+  searchQuery // 來自 props 的搜尋字串
 }) => {
-  // ★ 修改：預設分類改為 'HOT' (熱銷商品)
-  const [selectedMainCat, setSelectedMainCat] = useState<string>('HOT');
-  const [selectedSubCat, setSelectedSubCat] = useState<string>('ALL');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedOrigin, setSelectedOrigin] = useState('');
-  const [selectedCity, setSelectedCity] = useState('');
-  const [selectedDistrict, setSelectedDistrict] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
+  // ★ 修改：熱銷商品模式狀態預設為 true (進入首頁即顯示熱銷)
+  const [isHotMode, setIsHotMode] = useState(true);
+  
   const [sortBy, setSortBy] = useState<'POPULAR' | 'LATEST' | 'SALES' | 'PRICE_ASC' | 'PRICE_DESC'>('LATEST');
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
-  const [selectedOrigins, setSelectedOrigins] = useState<string[]>([]);
+  const [selectedOrigins, setSelectedOrigins] = useState<string[]>([]); // 支援多選
+  
+  // 手機版篩選頁籤狀態 (三選一)
+  const [activeMobileTab, setActiveMobileTab] = useState<'CATEGORY' | 'REGION' | 'PRICE' | null>(null);
 
-  // 檢舉商家 Modal
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [reportData, setReportData] = useState<{type: 'SHOP' | 'PRODUCT', targetId: string, targetName: string, subject: string, reason: string}>({ 
-      type: 'SHOP', targetId: '', targetName: '', subject: '', reason: '' 
-  });
-
-  // 評分 Modal
-  const [showRateModal, setShowRateModal] = useState(false);
-  const [ratingVal, setRatingVal] = useState(5);
-  const [ratingComment, setRatingComment] = useState('');
-  const [reviewFilter, setReviewFilter] = useState<'ALL' | '5' | '4' | '3' | '2' | '1'>('ALL');
-
+  // 本地 Banner 狀態
   const [localBanner, setLocalBanner] = useState<string | undefined>(currentShop?.banner);
 
   useEffect(() => {
     setLocalBanner(currentShop?.banner);
   }, [currentShop]);
 
-  // ★ 整合分類邏輯：根據是否在商家頁面，決定顯示商家分類或系統分類
-  const displayCategories = useMemo(() => {
-    // 如果是在看特定商家 (Shop View)，只顯示該商家的分類
-    if (currentShop) {
-        return categories.filter(c => !c.parent_id);
+  // 如果有搜尋字串，自動關閉熱銷模式以顯示搜尋結果
+  useEffect(() => {
+    if (searchQuery) {
+      setIsHotMode(false);
     }
-    // 否則顯示系統分類 (Platform View)
-    return systemCategories.filter(c => !c.parent_id);
-  }, [categories, systemCategories, currentShop]);
+  }, [searchQuery]);
 
-  const getSubCategories = (parentId: string) => {
-    if (currentShop) {
-        return categories.filter(c => c.parent_id === parentId);
-    }
-    return systemCategories.filter(c => c.parent_id === parentId);
+  // 從 URL 獲取初始頁碼
+  const getInitialPage = () => {
+     const match = window.location.hash.match(/page=(\d+)/);
+     return match ? parseInt(match[1]) : 1;
   };
 
-  // 重置頁碼當篩選條件改變
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [selectedMainCat, selectedSubCat, searchTerm, selectedOrigin, selectedCity, selectedDistrict, sortBy, minPrice, maxPrice]);
+  const [currentPage, setCurrentPage] = useState(getInitialPage());
 
+  // 檢舉相關 State
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportData, setReportData] = useState<{type: 'SHOP' | 'PRODUCT', targetId: string, targetName: string, subject: string, reason: string}>({
+     type: 'SHOP', targetId: '', targetName: '', subject: '', reason: ''
+  });
+
+  // 評分相關 State
+  const [showRateModal, setShowRateModal] = useState(false);
+  const [ratingVal, setRatingVal] = useState(5);
+  const [ratingComment, setRatingComment] = useState('');
+  const [reviewFilter, setReviewFilter] = useState<'ALL' | '5' | '4' | '3' | '2' | '1'>('ALL');
+
+  // 監聽瀏覽器上一頁/下一頁 (PopState) 與 URL 變化
+  useEffect(() => {
+    const handlePopState = () => {
+       setCurrentPage(getInitialPage());
+    };
+    window.addEventListener('popstate', handlePopState);
+    const handleHashChange = () => {
+       setCurrentPage(getInitialPage());
+    };
+    window.addEventListener('hashchange', handleHashChange);
+
+    return () => {
+       window.removeEventListener('popstate', handlePopState);
+       window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, []);
+
+  // 當篩選條件改變時，重置頁碼並更新 URL
+  useEffect(() => {
+    if (currentPage !== 1) {
+        updatePageUrl(1);
+        setCurrentPage(1);
+    }
+  }, [selectedCategoryId, isHotMode, minPrice, maxPrice, selectedOrigins, sortBy]);
+
+  // 換頁時自動回到頂部
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentPage]);
 
-  // ★ 修改：商品篩選與排序邏輯
-  const filteredProducts = useMemo(() => {
-    let result = products.filter(p => p.status === 'OPEN' && p.total_stock > 0);
+  const updatePageUrl = (page: number) => {
+      const currentHash = window.location.hash;
+      let newHash = currentHash;
+      
+      if (currentHash.includes('page=')) {
+          newHash = currentHash.replace(/page=(\d+)/, `page=${page}`);
+      } else {
+          const separator = currentHash.includes('?') ? '&' : '?';
+          newHash = `${currentHash}${separator}page=${page}`;
+      }
+      
+      if (page !== getInitialPage()) {
+          window.history.pushState(null, '', newHash);
+      }
+  };
 
-    // 1. 如果是在特定商家頁面，先過濾該商家的商品
-    if (currentShop) {
-       result = result.filter(p => p.shop_id === currentShop.id || p.shop_id === currentShop.shop_id);
+  const handlePageChange = (page: number) => {
+      setCurrentPage(page);
+      updatePageUrl(page);
+  };
+
+  const getSoldData = (productId: string) => {
+    const validOrders = orders.filter(o => o.status !== 'CANCELLED');
+    let totalSold = 0;
+    validOrders.forEach(o => {
+      o.items.forEach(item => {
+        if (item.id === productId) {
+          totalSold += item.qty;
+        }
+      });
+    });
+    return totalSold;
+  };
+
+  const shopDisplayCategories = useMemo(() => {
+    if (!currentShop) return [];
+    const usedCategoryIds = new Set<string>();
+    products.forEach(p => {
+       if(p.shop_id === (currentShop.shop_id || currentShop.id)) {
+           p.category_ids?.forEach(id => usedCategoryIds.add(id));
+           if(p.category_id) usedCategoryIds.add(p.category_id);
+       }
+    });
+    const combinedRoots = [
+       ...categories.filter(c => !c.parent_id && c.is_active),
+       ...systemCategories.filter(sc => usedCategoryIds.has(sc.id) && !sc.parent_id)
+    ];
+    return combinedRoots.sort((a, b) => a.sort_order - b.sort_order);
+  }, [currentShop, products, categories, systemCategories]);
+
+  const availableOrigins = useMemo(() => {
+    const origins = new Set<string>();
+    products.forEach(p => {
+      if (p.origin) origins.add(p.origin.split(/[0-9]/)[0]); // 簡單過濾掉數字(如地址)保留城市
+    });
+    return Array.from(origins);
+  }, [products]);
+
+  const allDisplayOrigins = useMemo(() => {
+    const rawOrigins = Array.from(new Set([...COMMON_ORIGINS, ...availableOrigins]));
+    return rawOrigins.filter(o => o.trim() !== '');
+  }, [availableOrigins]);
+
+  const getSubCategories = (parentId: string) => {
+    const shopSubs = categories.filter(c => c.parent_id === parentId && c.is_active);
+    const sysSubs = systemCategories.filter(c => c.parent_id === parentId);
+    return [...shopSubs, ...sysSubs].sort((a, b) => a.sort_order - b.sort_order);
+  };
+
+  const activeCategory = useMemo(() => {
+    return categories.find(c => c.id === selectedCategoryId) || systemCategories.find(c => c.id === selectedCategoryId);
+  }, [categories, systemCategories, selectedCategoryId]);
+
+  const displayProducts = useMemo(() => {
+    let result = [...products];
+
+    // ★ 修改：熱銷商品優先邏輯
+    if (isHotMode) {
+        // 嚴格篩選：必須有 pin_rank 且 pin_rank 不為 null/undefined 且 pin_rank > 0
+        // 其他沒設定的都不能出現在熱銷商品
+        result = result.filter(p => typeof p.pin_rank === 'number' && p.pin_rank !== null && p.pin_rank > 0);
+        
+        // 熱銷模式下強制依照 Rank 排序
+        result.sort((a, b) => (a.pin_rank || 9999) - (b.pin_rank || 9999));
+        
+    } else {
+        // 一般模式 (包含 "全部商品" 或 特定分類)
+        if (selectedCategoryId) {
+          const targetIds = [selectedCategoryId];
+          const children = [...categories, ...systemCategories]
+            .filter(c => c.parent_id === selectedCategoryId)
+            .map(c => c.id);
+          targetIds.push(...children);
+          result = result.filter(p => {
+            return p.category_ids?.some(id => targetIds.includes(id)) || targetIds.includes(p.category_id || '');
+          });
+        }
+        
+        // 一般模式的排序
+        result.sort((a, b) => {
+            // Rank 優先 (如果有設定的話，仍然排前面)
+            const rankA = (a.pin_rank !== undefined && a.pin_rank !== null) ? a.pin_rank : 9999;
+            const rankB = (b.pin_rank !== undefined && b.pin_rank !== null) ? b.pin_rank : 9999;
+            
+            if (rankA !== rankB) {
+                return rankA - rankB; 
+            }
+
+            if (sortBy === 'PRICE_ASC') return a.price - b.price;
+            if (sortBy === 'PRICE_DESC') return b.price - a.price;
+            if (sortBy === 'SALES') return getSoldData(b.id) - getSoldData(a.id);
+            if (sortBy === 'LATEST') return (b.id > a.id ? 1 : -1);
+            if (sortBy === 'POPULAR') return getSoldData(b.id) - getSoldData(a.id);
+
+            return 0;
+        });
     }
 
-    // 2. 搜尋關鍵字
-    if (searchTerm) {
-      const lower = searchTerm.toLowerCase();
-      result = result.filter(p => p.name.toLowerCase().includes(lower) || p.description?.toLowerCase().includes(lower));
-    }
-
-    // 3. 產地篩選
-    if (selectedOrigin) {
-        result = result.filter(p => p.origin === selectedOrigin);
-    }
-
-    // 4. 地區篩選 (出貨地)
-    if (selectedCity) {
-        result = result.filter(p => p.shipping_origin && p.shipping_origin.includes(selectedCity));
-    }
-    if (selectedDistrict) {
-        result = result.filter(p => p.shipping_origin && p.shipping_origin.includes(selectedDistrict));
-    }
-
-    // 5. 價格範圍
+    // 通用篩選 (價格與地區) - 適用於熱銷與一般模式
     if (minPrice) result = result.filter(p => p.price >= Number(minPrice));
     if (maxPrice) result = result.filter(p => p.price <= Number(maxPrice));
 
-    // ★ 修改：分類篩選邏輯
-    if (selectedMainCat === 'HOT') {
-        // ★ 熱銷商品：只顯示有設定 pin_rank 且 > 0 的商品
-        result = result.filter(p => p.pin_rank && p.pin_rank > 0);
-        // ★ 排序：依照 pin_rank 由小到大排序 (1號最前面)
-        result.sort((a, b) => (a.pin_rank || 9999) - (b.pin_rank || 9999));
-    } else if (selectedMainCat !== 'ALL') {
-        // 一般分類篩選
-        if (selectedSubCat !== 'ALL') {
-            result = result.filter(p => p.category_ids?.includes(selectedSubCat));
-        } else {
-            // 選中主分類時，包含主分類及其子分類
-            const childCats = getSubCategories(selectedMainCat);
-            const childIds = childCats.map(c => c.id);
-            result = result.filter(p => p.category_ids?.includes(selectedMainCat) || p.category_ids?.some(id => childIds.includes(id)));
-        }
-        
-        // 一般排序邏輯 (非熱銷時)
-        if (sortBy === 'PRICE_ASC') result.sort((a, b) => a.price - b.price);
-        else if (sortBy === 'PRICE_DESC') result.sort((a, b) => b.price - a.price);
-        else if (sortBy === 'SALES') result.sort((a, b) => getSoldData(b.id) - getSoldData(a.id));
-        else if (sortBy === 'LATEST') result.sort((a, b) => (b.id > a.id ? 1 : -1));
-        else if (sortBy === 'POPULAR') result.sort((a, b) => getSoldData(b.id) - getSoldData(a.id));
-    } else {
-        // 'ALL' 類別時的排序
-        if (sortBy === 'PRICE_ASC') result.sort((a, b) => a.price - b.price);
-        else if (sortBy === 'PRICE_DESC') result.sort((a, b) => b.price - a.price);
-        else if (sortBy === 'SALES') result.sort((a, b) => getSoldData(b.id) - getSoldData(a.id));
-        else if (sortBy === 'LATEST') result.sort((a, b) => (b.id > a.id ? 1 : -1));
-        else if (sortBy === 'POPULAR') result.sort((a, b) => getSoldData(b.id) - getSoldData(a.id));
+    if (selectedOrigins.length > 0) {
+      result = result.filter(p => p.origin && selectedOrigins.some(o => p.origin?.includes(o)));
     }
 
     return result;
-  }, [products, selectedMainCat, selectedSubCat, searchTerm, selectedOrigin, selectedCity, selectedDistrict, currentShop, sortBy, minPrice, maxPrice, categories, systemCategories]);
+  }, [products, selectedCategoryId, isHotMode, sortBy, minPrice, maxPrice, categories, systemCategories, orders, selectedOrigins]);
 
   const paginatedProducts = useMemo(() => {
     const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
-    return filteredProducts.slice(startIndex, startIndex + PRODUCTS_PER_PAGE);
-  }, [filteredProducts, currentPage]);
+    return displayProducts.slice(startIndex, startIndex + PRODUCTS_PER_PAGE);
+  }, [displayProducts, currentPage]);
 
-  const totalPages = Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE);
-
-  const getSoldData = (productId: string) => {
-      if (!orders) return 0;
-      const validOrders = orders.filter(o => o.status !== 'CANCELLED');
-      let totalSold = 0;
-      validOrders.forEach(o => {
-          o.items.forEach(item => {
-              if (item.id === productId) {
-                  totalSold += item.qty;
-              }
-          });
-      });
-      return totalSold;
-  };
+  const totalPages = Math.ceil(displayProducts.length / PRODUCTS_PER_PAGE);
 
   const isFollowing = useMemo(() => {
     if (!currentUser || !currentShop) return false;
     const targetId = currentShop.shop_id || currentShop.id;
     return currentUser.following?.includes(targetId);
   }, [currentUser, currentShop]);
-
-  const activeCategory = useMemo(() => {
-    if (selectedMainCat === 'HOT' || selectedMainCat === 'ALL') return null;
-    return categories.find(c => c.id === selectedMainCat) || systemCategories.find(c => c.id === selectedMainCat);
-  }, [categories, systemCategories, selectedMainCat]);
 
   const isCategoryExpanded = (catId: string) => {
     if (selectedCategoryId === catId) return true;
@@ -236,7 +274,7 @@ const Shop: React.FC<ShopProps> = ({
   };
 
   const submitReport = async () => {
-      if (!reportData.subject || !reportData.reason) return alert('請填寫完整檢舉資訊');
+      if (!reportData.subject || !reportData.reason) return alert('請填寫主題與原因');
       if (!currentUser) return alert('請先登入');
 
       try {
@@ -245,11 +283,12 @@ const Shop: React.FC<ShopProps> = ({
               reporterId: currentUser.id,
               reporterName: currentUser.name
           });
-          alert('檢舉已提交，我們將盡快審核。');
+
+          alert('檢舉已送出，管理員將會進行審核。');
           setShowReportModal(false);
-          setReportData({ type: 'SHOP', targetId: '', targetName: '', subject: '', reason: '' });
       } catch (e) {
-          alert('提交失敗，請稍後再試');
+          console.error(e);
+          alert('檢舉發送失敗，請確認伺服器已連線');
       }
   };
 
@@ -263,13 +302,15 @@ const Shop: React.FC<ShopProps> = ({
       }
   };
 
+  // 判斷是否可以評分
   const canRateSeller = useMemo(() => {
     if (!currentUser || !currentShop) return false;
-    if (currentUser.id === currentShop.id) return false; 
+    if (currentUser.id === currentShop.id) return false; // 不能評自己
+    // 檢查是否有「已完成」的訂單
     return orders.some(o => 
       (o.shop_id === currentShop.shop_id || o.shop_id === currentShop.id) && 
       o.status === 'COMPLETED' && 
-      (o.receiver_phone === currentUser.phone || o.receiver_phone === currentUser.id)
+      (o.receiver_phone === currentUser.phone || o.receiver_phone === currentUser.id) // 簡單身分核對
     );
   }, [currentUser, currentShop, orders]);
 
@@ -278,260 +319,586 @@ const Shop: React.FC<ShopProps> = ({
     try {
       await API.addShopReview(currentShop.id, {
         userId: currentUser.id,
-        userName: currentUser.shop_name || currentUser.name, 
+        userName: currentUser.shop_name || currentUser.name, // 公布店名或帳號
         rating: ratingVal,
         comment: ratingComment
       });
       alert('評分已送出！');
       setShowRateModal(false);
       setRatingComment('');
-      window.location.reload(); 
+      window.location.reload(); // 簡單重整以顯示最新數據
     } catch (e) {
       alert('評分失敗，請檢查網路連線');
     }
   };
 
+  // 篩選評價
   const filteredReviews = useMemo(() => {
     if (!currentShop || !currentShop.shop_reviews) return [];
     if (reviewFilter === 'ALL') return currentShop.shop_reviews;
     return currentShop.shop_reviews.filter(r => r.rating === parseInt(reviewFilter));
   }, [currentShop, reviewFilter]);
 
-  return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-[#F8FAFC] animate-fade-in pb-20">
-      
-      {/* 側邊欄：分類導覽 */}
-      <aside className="w-full md:w-64 bg-white shadow-sm border-r border-slate-100 z-30 flex-shrink-0 md:h-[calc(100vh-80px)] md:sticky md:top-20 overflow-y-auto">
-        <div className="p-5">
-          <div className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 px-2">商品分類</div>
-          <div className="space-y-1">
-            {/* 只有在平台首頁才顯示「熱銷商品」 */}
-            {!currentShop && (
-                <button 
-                    onClick={() => { setSelectedMainCat('HOT'); setSelectedSubCat('ALL'); }}
-                    className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-between group ${selectedMainCat === 'HOT' ? 'bg-red-50 text-red-600 shadow-sm ring-1 ring-red-100' : 'text-slate-600 hover:bg-slate-50'}`}
-                >
-                    <span className="flex items-center gap-2"><i className="fa-solid fa-fire text-red-500"></i> 熱銷商品</span>
-                    {selectedMainCat === 'HOT' && <i className="fa-solid fa-chevron-right text-xs"></i>}
-                </button>
-            )}
+  // 手機版切換標籤 Helper
+  const toggleMobileTab = (tab: 'CATEGORY' | 'REGION' | 'PRICE') => {
+     if (activeMobileTab === tab) setActiveMobileTab(null);
+     else setActiveMobileTab(tab);
+  };
 
-            <button 
-              onClick={() => { setSelectedMainCat('ALL'); setSelectedSubCat('ALL'); }}
-              className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-between group ${selectedMainCat === 'ALL' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-              <span className="flex items-center gap-2"><i className="fa-solid fa-layer-group opacity-50"></i> 全部商品</span>
-              {selectedMainCat === 'ALL' && <i className="fa-solid fa-chevron-right text-xs"></i>}
-            </button>
-            
-            {/* ★ 修復：確保分類列表被正確渲染 */}
-            {displayCategories.map(cat => (
-              <div key={cat.id}>
-                <button 
-                  onClick={() => { setSelectedMainCat(cat.id); setSelectedSubCat('ALL'); }}
-                  className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-between group ${selectedMainCat === cat.id ? 'bg-[#EE4D2D] text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}
-                >
-                  <span className="truncate">{cat.name}</span>
-                  {selectedMainCat === cat.id && <i className="fa-solid fa-chevron-right text-xs"></i>}
-                </button>
-                
-                {/* 子分類展開 */}
-                {selectedMainCat === cat.id && getSubCategories(cat.id).length > 0 && (
-                   <div className="ml-4 mt-1 pl-4 border-l-2 border-slate-100 space-y-1 animate-fade-in">
-                      <button 
-                        onClick={() => setSelectedSubCat('ALL')}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition ${selectedSubCat === 'ALL' ? 'text-[#EE4D2D] bg-orange-50' : 'text-slate-400 hover:text-slate-600'}`}
-                      >
-                        全部{cat.name}
-                      </button>
-                      {getSubCategories(cat.id).map(sub => (
-                        <button 
-                          key={sub.id}
-                          onClick={() => setSelectedSubCat(sub.id)}
-                          className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition ${selectedSubCat === sub.id ? 'text-[#EE4D2D] bg-orange-50' : 'text-slate-400 hover:text-slate-600'}`}
-                        >
-                          {sub.name}
-                        </button>
-                      ))}
-                   </div>
-                )}
+  return (
+    <div className="space-y-6">
+      {currentShop && (
+        <div className="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-100 animate-fade-in group/banner">
+          {/* Banner 區域 */}
+          <div className="h-32 md:h-48 bg-slate-200 relative bg-cover bg-center transition-all" style={{ backgroundImage: `url(${localBanner || 'https://placehold.co/800x200/orange/white?text=Welcome+Shop'})` }}>
+            <div className="absolute inset-0 bg-black/30"></div>
+          </div>
+          
+          <div className="px-4 md:px-6 pb-6 pt-2 relative flex flex-col md:flex-row items-start md:items-end gap-4 md:gap-6">
+            <div className="relative -mt-12 md:-mt-20 shrink-0">
+              <div className="w-20 h-20 md:w-32 md:h-32 rounded-full border-4 border-white bg-white overflow-hidden shadow-md">
+                <img src={currentShop.logo || 'https://placehold.co/150?text=Logo'} className="w-full h-full object-cover" alt="Shop Logo" />
               </div>
-            ))}
+            </div>
+
+            <div className="flex-1 min-w-0 mb-1 w-full">
+              <h1 className="text-xl md:text-2xl font-black text-slate-800 drop-shadow-sm truncate">{currentShop.shop_name || currentShop.name}</h1>
+              
+              <div className="text-sm text-slate-500 line-clamp-2 mt-1 max-w-2xl">{currentShop.shop_description || '這個賣家很懶，還沒有撰寫介紹...'}</div>
+              
+              <div className="flex items-center gap-3 mt-3 mb-2 flex-wrap">
+                 {/* Social Links */}
+                 {currentShop.google_map_url && <a href={currentShop.google_map_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center p-1 border border-slate-100"><img src="https://upload.wikimedia.org/wikipedia/commons/a/aa/Google_Maps_icon_%282020%29.svg" className="w-full h-full object-contain" /></a>}
+                 {currentShop.line_url && <a href={currentShop.line_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center p-0.5 border border-slate-100"><img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" className="w-full h-full object-contain" /></a>}
+                 {currentShop.facebook_url && <a href={currentShop.facebook_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center border border-slate-100"><img src="https://upload.wikimedia.org/wikipedia/commons/b/b8/2021_Facebook_icon.svg" className="w-full h-full object-contain" /></a>}
+                 {currentShop.instagram_url && <a href={currentShop.instagram_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center p-0.5 border border-slate-100"><img src="https://upload.wikimedia.org/wikipedia/commons/a/a5/Instagram_icon.png" className="w-full h-full object-contain" /></a>}
+                 {currentShop.threads_url && <a href={currentShop.threads_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center border border-slate-100 overflow-hidden"><img src="https://upload.wikimedia.org/wikipedia/commons/9/9d/Threads_%28app%29_logo.svg" className="w-full h-full object-contain" /></a>}
+              </div>
+
+              <div className="flex flex-wrap gap-4 mt-1 text-xs font-bold text-slate-500">
+                <span className="flex items-center gap-1"><i className="fa-solid fa-star text-yellow-400"></i> {currentShop.stats?.averageRating || '0.0'} 評價</span>
+                <span className="flex items-center gap-1"><i className="fa-solid fa-box text-blue-400"></i> {currentShop.stats?.productCount || 0} 商品</span>
+                <span className="flex items-center gap-1"><i className="fa-solid fa-users text-pink-400"></i> {currentShop.stats?.followerCount || 0} 粉絲</span>
+                <span className="flex items-center gap-1"><i className="fa-regular fa-clock text-green-400"></i> {currentShop.stats?.joinTime || '近期'}加入</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0 flex-wrap">
+              <button onClick={() => onFollowShop(currentShop.shop_id || currentShop.id)} className={`flex-1 md:flex-none px-6 py-2 rounded-lg font-bold border transition ${isFollowing ? 'border-slate-200 text-slate-400 bg-slate-100' : 'border-[#EE4D2D] text-[#EE4D2D] hover:bg-[#EE4D2D] hover:text-white'}`}>{isFollowing ? '已關注' : '+ 關注'}</button>
+              <button onClick={() => onNavigate && onNavigate(View.CHAT, undefined, currentShop.shop_id || currentShop.id)} className="flex-1 md:flex-none px-6 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700 transition"><i className="fa-regular fa-comments mr-2"></i>聊聊</button>
+              {canRateSeller && (<button onClick={() => setShowRateModal(true)} className="flex-1 md:flex-none px-4 py-2 bg-yellow-400 text-white rounded-lg font-bold hover:bg-yellow-500 transition shadow-sm flex items-center justify-center gap-2"><i className="fa-solid fa-star"></i> 評分</button>)}
+              <button onClick={handleShareShop} className="flex-1 md:flex-none px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2"><i className="fa-solid fa-share-nodes"></i> 分享</button>
+              <button onClick={() => openReport('SHOP', currentShop.id, currentShop.shop_name || currentShop.name)} className="px-3 py-2 bg-white border border-red-200 text-red-500 rounded-lg font-bold hover:bg-red-50 transition text-xs flex-1 md:flex-none"><i className="fa-solid fa-triangle-exclamation"></i> 檢舉</button>
+            </div>
           </div>
         </div>
-      </aside>
-
-      {/* 主要內容區 */}
-      <main className="flex-1 p-4 md:p-8 min-w-0">
-        
-        {/* 商家資訊 Header (僅在商家頁面顯示) */}
-        {currentShop && (
-           <div className="mb-8 bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-100 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-r from-slate-800 to-slate-900"></div>
-              {currentShop.banner && <img src={currentShop.banner} className="absolute top-0 left-0 w-full h-32 object-cover opacity-50" />}
-              
-              <div className="relative pt-12 flex flex-col md:flex-row items-end md:items-center gap-6">
-                 <div className="w-24 h-24 rounded-3xl border-4 border-white shadow-xl bg-white overflow-hidden shrink-0">
-                    <img src={currentShop.logo || 'https://placehold.co/200'} className="w-full h-full object-cover" />
-                 </div>
-                 <div className="flex-1 text-white md:text-slate-800 mb-2 md:mb-0">
-                    <h1 className="text-2xl font-black drop-shadow-md md:drop-shadow-none">{currentShop.shop_name || currentShop.name}</h1>
-                    <p className="text-xs opacity-90 md:text-slate-500 mt-1 max-w-xl line-clamp-2">{currentShop.shop_description || '這家店很懶，沒有寫介紹...'}</p>
-                 </div>
-                 <div className="flex gap-3">
-                    <button onClick={() => onFollowShop(currentShop.id)} className="px-6 py-2.5 bg-[#EE4D2D] text-white rounded-xl font-bold shadow-lg hover:scale-105 transition active:scale-95 flex items-center gap-2">
-                       <i className="fa-solid fa-heart"></i> 追蹤賣場
-                    </button>
-                    {/* 檢舉按鈕 */}
-                    <button onClick={() => setShowReportModal(true)} className="px-4 py-2.5 bg-white/20 backdrop-blur-md md:bg-slate-100 text-white md:text-slate-600 rounded-xl font-bold hover:bg-white/30 md:hover:bg-slate-200 transition">
-                       <i className="fa-solid fa-triangle-exclamation"></i>
-                    </button>
-                 </div>
-              </div>
-
-              {/* 商家社群連結 */}
-              {(currentShop.facebook_url || currentShop.instagram_url || currentShop.threads_url || currentShop.line_url) && (
-                  <div className="mt-6 flex gap-3 pt-6 border-t border-slate-100">
-                      {currentShop.facebook_url && <a href={currentShop.facebook_url} target="_blank" className="w-8 h-8 rounded-full bg-[#1877F2] text-white flex items-center justify-center hover:scale-110 transition"><i className="fa-brands fa-facebook-f"></i></a>}
-                      {currentShop.instagram_url && <a href={currentShop.instagram_url} target="_blank" className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#FFD600] via-[#FF0100] to-[#D800B9] text-white flex items-center justify-center hover:scale-110 transition"><i className="fa-brands fa-instagram"></i></a>}
-                      {currentShop.threads_url && <a href={currentShop.threads_url} target="_blank" className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center hover:scale-110 transition"><i className="fa-brands fa-threads"></i></a>}
-                      {currentShop.line_url && <a href={currentShop.line_url} target="_blank" className="w-8 h-8 rounded-full bg-[#00C300] text-white flex items-center justify-center hover:scale-110 transition"><i className="fa-brands fa-line"></i></a>}
-                  </div>
-              )}
-           </div>
-        )}
-
-        {/* 頂部搜尋與篩選工具列 */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-6 flex flex-col md:flex-row gap-4 items-center">
-           <div className="relative flex-1 w-full">
-              <i className="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-slate-400"></i>
-              <input 
-                type="text" 
-                className="w-full h-12 pl-11 pr-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#EE4D2D] transition text-sm font-bold text-slate-700"
-                placeholder="搜尋商品..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-              />
-           </div>
-           
-           <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
-              <select className="h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 outline-none" value={selectedOrigin} onChange={e => setSelectedOrigin(e.target.value)}>
-                 <option value="">所有產地</option>
-                 {COMMON_ORIGINS.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-
-              <select className="h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 outline-none" value={selectedCity} onChange={e => { setSelectedCity(e.target.value); setSelectedDistrict(''); }}>
-                 <option value="">所有縣市 (出貨地)</option>
-                 {Object.keys(TAIWAN_DISTRICTS).map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-
-              {selectedCity && (
-                  <select className="h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 outline-none" value={selectedDistrict} onChange={e => setSelectedDistrict(e.target.value)}>
-                    <option value="">全區</option>
-                    {TAIWAN_DISTRICTS[selectedCity].map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-              )}
+      )}
+      
+      {currentShop && activeCategory && (activeCategory.banner || activeCategory.image) && (
+        <div className="w-full h-32 md:h-48 rounded-xl overflow-hidden shadow-sm relative animate-fade-in">
+           <img src={activeCategory.banner || activeCategory.image} className="w-full h-full object-cover" alt={activeCategory.name} />
+           <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+             <h2 className="text-3xl font-black text-white drop-shadow-md tracking-wider">{activeCategory.name}</h2>
            </div>
         </div>
+      )}
 
-        {/* 商品列表 */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
-          {paginatedProducts.length > 0 ? (
-            paginatedProducts.map(product => (
-              <div 
-                key={product.id} 
-                onClick={() => onOpenProduct(product)}
-                className="bg-white rounded-2xl border border-slate-100 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group flex flex-col h-full"
-              >
-                <div className="aspect-square bg-slate-50 relative overflow-hidden">
-                   <img src={product.images[0]} className="w-full h-full object-cover group-hover:scale-110 transition duration-500" />
-                   {product.origin && (
-                      <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm text-white text-[10px] px-2 py-1 rounded-lg font-bold">
-                         {product.origin}
-                      </div>
-                   )}
-                   {/* 熱銷標籤 */}
-                   {product.pin_rank && product.pin_rank > 0 && (
-                      <div className="absolute top-2 right-2 bg-red-600 text-white text-[10px] px-2 py-1 rounded-lg font-black shadow-sm flex items-center gap-1">
-                         <i className="fa-solid fa-fire"></i> HOT {currentUser?.role === 'ADMIN' ? `#${product.pin_rank}` : ''}
-                      </div>
-                   )}
-                </div>
-                
-                <div className="p-4 flex flex-col flex-1">
-                   <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">
-                      <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">{product.product_type === 'DIGITAL' ? '虛擬' : '實體'}</span>
-                      {product.shipping_origin && <span className="truncate max-w-[80px]"><i className="fa-solid fa-location-dot mr-0.5"></i>{product.shipping_origin.split('市')[0]}市</span>}
-                   </div>
-                   <h3 className="font-bold text-slate-800 text-sm line-clamp-2 mb-2 flex-1">{product.name}</h3>
-                   
-                   <div className="mt-auto">
-                      <div className="flex items-end justify-between mb-2">
-                         <div className="flex flex-col">
-                            {product.original_price > product.price && (
-                                <span className="text-[10px] text-slate-400 line-through">NT$ {product.original_price.toLocaleString()}</span>
-                            )}
-                            <span className="text-lg font-black text-[#EE4D2D]">NT$ {product.price.toLocaleString()}</span>
-                         </div>
-                         <button className="w-8 h-8 rounded-full bg-slate-50 text-slate-400 hover:bg-[#EE4D2D] hover:text-white transition flex items-center justify-center">
-                            <i className="fa-solid fa-cart-plus"></i>
-                         </button>
-                      </div>
-                      <div className="pt-3 border-t border-slate-50 flex justify-between items-center text-[10px] text-slate-400 font-bold">
-                         <span>已售出 {getSoldData(product.id)}</span>
-                         <span>庫存 {product.total_stock}</span>
-                      </div>
-                   </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="col-span-full py-20 text-center text-slate-300">
-               <i className="fa-solid fa-box-open text-6xl mb-4 opacity-50"></i>
-               <p className="font-bold text-lg">找不到相關商品</p>
-               <p className="text-sm">試著調整篩選條件看看</p>
+      {/* 手機版 3 欄位篩選控制條 (Sticky) */}
+      <div className="md:hidden sticky top-16 z-30 bg-white shadow-sm border-b border-slate-100 -mx-4 px-4">
+         <div className="grid grid-cols-3 divide-x divide-slate-100 text-sm font-bold text-slate-600">
+            <button 
+               onClick={() => toggleMobileTab('CATEGORY')} 
+               className={`py-3 flex items-center justify-center gap-1 ${activeMobileTab === 'CATEGORY' ? 'text-[#EE4D2D]' : ''}`}
+            >
+               商品分類 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'CATEGORY' ? 'rotate-180' : ''}`}></i>
+            </button>
+            <button 
+               onClick={() => toggleMobileTab('REGION')} 
+               className={`py-3 flex items-center justify-center gap-1 ${activeMobileTab === 'REGION' ? 'text-[#EE4D2D]' : ''}`}
+            >
+               區域搜尋 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'REGION' ? 'rotate-180' : ''}`}></i>
+            </button>
+            <button 
+               onClick={() => toggleMobileTab('PRICE')} 
+               className={`py-3 flex items-center justify-center gap-1 ${activeMobileTab === 'PRICE' ? 'text-[#EE4D2D]' : ''}`}
+            >
+               價格範圍 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'PRICE' ? 'rotate-180' : ''}`}></i>
+            </button>
+         </div>
+
+         {/* 手機版 下拉內容區域 */}
+         {activeMobileTab && (
+            <div className="absolute top-full left-0 right-0 bg-white shadow-xl border-t border-slate-100 p-4 animate-fade-in-down max-h-[60vh] overflow-y-auto z-40">
+               
+               {/* 1. 商品分類 (網格狀) */}
+               {activeMobileTab === 'CATEGORY' && (
+                  <div className="grid grid-cols-2 gap-3">
+                     <button 
+                        onClick={() => { setIsHotMode(true); setSelectedCategoryId(null); setActiveMobileTab(null); }} 
+                        className={`p-3 rounded-lg border text-sm font-bold text-center transition flex items-center justify-center gap-2 ${isHotMode ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
+                     >
+                        <i className="fa-solid fa-fire text-red-500"></i> 熱銷商品
+                     </button>
+                     <button 
+                        onClick={() => { setIsHotMode(false); setSelectedCategoryId(null); setActiveMobileTab(null); }} 
+                        className={`p-3 rounded-lg border text-sm font-bold text-center transition ${!isHotMode && selectedCategoryId === null ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
+                     >
+                        全部商品
+                     </button>
+                     
+                     {(currentShop ? shopDisplayCategories : systemCategories.filter(c => !c.parent_id)).map(cat => (
+                        <button 
+                           key={cat.id}
+                           onClick={() => { setIsHotMode(false); setSelectedCategoryId(cat.id); setActiveMobileTab(null); }}
+                           className={`p-3 rounded-lg border text-sm font-bold text-center truncate ${!isHotMode && selectedCategoryId === cat.id ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
+                        >
+                           {cat.name}
+                        </button>
+                     ))}
+                  </div>
+               )}
+
+               {/* 2. 區域搜尋 (Checkbox 列表) */}
+               {activeMobileTab === 'REGION' && (
+                  <div className="space-y-3">
+                     {allDisplayOrigins.map(origin => (
+                        <label key={origin} className="flex items-center gap-3 p-2 border-b border-slate-50 last:border-0 cursor-pointer">
+                           <input 
+                              type="checkbox" 
+                              className="w-5 h-5 accent-[#EE4D2D]"
+                              checked={selectedOrigins.includes(origin)}
+                              onChange={(e) => {
+                                 if(e.target.checked) setSelectedOrigins([...selectedOrigins, origin]);
+                                 else setSelectedOrigins(selectedOrigins.filter(o => o !== origin));
+                              }}
+                           />
+                           <span className="text-slate-700 font-bold">{origin}</span>
+                        </label>
+                     ))}
+                     <button onClick={() => setActiveMobileTab(null)} className="w-full py-2 bg-[#EE4D2D] text-white rounded-lg font-bold mt-2">確認</button>
+                  </div>
+               )}
+
+               {/* 3. 價格範圍 - ★ 修正：CSS 避免超出螢幕 (min-w-0, flex-1) */}
+               {activeMobileTab === 'PRICE' && (
+                  <div className="space-y-4">
+                     <div className="flex items-center gap-2">
+                        <input 
+                           type="number" 
+                           placeholder="$ 最低" 
+                           className="flex-1 min-w-0 w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:border-[#EE4D2D]"
+                           value={minPrice}
+                           onChange={e => setMinPrice(e.target.value)}
+                        />
+                        <span className="text-slate-300 shrink-0">-</span>
+                        <input 
+                           type="number" 
+                           placeholder="$ 最高" 
+                           className="flex-1 min-w-0 w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:border-[#EE4D2D]"
+                           value={maxPrice}
+                           onChange={e => setMaxPrice(e.target.value)}
+                        />
+                     </div>
+                     <button onClick={() => setActiveMobileTab(null)} className="w-full py-3 bg-[#EE4D2D] text-white rounded-xl font-bold">套用價格篩選</button>
+                  </div>
+               )}
             </div>
+         )}
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-6 items-start">
+        {/* 左側邊欄：手機版隱藏 (因為上方已有篩選列)，電腦版顯示 */}
+        <aside className="hidden md:block w-full md:w-60 shrink-0 space-y-4">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4">
+            <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2">
+              <i className="fa-solid fa-list-ul"></i> 商品分類
+            </h3>
+            <div className="space-y-1">
+              {/* 電腦版：熱銷商品按鈕 */}
+              <button 
+                onClick={() => { setIsHotMode(true); setSelectedCategoryId(null); }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${isHotMode ? 'text-[#EE4D2D] bg-[#FFEEEC]' : 'text-slate-600 hover:bg-slate-50'}`}
+              >
+                <i className="fa-solid fa-fire text-red-500"></i> 熱銷商品
+              </button>
+              
+              <button 
+                onClick={() => { setIsHotMode(false); setSelectedCategoryId(null); }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition ${!isHotMode && selectedCategoryId === null ? 'text-[#EE4D2D] bg-[#FFEEEC]' : 'text-slate-600 hover:bg-slate-50'}`}
+              >
+                全部商品
+              </button>
+              
+              {currentShop ? (
+                shopDisplayCategories.map(cat => {
+                  const expanded = isCategoryExpanded(cat.id);
+                  return (
+                    <div key={cat.id}>
+                      <button 
+                        onClick={() => { setIsHotMode(false); setSelectedCategoryId(cat.id === selectedCategoryId ? null : cat.id); }}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition flex justify-between items-center ${!isHotMode && selectedCategoryId === cat.id ? 'text-[#EE4D2D] bg-[#FFEEEC]' : 'text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        {cat.name}
+                        {getSubCategories(cat.id).length > 0 && (
+                          <i className={`fa-solid fa-chevron-down text-xs transition-transform ${expanded ? 'rotate-180' : ''}`}></i>
+                        )}
+                      </button>
+                      
+                      {expanded && getSubCategories(cat.id).length > 0 && (
+                        <div className="ml-4 border-l-2 border-slate-100 pl-2 mt-1 space-y-1 animate-fade-in">
+                          {getSubCategories(cat.id).map(sub => (
+                             <button 
+                              key={sub.id}
+                              onClick={(e) => { e.stopPropagation(); setIsHotMode(false); setSelectedCategoryId(sub.id); }}
+                              className={`w-full text-left px-3 py-1.5 rounded-lg text-xs transition ${!isHotMode && selectedCategoryId === sub.id ? 'text-[#EE4D2D] font-bold bg-orange-50' : 'text-slate-500 hover:text-slate-800'}`}
+                            >
+                              {sub.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                systemCategories.filter(c => !c.parent_id).map(cat => {
+                  const expanded = isCategoryExpanded(cat.id);
+                  return (
+                    <div key={cat.id}>
+                      <button 
+                        onClick={() => { setIsHotMode(false); setSelectedCategoryId(cat.id === selectedCategoryId ? null : cat.id); }}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition flex justify-between items-center ${!isHotMode && selectedCategoryId === cat.id ? 'text-[#EE4D2D] bg-[#FFEEEC]' : 'text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        {cat.name}
+                        {systemCategories.filter(c => c.parent_id === cat.id).length > 0 && (
+                          <i className={`fa-solid fa-chevron-down text-xs transition-transform ${expanded ? 'rotate-180' : ''}`}></i>
+                        )}
+                      </button>
+                      
+                      {expanded && systemCategories.filter(c => c.parent_id === cat.id).length > 0 && (
+                        <div className="ml-4 border-l-2 border-slate-100 pl-2 mt-1 space-y-1 animate-fade-in">
+                          {systemCategories.filter(c => c.parent_id === cat.id).map(sub => (
+                             <button 
+                              key={sub.id}
+                              onClick={(e) => { e.stopPropagation(); setIsHotMode(false); setSelectedCategoryId(sub.id); }}
+                              className={`w-full text-left px-3 py-1.5 rounded-lg text-xs transition ${!isHotMode && selectedCategoryId === sub.id ? 'text-[#EE4D2D] font-bold bg-orange-50' : 'text-slate-500 hover:text-slate-800'}`}
+                            >
+                              {sub.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4">
+            <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2">
+              <i className="fa-solid fa-filter"></i> 價格範圍
+            </h3>
+            <div className="flex items-center gap-2 mb-4">
+              <input 
+                type="number" 
+                placeholder="$ 最低" 
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-[#EE4D2D]"
+                value={minPrice}
+                onChange={e => setMinPrice(e.target.value)}
+              />
+              <span className="text-slate-300">-</span>
+              <input 
+                type="number" 
+                placeholder="$ 最高" 
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-[#EE4D2D]"
+                value={maxPrice}
+                onChange={e => setMaxPrice(e.target.value)}
+              />
+            </div>
+            <button className="w-full py-2 bg-[#EE4D2D] text-white rounded-lg text-xs font-bold hover:bg-[#d73211] transition">
+              套用
+            </button>
+          </div>
+
+          {/* 電腦版：區域搜尋 */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4">
+            <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2">
+              <i className="fa-solid fa-location-dot"></i> 產地/區域
+            </h3>
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+               {allDisplayOrigins.map(origin => (
+                  <label key={origin} className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-1 rounded">
+                     <input 
+                        type="checkbox" 
+                        className="accent-[#EE4D2D] w-4 h-4"
+                        checked={selectedOrigins.includes(origin)}
+                        onChange={(e) => {
+                           if(e.target.checked) setSelectedOrigins([...selectedOrigins, origin]);
+                           else setSelectedOrigins(selectedOrigins.filter(o => o !== origin));
+                        }}
+                     />
+                     <span className="text-sm text-slate-600 font-bold">{origin}</span>
+                  </label>
+               ))}
+            </div>
+          </div>
+        </aside>
+
+        <div className="flex-1 w-full">
+          <div className="bg-slate-100 p-2 rounded-xl flex flex-wrap items-center gap-2 mb-6">
+            <span className="text-xs font-bold text-slate-500 px-2">排序：</span>
+            {[
+              { id: 'POPULAR', label: '綜合排名' },
+              { id: 'LATEST', label: '最新上架' },
+              { id: 'SALES', label: '最熱銷' },
+            ].map(opt => (
+              <button 
+                key={opt.id}
+                onClick={() => setSortBy(opt.id as any)}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition ${sortBy === opt.id ? 'bg-[#EE4D2D] text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+            <select 
+              className={`px-4 py-2 rounded-lg text-xs font-bold outline-none cursor-pointer ${sortBy.includes('PRICE') ? 'bg-[#EE4D2D] text-white' : 'bg-white text-slate-600'}`}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              value={sortBy.includes('PRICE') ? sortBy : ''}
+            >
+              <option value="" disabled hidden>價格排序</option>
+              <option value="PRICE_ASC" className="text-slate-800 bg-white">價格：由低到高</option>
+              <option value="PRICE_DESC" className="text-slate-800 bg-white">價格：由高到低</option>
+            </select>
+          </div>
+
+          {displayProducts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl border border-dashed border-slate-200">
+               <i className="fa-solid fa-box-open text-6xl text-slate-200 mb-4"></i>
+               <p className="text-slate-400 font-bold">沒有找到符合條件的商品</p>
+               <button onClick={() => {setIsHotMode(false); setSelectedCategoryId(null); setMinPrice(''); setMaxPrice(''); setSelectedOrigins([]);}} className="mt-4 px-6 py-2 text-[#EE4D2D] text-sm font-bold hover:underline">
+                 清除所有篩選
+               </button>
+            </div>
+          ) : (
+            <>
+              {/* 使用 paginatedProducts 進行渲染 */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {paginatedProducts.map(product => {
+                  const soldCount = getSoldData(product.id);
+                  const avgRating = product.reviews && product.reviews.length > 0 
+                    ? (product.reviews.reduce((a, b) => a + b.rating, 0) / product.reviews.length).toFixed(1) 
+                    : '0.0';
+                  
+                  return (
+                    <div 
+                      key={product.id}
+                      onClick={() => onOpenProduct(product)}
+                      className="bg-white rounded-xl overflow-hidden border border-slate-100 hover:border-[#EE4D2D] hover:shadow-lg transition-all duration-300 cursor-pointer group flex flex-col h-full relative"
+                    >
+                      {currentUser?.role === 'ADMIN' && (
+                        <div className="absolute top-2 right-2 z-10" onClick={e => e.stopPropagation()}>
+                            <input 
+                              type="number" 
+                              className="w-12 h-8 border-2 border-[#EE4D2D] bg-white text-center font-bold text-[#EE4D2D] rounded shadow-md"
+                              placeholder="Rank"
+                              min="1"
+                              max="99"
+                              value={product.pin_rank || ''}
+                              onChange={(e) => handleUpdateRank(product, parseInt(e.target.value))}
+                            />
+                        </div>
+                      )}
+
+                      <div className="relative pt-[100%] overflow-hidden bg-slate-100">
+                        {product.images[0]?.startsWith('data:video') || product.images[0]?.endsWith('.mp4') ? (
+                          <video src={product.images[0] + '#t=0.1'} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" muted />
+                        ) : (
+                          <img 
+                            src={product.images[0] || 'https://placehold.co/300'} 
+                            alt={product.name}
+                            className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                          />
+                        )}
+                        {/* 僅在有設定 Rank 的商品上顯示「Rank」標籤 */}
+                        {product.pin_rank && product.pin_rank > 0 && (
+                          <div className="absolute top-2 left-2 bg-[#EE4D2D] text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm">
+                            NO.{product.pin_rank}
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3 flex flex-col flex-1">
+                        <h3 className="text-sm font-bold text-slate-800 line-clamp-2 mb-1 group-hover:text-[#EE4D2D] transition h-10">
+                          {product.name}
+                        </h3>
+                        
+                        <div className="mt-auto pt-2 space-y-1">
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-xs font-black text-[#EE4D2D]">$</span>
+                            <span className="text-lg font-black text-[#EE4D2D]">{product.price.toLocaleString()}</span>
+                            {product.original_price > product.price && (
+                              <span className="text-xs text-slate-300 line-through ml-1">${product.original_price.toLocaleString()}</span>
+                            )}
+                          </div>
+                          
+                          <div className="flex items-center justify-between text-[10px] text-slate-400">
+                            <div className="flex items-center gap-1">
+                              <i className="fa-solid fa-star text-yellow-400 text-[10px]"></i>
+                              <span>{avgRating}</span>
+                            </div>
+                            <span>已售 {soldCount}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 分頁控制項 */}
+              {totalPages > 1 && (
+                <div className="flex justify-center items-center gap-4 mt-8">
+                  <button 
+                    onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-600 disabled:opacity-50 hover:bg-slate-50 font-bold text-sm transition"
+                  >
+                    <i className="fa-solid fa-chevron-left mr-2"></i> 上一頁
+                  </button>
+                  <span className="text-sm font-black text-slate-600">
+                    第 {currentPage} 頁 / 共 {totalPages} 頁
+                  </span>
+                  <button 
+                    onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-600 disabled:opacity-50 hover:bg-slate-50 font-bold text-sm transition"
+                  >
+                    下一頁 <i className="fa-solid fa-chevron-right ml-2"></i>
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
+      </div>
 
-        {/* 分頁 */}
-        {totalPages > 1 && (
-           <div className="flex justify-center mt-10 gap-2">
-              <button 
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-50 transition"
-              >
-                 <i className="fa-solid fa-chevron-left"></i>
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+      {/* 買家評價區塊 */}
+      {currentShop && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 animate-fade-in mt-8">
+           <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2">
+              買家評價
+              <span className="text-sm font-normal text-slate-500 ml-2">({currentShop.shop_reviews?.length || 0})</span>
+           </h3>
+           
+           <div className="bg-[#FFFBF8] border border-[#F9EDE5] p-6 rounded-lg mb-6 flex flex-col md:flex-row items-center gap-8">
+              <div className="text-center px-4">
+                 <div className="text-[#EE4D2D] text-4xl font-black mb-1">
+                    {currentShop.stats?.averageRating?.toFixed(1) || '0.0'}<span className="text-xl">/5</span>
+                 </div>
+                 <div className="text-[#EE4D2D] text-sm">
+                    {[1,2,3,4,5].map(star => (
+                       <i key={star} className={`fa-solid fa-star ${star <= Math.round(currentShop.stats?.averageRating || 0) ? '' : 'text-slate-300'}`}></i>
+                    ))}
+                 </div>
+              </div>
+              <div className="flex flex-wrap gap-2 flex-1 justify-center md:justify-start">
                  <button 
-                   key={p}
-                   onClick={() => setCurrentPage(p)}
-                   className={`w-10 h-10 rounded-xl font-bold transition ${currentPage === p ? 'bg-[#EE4D2D] text-white shadow-lg' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                    onClick={() => setReviewFilter('ALL')}
+                    className={`px-4 py-2 border rounded-sm text-sm transition ${reviewFilter === 'ALL' ? 'border-[#EE4D2D] text-[#EE4D2D]' : 'border-slate-200 bg-white text-slate-600 hover:border-[#EE4D2D]'}`}
                  >
-                   {p}
+                    全部
                  </button>
-              ))}
-              <button 
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-50 transition"
-              >
-                 <i className="fa-solid fa-chevron-right"></i>
-              </button>
+                 {['5', '4', '3', '2', '1'].map(star => (
+                    <button 
+                       key={star}
+                       onClick={() => setReviewFilter(star as any)}
+                       className={`px-4 py-2 border rounded-sm text-sm transition ${reviewFilter === star ? 'border-[#EE4D2D] text-[#EE4D2D]' : 'border-slate-200 bg-white text-slate-600 hover:border-[#EE4D2D]'}`}
+                    >
+                       {star} 星 ({currentShop.shop_reviews?.filter(r => r.rating === parseInt(star)).length || 0})
+                    </button>
+                 ))}
+              </div>
            </div>
-        )}
-      </main>
 
-      {/* 檢舉 Modal */}
-      {showReportModal && (
-         <div className="fixed inset-0 z-[1300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+           <div className="space-y-4">
+              {filteredReviews.length === 0 ? (
+                 <div className="text-center py-12 text-slate-400">
+                    <i className="fa-regular fa-comment-dots text-4xl mb-3"></i>
+                    <div>暫無相關評價</div>
+                 </div>
+              ) : (
+                 filteredReviews.map(review => (
+                    <div key={review.id} className="flex gap-4 border-b border-slate-50 pb-4 last:border-0 last:pb-0">
+                       <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold shrink-0">
+                          {review.userName[0]}
+                       </div>
+                       <div className="flex-1">
+                          <div className="text-xs text-slate-700 font-bold mb-1">{review.userName}</div>
+                          <div className="flex items-center gap-1 text-[#EE4D2D] text-xs mb-2">
+                             {[1,2,3,4,5].map(star => (
+                                <i key={star} className={`fa-solid fa-star ${star <= review.rating ? '' : 'text-slate-200'}`}></i>
+                             ))}
+                          </div>
+                          <div className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{review.comment}</div>
+                          <div className="text-[10px] text-slate-400 mt-2">{new Date(review.createdAt).toLocaleString()}</div>
+                       </div>
+                    </div>
+                 ))
+              )}
+           </div>
+        </div>
+      )}
+
+      {/* 評分 Modal */}
+      {showRateModal && (
+         <div className="fixed inset-0 bg-black/50 z-[1300] flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 animate-fade-in-up">
                <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
-                  <i className="fa-solid fa-triangle-exclamation text-red-500"></i> 檢舉此賣場
+                  <i className="fa-solid fa-star text-yellow-400"></i>
+                  給予商家評分
+               </h3>
+               <p className="text-xs text-slate-500 mb-4">您的評價將會公開顯示店名或帳號。</p>
+               
+               <div className="flex justify-center gap-2 mb-6">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                     <button 
+                       key={star} 
+                       onClick={() => setRatingVal(star)}
+                       className={`text-3xl transition ${star <= ratingVal ? 'text-yellow-400 scale-110' : 'text-slate-200 hover:text-yellow-200'}`}
+                     >
+                       <i className="fa-solid fa-star"></i>
+                     </button>
+                  ))}
+               </div>
+
+               <textarea 
+                  className="w-full h-32 border border-slate-300 rounded-lg p-3 outline-none focus:border-yellow-400 resize-none text-sm mb-4"
+                  placeholder="寫下您對此商家的評價..."
+                  value={ratingComment}
+                  onChange={e => setRatingComment(e.target.value)}
+               />
+
+               <div className="flex gap-3">
+                  <button onClick={handleSubmitRating} className="flex-1 bg-yellow-400 text-white font-bold py-2 rounded-lg hover:bg-yellow-500 transition">送出評價</button>
+                  <button onClick={() => setShowRateModal(false)} className="flex-1 bg-slate-200 text-slate-600 font-bold py-2 rounded-lg hover:bg-slate-300 transition">取消</button>
+               </div>
+            </div>
+         </div>
+      )}
+
+      {/* 檢舉視窗 */}
+      {showReportModal && (
+         <div className="fixed inset-0 bg-black/50 z-[1300] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 animate-fade-in-up">
+               <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                  <i className="fa-solid fa-triangle-exclamation text-red-500"></i>
+                  檢舉{reportData.type === 'SHOP' ? '商家' : '商品'}
                </h3>
                <div className="space-y-4">
+                  <div>
+                     <label className="block text-sm font-bold text-slate-600 mb-1">檢舉對象</label>
+                     <div className="text-slate-800 font-bold bg-slate-50 p-2 rounded">{reportData.targetName}</div>
+                  </div>
                   <div>
                      <label className="block text-sm font-bold text-slate-600 mb-1">檢舉主題</label>
                      <input 

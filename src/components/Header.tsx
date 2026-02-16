@@ -10,9 +10,10 @@ interface HeaderProps {
   setSearchQuery: (q: string) => void;
   onShowHelp: () => void;
   onSearch: (q: string) => void;
+  onReset?: () => void; // ★ 新增：重置 callback
 }
 
-const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, searchQuery, setSearchQuery, onShowHelp, onSearch }) => {
+const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, searchQuery, setSearchQuery, onShowHelp, onSearch, onReset }) => {
   const [isListening, setIsListening] = useState(false);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -55,6 +56,7 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
              setSearchQuery('');
              onSearch(''); // 回首頁並清空搜尋
              onNavigate(View.SHOP);
+             if (onReset) onReset(); // ★ 觸發重置 (回到熱銷模式)
           }}
           className="flex items-center gap-2 cursor-pointer group shrink-0"
         >
@@ -98,8 +100,18 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
           </div>
         </div>
 
-        {/* Actions: 購物車與登入 */}
+        {/* Actions: 幫助中心、購物車與登入 */}
         <div className="flex items-center gap-2 md:gap-4 shrink-0">
+          
+          {/* 幫助中心按鈕 */}
+          <button 
+            onClick={onShowHelp}
+            className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition"
+            title="幫助中心"
+          >
+            <i className="fa-regular fa-circle-question text-lg md:text-xl"></i>
+          </button>
+
           <button 
             onClick={() => onNavigate(View.CART)}
             className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition relative"

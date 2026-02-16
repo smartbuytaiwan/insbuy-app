@@ -63,6 +63,8 @@ export interface Product {
   origin?: string;
   // ★ 新增：詳細出貨地點 (如：台北市中山區)
   shipping_origin?: string;
+  // ★ 新增：SEO 關鍵字
+  keywords?: string[];
   questions?: { title: string, required: boolean }[];
   reviews?: Review[];
 }
