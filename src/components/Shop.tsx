@@ -340,9 +340,9 @@ const Shop: React.FC<ShopProps> = ({
   return (
     <div className="space-y-6">
       
-      {/* ★ 修正：使用 fixed 強制釘在 Header 下方，解決 overflow-hidden 導致 sticky 失效的問題 */}
-      <div className="md:hidden">
-         <div className="fixed top-16 left-0 right-0 z-40 bg-white shadow-md">
+      {/* ★ 修改：移除 fixed 設定，改為 relative，實現「往下滑時會消失」的效果，但保持網格排列 */}
+      <div className="md:hidden relative z-40">
+         <div className="bg-white shadow-md">
              {/* 1. 篩選頁籤 (Category / Region / Price Range) */}
              <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100 text-sm font-bold text-slate-600">
                 <button 
@@ -365,31 +365,36 @@ const Shop: React.FC<ShopProps> = ({
                 </button>
              </div>
 
-             {/* 2. 手機版排序功能 (Sorting Options) - 加在這裡確保一起固定 */}
-             <div className="flex items-center gap-2 p-2 bg-slate-50 overflow-x-auto no-scrollbar border-b border-slate-100">
-                 <span className="text-xs font-bold text-slate-400 px-1 shrink-0">排序：</span>
-                 {[
-                   { id: 'POPULAR', label: '綜合排名' },
-                   { id: 'LATEST', label: '最新上架' },
-                   { id: 'SALES', label: '最熱銷' },
-                 ].map(opt => (
-                   <button 
-                     key={opt.id}
-                     onClick={() => setSortBy(opt.id as any)}
-                     className={`px-3 py-1.5 rounded text-xs font-bold whitespace-nowrap transition shrink-0 ${sortBy === opt.id ? 'bg-[#EE4D2D] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
-                   >
-                     {opt.label}
-                   </button>
-                 ))}
-                 <select 
-                    className={`px-3 py-1.5 rounded text-xs font-bold outline-none border border-slate-200 shrink-0 ${sortBy.includes('PRICE') ? 'bg-[#EE4D2D] text-white border-[#EE4D2D]' : 'bg-white text-slate-600'}`}
-                    onChange={(e) => setSortBy(e.target.value as any)}
-                    value={sortBy.includes('PRICE') ? sortBy : ''}
-                 >
-                    <option value="" disabled hidden>價格排序</option>
-                    <option value="PRICE_ASC" className="text-slate-800 bg-white">價格由低到高</option>
-                    <option value="PRICE_DESC" className="text-slate-800 bg-white">價格由高到低</option>
-                 </select>
+             {/* 2. 手機版排序功能 (Sorting Options) - 保持 Grid 網格佈局 (不超出螢幕) */}
+             <div className="p-2 bg-slate-50 border-b border-slate-100">
+                 <div className="grid grid-cols-4 gap-1">
+                     {[
+                       { id: 'POPULAR', label: '綜合排名' },
+                       { id: 'LATEST', label: '最新上架' },
+                       { id: 'SALES', label: '最熱銷' },
+                     ].map(opt => (
+                       <button 
+                         key={opt.id}
+                         onClick={() => setSortBy(opt.id as any)}
+                         className={`w-full py-1.5 rounded text-[11px] font-bold transition flex items-center justify-center px-0 ${sortBy === opt.id ? 'bg-[#EE4D2D] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
+                       >
+                         {opt.label}
+                       </button>
+                     ))}
+                     <div className="relative">
+                        <select 
+                            className={`w-full py-1.5 pl-1 pr-3 rounded text-[11px] font-bold outline-none border border-slate-200 appearance-none text-center ${sortBy.includes('PRICE') ? 'bg-[#EE4D2D] text-white border-[#EE4D2D]' : 'bg-white text-slate-600'}`}
+                            onChange={(e) => setSortBy(e.target.value as any)}
+                            value={sortBy.includes('PRICE') ? sortBy : ''}
+                        >
+                            <option value="" disabled hidden>價格排序</option>
+                            <option value="PRICE_ASC" className="text-slate-800 bg-white">價格:低到高</option>
+                            <option value="PRICE_DESC" className="text-slate-800 bg-white">價格:高到低</option>
+                        </select>
+                        {/* Custom Arrow for Select */}
+                        <i className={`fa-solid fa-caret-down absolute right-1 top-1/2 -translate-y-1/2 text-[10px] pointer-events-none ${sortBy.includes('PRICE') ? 'text-white' : 'text-slate-400'}`}></i>
+                     </div>
+                 </div>
              </div>
 
              {/* 手機版 下拉內容區域 (Dropdown Content) */}
@@ -470,8 +475,7 @@ const Shop: React.FC<ShopProps> = ({
                 </div>
              )}
          </div>
-         {/* 3. 佔位區塊 (Spacer) - 防止 fixed 遮擋內容，高度約等於上方 fixed 區塊的高度 (Tab + Sort ~ 90px) */}
-         <div className="h-[96px] w-full"></div>
+         {/* 3. 佔位區塊 (Spacer) - 已移除，因為不再使用 fixed */}
       </div>
 
       {currentShop && (
@@ -670,9 +674,8 @@ const Shop: React.FC<ShopProps> = ({
         </aside>
 
         <div className="flex-1 w-full">
-          {/* ★ 修改 3：電腦版排序功能列 (手機版隱藏，因為已整合到 sticky header) */}
+          {/* 電腦版排序功能列 (手機版隱藏) */}
           <div className="hidden md:flex bg-slate-100 p-2 rounded-xl flex-col md:flex-row md:items-center gap-2 mb-6">
-            {/* Mobile: Horizontal scrollable container */}
             <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">
                <span className="text-xs font-bold text-slate-500 px-2 shrink-0">排序：</span>
                {[

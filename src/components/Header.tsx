@@ -59,6 +59,11 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
         setIsListening(false);
         if (event.error === 'not-allowed') {
             alert('請允許瀏覽器使用麥克風權限以進行語音搜尋。');
+        } else if (event.error === 'no-speech') {
+            // 用戶沒說話，不做特別提示，直接結束
+        } else {
+             // 其他錯誤
+             console.log("Voice Search Error: ", event.error);
         }
       };
 
@@ -108,14 +113,17 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
           />
           
           <div className="absolute right-1 top-1 bottom-1 flex items-center gap-0.5 md:gap-1">
+             {/* ★ 修改：加入 type="button" 確保手機瀏覽器點擊不會觸發表單提交，並加上 touch-action 優化觸控 */}
              <button 
+               type="button"
                onClick={handleVoiceSearch}
-               className={`w-8 h-8 rounded-full text-slate-400 hover:text-[#EE4D2D] hover:bg-slate-100 transition flex items-center justify-center ${isListening ? 'text-red-500 bg-red-50' : ''}`}
+               className={`w-8 h-8 rounded-full text-slate-400 hover:text-[#EE4D2D] hover:bg-slate-100 transition flex items-center justify-center touch-manipulation ${isListening ? 'text-red-500 bg-red-50' : ''}`}
              >
                <i className={`fa-solid ${isListening ? 'fa-microphone-lines animate-bounce' : 'fa-microphone'}`}></i>
              </button>
 
              <button 
+                type="button"
                 onClick={() => onSearch(searchQuery)}
                 className="bg-gradient-to-r from-[#EE4D2D] to-[#FF7337] text-white w-8 h-8 md:w-10 md:h-full rounded-full hover:opacity-90 transition-opacity flex items-center justify-center shadow-md ml-1"
              >
