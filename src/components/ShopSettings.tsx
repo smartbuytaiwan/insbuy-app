@@ -7,8 +7,7 @@ interface ShopSettingsProps {
   onUpdateUser: (user: User) => void;
 }
 
-// ★ 改良版：所見即所得 (WYSIWYG) 圖片裁切器
-// 支援動態比例 (1:1 或 4:1)
+// ★ 改良版：修正裁切畫面偏移與歪斜問題 (使用絕對置中邏輯)
 const ImageCropper = ({ src, type, onComplete, onCancel }: { src: string, type: 'logo' | 'banner', onComplete: (blob: string) => void, onCancel: () => void }) => {
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -16,17 +15,33 @@ const ImageCropper = ({ src, type, onComplete, onCancel }: { src: string, type: 
   const startRef = useRef({ x: 0, y: 0 });
   const imgRef = useRef<HTMLImageElement>(null);
 
-  // 設定容器尺寸與比例
+  // 設定比例
   const aspectRatio = type === 'logo' ? 1 : 4; 
-  const containerW = 400; 
-  const containerH = containerW / aspectRatio; // Logo: 400, Banner: 100
 
-  // 初始化：確保圖片載入時重置狀態
+  // 響應式尺寸狀態
+  const [containerSize, setContainerSize] = useState({ w: 300, h: 300 });
+
   useEffect(() => {
     setZoom(1);
     setOffset({ x: 0, y: 0 });
-  }, [src]);
+    
+    const handleResize = () => {
+       // 預留邊距 (-80)，確保在手機螢幕上不貼邊
+       const maxWidth = Math.min(window.innerWidth - 80, 500);
+       
+       const newW = maxWidth;
+       const newH = newW / aspectRatio;
+       setContainerSize({ w: newW, h: newH });
+    };
 
+    handleResize(); // 初始化執行
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [src, aspectRatio]);
+
+  const { w: containerW, h: containerH } = containerSize;
+
+  // 滑鼠事件
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
     startRef.current = { x: e.clientX - offset.x, y: e.clientY - offset.y };
@@ -40,7 +55,23 @@ const ImageCropper = ({ src, type, onComplete, onCancel }: { src: string, type: 
 
   const handleMouseUp = () => setIsDragging(false);
 
-  // ★ 核心邏輯：Canvas 輸出必須與 CSS 顯示完全一致
+  // 觸控事件 (支援手機拖曳)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setIsDragging(true);
+    const touch = e.touches[0];
+    startRef.current = { x: touch.clientX - offset.x, y: touch.clientY - offset.y };
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging) return;
+    // 移除 e.preventDefault() 避免被動事件監聽器錯誤，改由 CSS touch-none 控制
+    const touch = e.touches[0];
+    setOffset({ x: touch.clientX - startRef.current.x, y: touch.clientY - startRef.current.y });
+  };
+
+  const handleTouchEnd = () => setIsDragging(false);
+
+  // Canvas 輸出邏輯 (必須與 CSS 顯示一致)
   const handleSave = () => {
     if (!imgRef.current) return;
     const img = imgRef.current;
@@ -63,7 +94,6 @@ const ImageCropper = ({ src, type, onComplete, onCancel }: { src: string, type: 
     ctx.fillRect(0, 0, outputW, outputH);
 
     // 2. 計算圖片在容器中的基礎縮放比例 (Object-Fit: Contain 模擬)
-    // 這必須與下方 img style 的 CSS 行為一致
     const ratioW = containerW / img.naturalWidth;
     const ratioH = containerH / img.naturalHeight;
     const baseScale = Math.min(ratioW, ratioH);
@@ -83,8 +113,7 @@ const ImageCropper = ({ src, type, onComplete, onCancel }: { src: string, type: 
     // 6. 應用使用者的縮放
     ctx.scale(zoom, zoom);
     
-    // 7. 繪製圖片 (以中心點為基準)
-    // 我們將圖片繪製為 "Fit" 的大小，再乘上輸出倍率，這樣位置就會跟預覽完全一樣
+    // 7. 繪製圖片 (以中心點為基準繪製)
     ctx.drawImage(
       img,
       -renderW * scaleFactor / 2,
@@ -100,30 +129,38 @@ const ImageCropper = ({ src, type, onComplete, onCancel }: { src: string, type: 
 
   return (
     <div className="fixed inset-0 z-[2000] bg-black/80 flex flex-col items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-       <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl">
-          <h3 className="font-bold text-lg mb-4 text-slate-800">
-            編輯{type === 'logo' ? '商店 Logo (1:1)' : '商店封面 (4:1)'}
+       <div className="bg-white rounded-2xl p-4 md:p-6 w-full max-w-lg shadow-2xl overflow-hidden">
+          <h3 className="font-bold text-lg mb-4 text-slate-800 text-center md:text-left">
+            編輯{type === 'logo' ? '商店 Logo' : '商店封面'}
           </h3>
           
           <div 
-             className="bg-slate-900 overflow-hidden relative mx-auto mb-4 cursor-move border-2 border-slate-200 rounded-lg shadow-inner flex items-center justify-center"
+             className="bg-slate-900 overflow-hidden relative mx-auto mb-4 cursor-move border-2 border-slate-200 rounded-lg shadow-inner flex items-center justify-center touch-none"
              style={{ width: containerW, height: containerH }}
              onMouseDown={handleMouseDown}
              onMouseMove={handleMouseMove}
              onMouseUp={handleMouseUp}
              onMouseLeave={handleMouseUp}
+             onTouchStart={handleTouchStart}
+             onTouchMove={handleTouchMove}
+             onTouchEnd={handleTouchEnd}
           >
-             {/* 這裡的 CSS 必須與 Canvas 的繪製邏輯對應 (Contain 模式) */}
+             {/* ★ CSS 修正：改用絕對置中 (Absolute Centering)，解決圖片偏右問題 */}
              <img 
                ref={imgRef}
                src={src} 
-               className="max-w-none absolute select-none origin-center"
+               className="absolute select-none pointer-events-none"
                style={{ 
-                 // 使用 transform 進行位移與縮放，確保操作流暢
-                 transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+                 // 將圖片中心點定位到容器中心
+                 top: '50%',
+                 left: '50%',
+                 // 應用位移與縮放 (注意順序：先移動回中心，再偏移，再縮放)
+                 transform: `translate(-50%, -50%) translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+                 
+                 // 限制最大尺寸，並保持比例 (Contain 模式)
                  maxWidth: '100%',
                  maxHeight: '100%',
-                 objectFit: 'contain' // 初始狀態完整顯示
+                 objectFit: 'contain'
                }}
                draggable={false}
              />
@@ -161,7 +198,6 @@ const ImageCropper = ({ src, type, onComplete, onCancel }: { src: string, type: 
 };
 
 const ShopSettings: React.FC<ShopSettingsProps> = ({ user, onUpdateUser }) => {
-  // ★ 修正：確保所有欄位都在初始化狀態中，這樣輸入框才能正確綁定與儲存
   const [formData, setFormData] = useState<Partial<User>>({
     shop_name: user.shop_name || user.name,
     shop_description: user.shop_description || '',
@@ -178,7 +214,6 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, onUpdateUser }) => {
   // 裁切視窗狀態
   const [cropModal, setCropModal] = useState<{ isOpen: boolean, src: string, type: 'logo' | 'banner' }>({ isOpen: false, src: '', type: 'logo' });
 
-  // ★ 修正：當 user prop 更新時 (例如儲存後或重新整理)，同步更新表單狀態
   useEffect(() => {
     setFormData(prev => ({
       ...prev,
@@ -202,9 +237,7 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, onUpdateUser }) => {
     const reader = new FileReader();
     reader.onloadend = () => {
       if (reader.result) {
-        // 開啟裁切 Modal
         setCropModal({ isOpen: true, src: reader.result as string, type: field });
-        // 清空 input 避免重複選同一張不觸發
         if (field === 'logo' && logoInputRef.current) logoInputRef.current.value = '';
         if (field === 'banner' && bannerInputRef.current) bannerInputRef.current.value = '';
       }
@@ -217,7 +250,6 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, onUpdateUser }) => {
      setCropModal({ isOpen: false, src: '', type: 'logo' });
   };
 
-  // 點擊現有圖片進行重新編輯
   const handleEditExisting = (field: 'logo' | 'banner') => {
       const currentSrc = formData[field];
       if (currentSrc) { 
@@ -241,7 +273,7 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, onUpdateUser }) => {
   };
 
   return (
-    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8">
+    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 md:p-8">
       <h2 className="text-2xl font-black text-slate-800 mb-8 border-l-4 border-[#EE4D2D] pl-4">商店設定</h2>
       
       {/* 裁切 Modal */}
@@ -260,7 +292,7 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, onUpdateUser }) => {
           <label className="block text-sm font-bold text-slate-700 mb-2">商店 Logo</label>
           <div className="flex items-center gap-6">
             <div 
-               className="w-24 h-24 rounded-full border-2 border-slate-100 overflow-hidden bg-slate-50 relative group cursor-pointer"
+               className="w-24 h-24 rounded-full border-2 border-slate-100 overflow-hidden bg-slate-50 relative group cursor-pointer shrink-0"
                onClick={() => formData.logo ? handleEditExisting('logo') : logoInputRef.current?.click()}
                title="點擊編輯圖片"
             >
@@ -269,12 +301,12 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, onUpdateUser }) => {
                 <i className="fa-solid fa-pen-to-square text-white"></i>
               </div>
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <button onClick={() => logoInputRef.current?.click()} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-bold hover:bg-slate-50 transition">
                 上傳圖片
               </button>
               <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={e => e.target.files?.[0] && handleImageSelect(e.target.files[0], 'logo')} />
-              <p className="text-xs text-slate-400 mt-2">建議尺寸: 800x800px (1:1), 支援 JPG/PNG。點擊圖片可重新裁切。</p>
+              <p className="text-xs text-slate-400 mt-2 break-words">建議尺寸: 800x800px (1:1), 支援 JPG/PNG。點擊圖片可重新裁切。</p>
             </div>
           </div>
         </div>
@@ -282,21 +314,22 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, onUpdateUser }) => {
         {/* Banner Setting */}
         <div>
            <label className="block text-sm font-bold text-slate-700 mb-2">商店封面 (Banner)</label>
+           
+           {/* ★ 修正：將固定高度改為 aspect-[4/1] 確保比例固定，完整顯示裁切後的圖片 */}
            <div 
-              className="w-full h-40 rounded-xl border-2 border-slate-100 overflow-hidden bg-slate-50 relative group cursor-pointer"
+              className="w-full aspect-[4/1] rounded-xl border-2 border-slate-100 overflow-hidden bg-slate-50 relative group cursor-pointer"
+              style={{ aspectRatio: '4/1' }} // 加入 inline style 確保相容性
               onClick={() => !formData.banner && bannerInputRef.current?.click()}
               title="點擊編輯圖片"
            >
               <img src={formData.banner || 'https://placehold.co/1200x300'} className="w-full h-full object-cover" />
               
-              {/* 若沒有 Banner，顯示提示層 */}
               {!formData.banner && (
                  <div className="absolute inset-0 flex items-center justify-center bg-black/10 hover:bg-black/20 transition">
                      <span className="text-slate-500 font-bold flex items-center gap-2"><i className="fa-solid fa-upload"></i> 點擊上傳封面</span>
                  </div>
               )}
 
-              {/* 若已有 Banner，顯示操作按鈕 */}
               {formData.banner && (
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center gap-4 opacity-0 group-hover:opacity-100 transition cursor-default">
                       <button 
@@ -325,7 +358,7 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, onUpdateUser }) => {
              <label className="block text-sm font-bold text-slate-700 mb-2">商店名稱 (僅限註冊時設定 / 如需修改請聯繫管理員)</label>
              <input 
                type="text" 
-               className="w-full p-3 border border-slate-200 rounded-xl outline-none bg-slate-100 text-slate-500 cursor-not-allowed"
+               className="w-full p-3 border border-slate-200 rounded-xl outline-none bg-slate-100 text-slate-500 cursor-not-allowed text-sm"
                value={formData.shop_name}
                readOnly 
              />
@@ -333,7 +366,7 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, onUpdateUser }) => {
            <div>
              <label className="block text-sm font-bold text-slate-700 mb-2">商店介紹</label>
              <textarea 
-               className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-[#EE4D2D] h-32 resize-none"
+               className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-[#EE4D2D] h-32 resize-none text-sm"
                value={formData.shop_description}
                onChange={e => setFormData({...formData, shop_description: e.target.value})}
                placeholder="向買家介紹您的商店..."
@@ -344,7 +377,7 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, onUpdateUser }) => {
               <label className="block text-sm font-bold text-slate-700 mb-2">本店位置 (Google Map 網址)</label>
               <input
                 type="text"
-                className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-[#EE4D2D]"
+                className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-[#EE4D2D] text-sm"
                 value={formData.google_map_url}
                 onChange={e => setFormData({...formData, google_map_url: e.target.value})}
                 placeholder="https://maps.app.goo.gl/..."
@@ -406,7 +439,7 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, onUpdateUser }) => {
            <button 
              onClick={handleSave} 
              disabled={loading}
-             className="px-8 py-3 bg-[#EE4D2D] text-white rounded-xl font-bold shadow-lg hover:bg-[#d73211] disabled:opacity-50 transition"
+             className="w-full md:w-auto px-8 py-3 bg-[#EE4D2D] text-white rounded-xl font-bold shadow-lg hover:bg-[#d73211] disabled:opacity-50 transition"
            >
              {loading ? '儲存中...' : '儲存設定'}
            </button>

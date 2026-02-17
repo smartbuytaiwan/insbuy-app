@@ -32,8 +32,11 @@ const Shop: React.FC<ShopProps> = ({
 }) => {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   
-  // 熱銷商品模式狀態預設為 true (進入首頁即顯示熱銷)
+  // 熱銷商品模式狀態
   const [isHotMode, setIsHotMode] = useState(true);
+  
+  // 手機版分類下拉選單狀態
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   
   const [sortBy, setSortBy] = useState<'POPULAR' | 'LATEST' | 'SALES' | 'PRICE_ASC' | 'PRICE_DESC'>('LATEST');
   const [minPrice, setMinPrice] = useState('');
@@ -50,12 +53,12 @@ const Shop: React.FC<ShopProps> = ({
     setLocalBanner(currentShop?.banner);
   }, [currentShop]);
 
-  // 如果有搜尋字串，自動關閉熱銷模式以顯示搜尋結果
+  // 如果有搜尋字串或進入特定商家，自動關閉熱銷模式
   useEffect(() => {
-    if (searchQuery) {
+    if (searchQuery || currentShop) {
       setIsHotMode(false);
     }
-  }, [searchQuery]);
+  }, [searchQuery, currentShop]);
 
   // 從 URL 獲取初始頁碼
   const getInitialPage = () => {
@@ -139,6 +142,22 @@ const Shop: React.FC<ShopProps> = ({
       });
     });
     return totalSold;
+  };
+
+  // 計算分類下的商品數量 (包含子分類)
+  const getCategoryCount = (categoryId: string) => {
+    if (!currentShop) return 0;
+    const targetIds = [categoryId];
+    // 找出所有子分類
+    const children = [...categories, ...systemCategories]
+        .filter(c => c.parent_id === categoryId)
+        .map(c => c.id);
+    targetIds.push(...children);
+
+    return products.filter(p => 
+        p.shop_id === (currentShop.shop_id || currentShop.id) && 
+        (p.category_ids?.some(id => targetIds.includes(id)) || targetIds.includes(p.category_id || ''))
+    ).length;
   };
 
   const shopDisplayCategories = useMemo(() => {
@@ -337,192 +356,273 @@ const Shop: React.FC<ShopProps> = ({
      else setActiveMobileTab(tab);
   };
 
+  // Toggle Dropdown for Shop Categories (Mobile)
+  const toggleCategoryDropdown = () => setIsCategoryDropdownOpen(!isCategoryDropdownOpen);
+
   return (
     <div className="space-y-6">
       
-      {/* ★ 修改：移除 fixed 設定，改為 relative，實現「往下滑時會消失」的效果，但保持網格排列 */}
-      <div className="md:hidden relative z-40">
-         <div className="bg-white shadow-md">
-             {/* 1. 篩選頁籤 (Category / Region / Price Range) */}
-             <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100 text-sm font-bold text-slate-600">
-                <button 
-                   onClick={() => toggleMobileTab('CATEGORY')} 
-                   className={`py-3 flex items-center justify-center gap-1 bg-white ${activeMobileTab === 'CATEGORY' ? 'text-[#EE4D2D]' : ''}`}
-                >
-                   商品分類 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'CATEGORY' ? 'rotate-180' : ''}`}></i>
-                </button>
-                <button 
-                   onClick={() => toggleMobileTab('REGION')} 
-                   className={`py-3 flex items-center justify-center gap-1 bg-white ${activeMobileTab === 'REGION' ? 'text-[#EE4D2D]' : ''}`}
-                >
-                   區域搜尋 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'REGION' ? 'rotate-180' : ''}`}></i>
-                </button>
-                <button 
-                   onClick={() => toggleMobileTab('PRICE')} 
-                   className={`py-3 flex items-center justify-center gap-1 bg-white ${activeMobileTab === 'PRICE' ? 'text-[#EE4D2D]' : ''}`}
-                >
-                   價格範圍 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'PRICE' ? 'rotate-180' : ''}`}></i>
-                </button>
-             </div>
+      {/* 非商家頁面 (全域搜尋/首頁) 才顯示紅框處的全域搜尋篩選 */}
+      {!currentShop && (
+        <div className="md:hidden relative z-40">
+           <div className="bg-white shadow-md">
+               {/* 1. 篩選頁籤 (Category / Region / Price Range) */}
+               <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100 text-sm font-bold text-slate-600">
+                  <button 
+                     onClick={() => toggleMobileTab('CATEGORY')} 
+                     className={`py-3 flex items-center justify-center gap-1 bg-white ${activeMobileTab === 'CATEGORY' ? 'text-[#EE4D2D]' : ''}`}
+                  >
+                     商品分類 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'CATEGORY' ? 'rotate-180' : ''}`}></i>
+                  </button>
+                  <button 
+                     onClick={() => toggleMobileTab('REGION')} 
+                     className={`py-3 flex items-center justify-center gap-1 bg-white ${activeMobileTab === 'REGION' ? 'text-[#EE4D2D]' : ''}`}
+                  >
+                     區域搜尋 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'REGION' ? 'rotate-180' : ''}`}></i>
+                  </button>
+                  <button 
+                     onClick={() => toggleMobileTab('PRICE')} 
+                     className={`py-3 flex items-center justify-center gap-1 bg-white ${activeMobileTab === 'PRICE' ? 'text-[#EE4D2D]' : ''}`}
+                  >
+                     價格範圍 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'PRICE' ? 'rotate-180' : ''}`}></i>
+                  </button>
+               </div>
 
-             {/* 2. 手機版排序功能 (Sorting Options) - 保持 Grid 網格佈局 (不超出螢幕) */}
-             <div className="p-2 bg-slate-50 border-b border-slate-100">
-                 <div className="grid grid-cols-4 gap-1">
-                     {[
-                       { id: 'POPULAR', label: '綜合排名' },
-                       { id: 'LATEST', label: '最新上架' },
-                       { id: 'SALES', label: '最熱銷' },
-                     ].map(opt => (
-                       <button 
-                         key={opt.id}
-                         onClick={() => setSortBy(opt.id as any)}
-                         className={`w-full py-1.5 rounded text-[11px] font-bold transition flex items-center justify-center px-0 ${sortBy === opt.id ? 'bg-[#EE4D2D] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
-                       >
-                         {opt.label}
-                       </button>
-                     ))}
-                     <div className="relative">
-                        <select 
-                            className={`w-full py-1.5 pl-1 pr-3 rounded text-[11px] font-bold outline-none border border-slate-200 appearance-none text-center ${sortBy.includes('PRICE') ? 'bg-[#EE4D2D] text-white border-[#EE4D2D]' : 'bg-white text-slate-600'}`}
-                            onChange={(e) => setSortBy(e.target.value as any)}
-                            value={sortBy.includes('PRICE') ? sortBy : ''}
-                        >
-                            <option value="" disabled hidden>價格排序</option>
-                            <option value="PRICE_ASC" className="text-slate-800 bg-white">價格:低到高</option>
-                            <option value="PRICE_DESC" className="text-slate-800 bg-white">價格:高到低</option>
-                        </select>
-                        {/* Custom Arrow for Select */}
-                        <i className={`fa-solid fa-caret-down absolute right-1 top-1/2 -translate-y-1/2 text-[10px] pointer-events-none ${sortBy.includes('PRICE') ? 'text-white' : 'text-slate-400'}`}></i>
-                     </div>
-                 </div>
-             </div>
-
-             {/* 手機版 下拉內容區域 (Dropdown Content) */}
-             {activeMobileTab && (
-                <div className="absolute top-full left-0 right-0 bg-white shadow-xl border-t border-slate-100 p-4 animate-fade-in-down max-h-[60vh] overflow-y-auto z-40">
-                   {/* 1. 商品分類 (網格狀) */}
-                   {activeMobileTab === 'CATEGORY' && (
-                      <div className="grid grid-cols-2 gap-3">
+               {/* 2. 手機版排序功能 */}
+               <div className="p-2 bg-slate-50 border-b border-slate-100">
+                   <div className="grid grid-cols-4 gap-1">
+                       {[
+                         { id: 'POPULAR', label: '綜合排名' },
+                         { id: 'LATEST', label: '最新上架' },
+                         { id: 'SALES', label: '最熱銷' },
+                       ].map(opt => (
                          <button 
-                            onClick={() => { setIsHotMode(true); setSelectedCategoryId(null); setActiveMobileTab(null); }} 
-                            className={`p-3 rounded-lg border text-sm font-bold text-center transition flex items-center justify-center gap-2 ${isHotMode ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
+                           key={opt.id}
+                           onClick={() => setSortBy(opt.id as any)}
+                           className={`w-full py-1.5 rounded text-[11px] font-bold transition flex items-center justify-center px-0 ${sortBy === opt.id ? 'bg-[#EE4D2D] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
                          >
-                            <i className="fa-solid fa-fire text-red-500"></i> 熱銷商品
+                           {opt.label}
                          </button>
-                         <button 
-                            onClick={() => { setIsHotMode(false); setSelectedCategoryId(null); setActiveMobileTab(null); }} 
-                            className={`p-3 rounded-lg border text-sm font-bold text-center transition ${!isHotMode && selectedCategoryId === null ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
-                         >
-                            全部商品
-                         </button>
-                         
-                         {(currentShop ? shopDisplayCategories : systemCategories.filter(c => !c.parent_id)).map(cat => (
-                            <button 
-                               key={cat.id}
-                               onClick={() => { setIsHotMode(false); setSelectedCategoryId(cat.id); setActiveMobileTab(null); }}
-                               className={`p-3 rounded-lg border text-sm font-bold text-center truncate ${!isHotMode && selectedCategoryId === cat.id ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
-                            >
-                               {cat.name}
-                            </button>
-                         ))}
-                      </div>
-                   )}
+                       ))}
+                       <div className="relative">
+                          <select 
+                              className={`w-full py-1.5 pl-1 pr-3 rounded text-[11px] font-bold outline-none border border-slate-200 appearance-none text-center ${sortBy.includes('PRICE') ? 'bg-[#EE4D2D] text-white border-[#EE4D2D]' : 'bg-white text-slate-600'}`}
+                              onChange={(e) => setSortBy(e.target.value as any)}
+                              value={sortBy.includes('PRICE') ? sortBy : ''}
+                          >
+                              <option value="" disabled hidden>價格排序</option>
+                              <option value="PRICE_ASC" className="text-slate-800 bg-white">價格:低到高</option>
+                              <option value="PRICE_DESC" className="text-slate-800 bg-white">價格:高到低</option>
+                          </select>
+                          <i className={`fa-solid fa-caret-down absolute right-1 top-1/2 -translate-y-1/2 text-[10px] pointer-events-none ${sortBy.includes('PRICE') ? 'text-white' : 'text-slate-400'}`}></i>
+                       </div>
+                   </div>
+               </div>
 
-                   {/* 2. 區域搜尋 (Checkbox 列表) */}
-                   {activeMobileTab === 'REGION' && (
-                      <div className="space-y-3">
-                         {allDisplayOrigins.map(origin => (
-                            <label key={origin} className="flex items-center gap-3 p-2 border-b border-slate-50 last:border-0 cursor-pointer">
-                               <input 
-                                  type="checkbox" 
-                                  className="w-5 h-5 accent-[#EE4D2D]"
-                                  checked={selectedOrigins.includes(origin)}
-                                  onChange={(e) => {
-                                     if(e.target.checked) setSelectedOrigins([...selectedOrigins, origin]);
-                                     else setSelectedOrigins(selectedOrigins.filter(o => o !== origin));
-                                  }}
-                               />
-                               <span className="text-slate-700 font-bold">{origin}</span>
-                            </label>
-                         ))}
-                         <button onClick={() => setActiveMobileTab(null)} className="w-full py-2 bg-[#EE4D2D] text-white rounded-lg font-bold mt-2">確認</button>
-                      </div>
-                   )}
+               {/* 手機版 下拉內容區域 */}
+               {activeMobileTab && (
+                  <div className="absolute top-full left-0 right-0 bg-white shadow-xl border-t border-slate-100 p-4 animate-fade-in-down max-h-[60vh] overflow-y-auto z-40">
+                     {activeMobileTab === 'CATEGORY' && (
+                        <div className="grid grid-cols-2 gap-3">
+                           <button 
+                              onClick={() => { setIsHotMode(true); setSelectedCategoryId(null); setActiveMobileTab(null); }} 
+                              className={`p-3 rounded-lg border text-sm font-bold text-center transition flex items-center justify-center gap-2 ${isHotMode ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
+                           >
+                              <i className="fa-solid fa-fire text-red-500"></i> 熱銷商品
+                           </button>
+                           <button 
+                              onClick={() => { setIsHotMode(false); setSelectedCategoryId(null); setActiveMobileTab(null); }} 
+                              className={`p-3 rounded-lg border text-sm font-bold text-center transition ${!isHotMode && selectedCategoryId === null ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
+                           >
+                              全部商品
+                           </button>
+                           
+                           {systemCategories.filter(c => !c.parent_id).map(cat => (
+                              <button 
+                                 key={cat.id}
+                                 onClick={() => { setIsHotMode(false); setSelectedCategoryId(cat.id); setActiveMobileTab(null); }}
+                                 className={`p-3 rounded-lg border text-sm font-bold text-center truncate ${!isHotMode && selectedCategoryId === cat.id ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
+                              >
+                                 {cat.name}
+                              </button>
+                           ))}
+                        </div>
+                     )}
 
-                   {/* 3. 價格範圍 */}
-                   {activeMobileTab === 'PRICE' && (
-                      <div className="space-y-4">
-                         <div className="flex items-center gap-2">
-                            <input 
-                               type="number" 
-                               placeholder="$ 最低" 
-                               className="flex-1 min-w-0 w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:border-[#EE4D2D]"
-                               value={minPrice}
-                               onChange={e => setMinPrice(e.target.value)}
-                            />
-                            <span className="text-slate-300 shrink-0">-</span>
-                            <input 
-                               type="number" 
-                               placeholder="$ 最高" 
-                               className="flex-1 min-w-0 w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:border-[#EE4D2D]"
-                               value={maxPrice}
-                               onChange={e => setMaxPrice(e.target.value)}
-                            />
-                         </div>
-                         <button onClick={() => setActiveMobileTab(null)} className="w-full py-3 bg-[#EE4D2D] text-white rounded-xl font-bold">套用價格篩選</button>
-                      </div>
-                   )}
-                </div>
-             )}
-         </div>
-         {/* 3. 佔位區塊 (Spacer) - 已移除，因為不再使用 fixed */}
-      </div>
+                     {activeMobileTab === 'REGION' && (
+                        <div className="space-y-3">
+                           {allDisplayOrigins.map(origin => (
+                              <label key={origin} className="flex items-center gap-3 p-2 border-b border-slate-50 last:border-0 cursor-pointer">
+                                 <input 
+                                    type="checkbox" 
+                                    className="w-5 h-5 accent-[#EE4D2D]"
+                                    checked={selectedOrigins.includes(origin)}
+                                    onChange={(e) => {
+                                       if(e.target.checked) setSelectedOrigins([...selectedOrigins, origin]);
+                                       else setSelectedOrigins(selectedOrigins.filter(o => o !== origin));
+                                    }}
+                                 />
+                                 <span className="text-slate-700 font-bold">{origin}</span>
+                              </label>
+                           ))}
+                           <button onClick={() => setActiveMobileTab(null)} className="w-full py-2 bg-[#EE4D2D] text-white rounded-lg font-bold mt-2">確認</button>
+                        </div>
+                     )}
+
+                     {activeMobileTab === 'PRICE' && (
+                        <div className="space-y-4">
+                           <div className="flex items-center gap-2">
+                              <input 
+                                 type="number" 
+                                 placeholder="$ 最低" 
+                                 className="flex-1 min-w-0 w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:border-[#EE4D2D]"
+                                 value={minPrice}
+                                 onChange={e => setMinPrice(e.target.value)}
+                              />
+                              <span className="text-slate-300 shrink-0">-</span>
+                              <input 
+                                 type="number" 
+                                 placeholder="$ 最高" 
+                                 className="flex-1 min-w-0 w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:border-[#EE4D2D]"
+                                 value={maxPrice}
+                                 onChange={e => setMaxPrice(e.target.value)}
+                              />
+                           </div>
+                           <button onClick={() => setActiveMobileTab(null)} className="w-full py-3 bg-[#EE4D2D] text-white rounded-xl font-bold">套用價格篩選</button>
+                        </div>
+                     )}
+                  </div>
+               )}
+           </div>
+        </div>
+      )}
 
       {currentShop && (
-        <div className="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-100 animate-fade-in group/banner">
-          {/* Banner 區域 */}
-          <div className="h-32 md:h-48 bg-slate-200 relative bg-cover bg-center transition-all" style={{ backgroundImage: `url(${localBanner || 'https://placehold.co/800x200/orange/white?text=Welcome+Shop'})` }}>
-            <div className="absolute inset-0 bg-black/30"></div>
-          </div>
-          
-          <div className="px-4 md:px-6 pb-6 pt-2 relative flex flex-col md:flex-row items-start md:items-end gap-4 md:gap-6">
-            <div className="relative -mt-12 md:-mt-20 shrink-0">
-              <div className="w-20 h-20 md:w-32 md:h-32 rounded-full border-4 border-white bg-white overflow-hidden shadow-md">
-                <img src={currentShop.logo || 'https://placehold.co/150?text=Logo'} className="w-full h-full object-cover" alt="Shop Logo" />
+        <>
+            <div className="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-100 animate-fade-in group/banner">
+              {/* Banner 區域 */}
+              <div className="h-32 md:h-48 bg-slate-200 relative bg-cover bg-center transition-all" style={{ backgroundImage: `url(${localBanner || 'https://placehold.co/800x200/orange/white?text=Welcome+Shop'})` }}>
+                <div className="absolute inset-0 bg-black/30"></div>
               </div>
-            </div>
-
-            <div className="flex-1 min-w-0 mb-1 w-full">
-              <h1 className="text-xl md:text-2xl font-black text-slate-800 drop-shadow-sm truncate">{currentShop.shop_name || currentShop.name}</h1>
               
-              <div className="text-sm text-slate-500 line-clamp-2 mt-1 max-w-2xl">{currentShop.shop_description || '這個賣家很懶，還沒有撰寫介紹...'}</div>
-              
-              <div className="flex items-center gap-3 mt-3 mb-2 flex-wrap">
-                 {/* Social Links */}
-                 {currentShop.google_map_url && <a href={currentShop.google_map_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center p-1 border border-slate-100"><img src="https://upload.wikimedia.org/wikipedia/commons/a/aa/Google_Maps_icon_%282020%29.svg" className="w-full h-full object-contain" /></a>}
-                 {currentShop.line_url && <a href={currentShop.line_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center p-0.5 border border-slate-100"><img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" className="w-full h-full object-contain" /></a>}
-                 {currentShop.facebook_url && <a href={currentShop.facebook_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center border border-slate-100"><img src="https://upload.wikimedia.org/wikipedia/commons/b/b8/2021_Facebook_icon.svg" className="w-full h-full object-contain" /></a>}
-                 {currentShop.instagram_url && <a href={currentShop.instagram_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center p-0.5 border border-slate-100"><img src="https://upload.wikimedia.org/wikipedia/commons/a/a5/Instagram_icon.png" className="w-full h-full object-contain" /></a>}
-                 {currentShop.threads_url && <a href={currentShop.threads_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center border border-slate-100 overflow-hidden"><img src="https://upload.wikimedia.org/wikipedia/commons/9/9d/Threads_%28app%29_logo.svg" className="w-full h-full object-contain" /></a>}
-              </div>
+              <div className="px-4 md:px-6 pb-6 pt-2 relative flex flex-col md:flex-row items-start md:items-end gap-4 md:gap-6">
+                <div className="relative -mt-12 md:-mt-20 shrink-0">
+                  <div className="w-20 h-20 md:w-32 md:h-32 rounded-full border-4 border-white bg-white overflow-hidden shadow-md">
+                    <img src={currentShop.logo || 'https://placehold.co/150?text=Logo'} className="w-full h-full object-cover" alt="Shop Logo" />
+                  </div>
+                </div>
 
-              <div className="flex flex-wrap gap-4 mt-1 text-xs font-bold text-slate-500">
-                <span className="flex items-center gap-1"><i className="fa-solid fa-star text-yellow-400"></i> {currentShop.stats?.averageRating || '0.0'} 評價</span>
-                <span className="flex items-center gap-1"><i className="fa-solid fa-box text-blue-400"></i> {currentShop.stats?.productCount || 0} 商品</span>
-                <span className="flex items-center gap-1"><i className="fa-solid fa-users text-pink-400"></i> {currentShop.stats?.followerCount || 0} 粉絲</span>
-                <span className="flex items-center gap-1"><i className="fa-regular fa-clock text-green-400"></i> {currentShop.stats?.joinTime || '近期'}加入</span>
+                <div className="flex-1 min-w-0 mb-1 w-full">
+                  <h1 className="text-xl md:text-2xl font-black text-slate-800 drop-shadow-sm truncate">{currentShop.shop_name || currentShop.name}</h1>
+                  
+                  <div className="text-sm text-slate-500 line-clamp-2 mt-1 max-w-2xl">{currentShop.shop_description || '這個賣家很懶，還沒有撰寫介紹...'}</div>
+                  
+                  <div className="flex items-center gap-3 mt-3 mb-2 flex-wrap">
+                     {/* Social Links */}
+                     {currentShop.google_map_url && <a href={currentShop.google_map_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center p-1 border border-slate-100"><img src="https://upload.wikimedia.org/wikipedia/commons/a/aa/Google_Maps_icon_%282020%29.svg" className="w-full h-full object-contain" /></a>}
+                     {currentShop.line_url && <a href={currentShop.line_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center p-0.5 border border-slate-100"><img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" className="w-full h-full object-contain" /></a>}
+                     {currentShop.facebook_url && <a href={currentShop.facebook_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center border border-slate-100"><img src="https://upload.wikimedia.org/wikipedia/commons/b/b8/2021_Facebook_icon.svg" className="w-full h-full object-contain" /></a>}
+                     {currentShop.instagram_url && <a href={currentShop.instagram_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center p-0.5 border border-slate-100"><img src="https://upload.wikimedia.org/wikipedia/commons/a/a5/Instagram_icon.png" className="w-full h-full object-contain" /></a>}
+                     {currentShop.threads_url && <a href={currentShop.threads_url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full shadow-sm hover:scale-110 transition bg-white flex items-center justify-center border border-slate-100 overflow-hidden"><img src="https://upload.wikimedia.org/wikipedia/commons/9/9d/Threads_%28app%29_logo.svg" className="w-full h-full object-contain" /></a>}
+                  </div>
+
+                  <div className="flex flex-wrap gap-4 mt-1 text-xs font-bold text-slate-500">
+                    <span className="flex items-center gap-1"><i className="fa-solid fa-star text-yellow-400"></i> {currentShop.stats?.averageRating || '0.0'} 評價</span>
+                    <span className="flex items-center gap-1"><i className="fa-solid fa-box text-blue-400"></i> {currentShop.stats?.productCount || 0} 商品</span>
+                    <span className="flex items-center gap-1"><i className="fa-solid fa-users text-pink-400"></i> {currentShop.stats?.followerCount || 0} 粉絲</span>
+                    <span className="flex items-center gap-1"><i className="fa-regular fa-clock text-green-400"></i> {currentShop.stats?.joinTime || '近期'}加入</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 shrink-0 w-full md:w-auto mt-4 md:mt-0 flex-nowrap overflow-x-auto pb-1 md:pb-0 no-scrollbar">
+                  <button onClick={() => onFollowShop(currentShop.shop_id || currentShop.id)} className={`flex-1 md:flex-none px-4 py-2 rounded-lg font-bold border transition whitespace-nowrap ${isFollowing ? 'border-slate-200 text-slate-400 bg-slate-100' : 'border-[#EE4D2D] text-[#EE4D2D] hover:bg-[#EE4D2D] hover:text-white'}`}>{isFollowing ? '已關注' : '+ 關注'}</button>
+                  <button onClick={() => onNavigate && onNavigate(View.CHAT, undefined, currentShop.shop_id || currentShop.id)} className="flex-1 md:flex-none px-4 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700 transition whitespace-nowrap"><i className="fa-regular fa-comments mr-2"></i>愛聊</button>
+                  {canRateSeller && (<button onClick={() => setShowRateModal(true)} className="flex-1 md:flex-none px-4 py-2 bg-yellow-400 text-white rounded-lg font-bold hover:bg-yellow-500 transition shadow-sm flex items-center justify-center gap-2 whitespace-nowrap"><i className="fa-solid fa-star"></i> 評分</button>)}
+                  <button onClick={handleShareShop} className="flex-1 md:flex-none px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2 whitespace-nowrap"><i className="fa-solid fa-share-nodes"></i> 分享</button>
+                  <button onClick={() => openReport('SHOP', currentShop.id, currentShop.shop_name || currentShop.name)} className="px-3 py-2 bg-white border border-red-200 text-red-500 rounded-lg font-bold hover:bg-red-50 transition text-xs flex-1 md:flex-none whitespace-nowrap"><i className="fa-solid fa-triangle-exclamation"></i> 檢舉</button>
+                </div>
               </div>
             </div>
 
-            <div className="flex gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0 flex-wrap">
-              <button onClick={() => onFollowShop(currentShop.shop_id || currentShop.id)} className={`flex-1 md:flex-none px-6 py-2 rounded-lg font-bold border transition ${isFollowing ? 'border-slate-200 text-slate-400 bg-slate-100' : 'border-[#EE4D2D] text-[#EE4D2D] hover:bg-[#EE4D2D] hover:text-white'}`}>{isFollowing ? '已關注' : '+ 關注'}</button>
-              <button onClick={() => onNavigate && onNavigate(View.CHAT, undefined, currentShop.shop_id || currentShop.id)} className="flex-1 md:flex-none px-6 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700 transition"><i className="fa-regular fa-comments mr-2"></i>聊聊</button>
-              {canRateSeller && (<button onClick={() => setShowRateModal(true)} className="flex-1 md:flex-none px-4 py-2 bg-yellow-400 text-white rounded-lg font-bold hover:bg-yellow-500 transition shadow-sm flex items-center justify-center gap-2"><i className="fa-solid fa-star"></i> 評分</button>)}
-              <button onClick={handleShareShop} className="flex-1 md:flex-none px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2"><i className="fa-solid fa-share-nodes"></i> 分享</button>
-              <button onClick={() => openReport('SHOP', currentShop.id, currentShop.shop_name || currentShop.name)} className="px-3 py-2 bg-white border border-red-200 text-red-500 rounded-lg font-bold hover:bg-red-50 transition text-xs flex-1 md:flex-none"><i className="fa-solid fa-triangle-exclamation"></i> 檢舉</button>
+            {/* ★ 修改 1: 商家頁面專用 - 分類下拉式選單 (已移除熱銷推薦) */}
+            <div className="md:hidden px-4 mb-4 relative z-30 sticky top-16 mt-4">
+                <button 
+                    onClick={toggleCategoryDropdown}
+                    className="w-full bg-white border border-slate-200 rounded-xl p-3 flex justify-between items-center shadow-sm"
+                >
+                    <span className="font-bold text-slate-700">
+                        {selectedCategoryId 
+                            ? (shopDisplayCategories.find(c => c.id === selectedCategoryId)?.name || '商品分類') 
+                            : isHotMode ? '熱銷推薦' : '全部商品'
+                        }
+                    </span>
+                    <div className="flex items-center gap-2 text-slate-400 text-sm">
+                        <span>{isCategoryDropdownOpen ? '收起' : '選擇分類'}</span>
+                        <i className={`fa-solid fa-chevron-down transition-transform ${isCategoryDropdownOpen ? 'rotate-180' : ''}`}></i>
+                    </div>
+                </button>
+
+                {isCategoryDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-xl overflow-hidden max-h-[60vh] overflow-y-auto animate-fade-in-down mx-4">
+                        {/* Option: 全部商品 */}
+                        <div 
+                            onClick={() => {
+                                setIsHotMode(false);
+                                setSelectedCategoryId(null);
+                                setIsCategoryDropdownOpen(false);
+                            }}
+                            className="flex items-center justify-between p-4 border-b border-slate-50 hover:bg-slate-50 active:bg-slate-100 cursor-pointer"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center text-[#EE4D2D]">
+                                    <i className="fa-solid fa-border-all"></i>
+                                </div>
+                                <span className={`font-bold ${!selectedCategoryId && !isHotMode ? 'text-[#EE4D2D]' : 'text-slate-700'}`}>全部商品</span>
+                            </div>
+                            <span className="text-xs text-slate-400 font-bold">({products.filter(p => p.shop_id === (currentShop.shop_id || currentShop.id)).length})</span>
+                        </div>
+
+                        {/* (已移除) Option: 熱銷推薦 */}
+
+                        {/* Dynamic Categories */}
+                        {shopDisplayCategories.map(cat => {
+                            const count = getCategoryCount(cat.id);
+                            return (
+                                <div 
+                                    key={cat.id}
+                                    onClick={() => {
+                                        setIsHotMode(false);
+                                        setSelectedCategoryId(cat.id);
+                                        setIsCategoryDropdownOpen(false);
+                                    }}
+                                    className="flex items-center justify-between p-4 border-b border-slate-50 hover:bg-slate-50 active:bg-slate-100 cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        {/* Image or Placeholder */}
+                                        <div className="w-10 h-10 rounded-lg bg-slate-100 overflow-hidden shrink-0 border border-slate-200">
+                                            {cat.image ? (
+                                                <img src={cat.image} className="w-full h-full object-cover" alt={cat.name} />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                                    <i className="fa-regular fa-image"></i>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className={`font-bold text-sm ${selectedCategoryId === cat.id ? 'text-[#EE4D2D]' : 'text-slate-700'}`}>
+                                                {cat.name}
+                                            </span>
+                                            <span className="text-xs text-slate-400 font-bold mt-0.5">({count})</span>
+                                        </div>
+                                    </div>
+                                    <i className="fa-solid fa-chevron-right text-slate-300 text-xs"></i>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
-          </div>
-        </div>
+        </>
       )}
       
       {currentShop && activeCategory && (activeCategory.banner || activeCategory.image) && (
@@ -542,13 +642,15 @@ const Shop: React.FC<ShopProps> = ({
               <i className="fa-solid fa-list-ul"></i> 商品分類
             </h3>
             <div className="space-y-1">
-              {/* 電腦版：熱銷商品按鈕 */}
-              <button 
-                onClick={() => { setIsHotMode(true); setSelectedCategoryId(null); }}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${isHotMode ? 'text-[#EE4D2D] bg-[#FFEEEC]' : 'text-slate-600 hover:bg-slate-50'}`}
-              >
-                <i className="fa-solid fa-fire text-red-500"></i> 熱銷商品
-              </button>
+              {/* ★ 修改 2: 電腦版側邊欄 - 如果在商家頁面 (currentShop存在)，則不顯示熱銷商品按鈕 */}
+              {!currentShop && (
+                <button 
+                  onClick={() => { setIsHotMode(true); setSelectedCategoryId(null); }}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${isHotMode ? 'text-[#EE4D2D] bg-[#FFEEEC]' : 'text-slate-600 hover:bg-slate-50'}`}
+                >
+                  <i className="fa-solid fa-fire text-red-500"></i> 熱銷商品
+                </button>
+              )}
               
               <button 
                 onClick={() => { setIsHotMode(false); setSelectedCategoryId(null); }}
