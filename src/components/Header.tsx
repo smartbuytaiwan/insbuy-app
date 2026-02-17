@@ -10,7 +10,7 @@ interface HeaderProps {
   setSearchQuery: (q: string) => void;
   onShowHelp: () => void;
   onSearch: (q: string) => void;
-  onReset?: () => void; // ★ 新增：重置 callback
+  onReset?: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, searchQuery, setSearchQuery, onShowHelp, onSearch, onReset }) => {
@@ -22,41 +22,65 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
     }
   };
 
-  // 保留語音輸入 (這是瀏覽器免費功能，好用且無成本)
+  // ★ 修改：增強語音輸入的相容性 (支援 Chrome, Safari, Edge 等手機瀏覽器)
   const handleVoiceSearch = () => {
-    if (!('webkitSpeechRecognition' in window)) {
-      alert('您的瀏覽器不支援語音輸入，請使用 Chrome 或 Edge。');
+    // 定義瀏覽器語音 API 介面
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert('您的瀏覽器不支援語音輸入功能，建議使用 Chrome、Edge 或 Safari 瀏覽器。');
       return;
     }
 
-    const recognition = new (window as any).webkitSpeechRecognition();
-    recognition.lang = 'zh-TW';
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'zh-TW'; // 設定語言為繁體中文
+      recognition.continuous = false; // 講完一句自動停止
+      recognition.interimResults = false; // 不顯示臨時結果
 
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setSearchQuery(transcript);
-      onSearch(transcript); // 說完話直接搜
-    };
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
 
-    recognition.start();
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+      
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+            setSearchQuery(transcript);
+            onSearch(transcript); // 辨識完成後直接搜尋
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error', event.error);
+        setIsListening(false);
+        if (event.error === 'not-allowed') {
+            alert('請允許瀏覽器使用麥克風權限以進行語音搜尋。');
+        }
+      };
+
+      recognition.start();
+    } catch (e) {
+      console.error(e);
+      alert('語音輸入啟動失敗，請重試。');
+      setIsListening(false);
+    }
   };
 
   return (
     <header className="sticky top-0 z-50 bg-gradient-to-r from-[#EE4D2D] to-[#FF7337] shadow-lg">
       <div className="container mx-auto px-2 md:px-4 h-16 md:h-20 flex items-center justify-between gap-2 md:gap-8">
         
-        {/* Logo: 手機版只顯示圖示，電腦版顯示圖示+文字 */}
+        {/* Logo */}
         <div 
           onClick={() => {
              setSearchQuery('');
-             onSearch(''); // 回首頁並清空搜尋
+             onSearch(''); 
              onNavigate(View.SHOP);
-             if (onReset) onReset(); // ★ 觸發重置 (回到熱銷模式)
+             if (onReset) onReset();
           }}
           className="flex items-center gap-2 cursor-pointer group shrink-0"
         >
@@ -72,7 +96,7 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
           </span>
         </div>
 
-        {/* Search Bar: 手機版全寬顯示，不隱藏 */}
+        {/* Search Bar */}
         <div className="flex-1 max-w-2xl relative transition-all duration-300">
           <input 
             type="text" 
@@ -100,10 +124,9 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
           </div>
         </div>
 
-        {/* Actions: 幫助中心、購物車與登入 */}
+        {/* Actions */}
         <div className="flex items-center gap-2 md:gap-4 shrink-0">
           
-          {/* 幫助中心按鈕 */}
           <button 
             onClick={onShowHelp}
             className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition"

@@ -26,6 +26,10 @@ const BUYER_ORDER_STATUS_OPTIONS = [
 
 const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSellers, siteSettings, onNavigate, onSubmitReview, onUpdateOrderStatus, onUpdateUser, initialTab }) => {
   const [activeTab, setActiveTab] = useState<'ACCOUNT' | 'ORDERS' | 'REPORTS' | 'CREATE_SHOP'>('ACCOUNT');
+  
+  // ★ 新增：手機版導航狀態，預設為 true (顯示選單)
+  const [showMobileMenu, setShowMobileMenu] = useState(true);
+
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('ALL');
   
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
@@ -47,8 +51,13 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
   const [modalContent, setModalContent] = useState<{title: string, content: string} | null>(null);
 
   useEffect(() => {
-    if (initialTab === 'orders' || initialTab === 'ORDERS') setActiveTab('ORDERS');
-    else if (initialTab === 'create_shop' || initialTab === 'CREATE_SHOP') setActiveTab('CREATE_SHOP');
+    if (initialTab === 'orders' || initialTab === 'ORDERS') {
+        setActiveTab('ORDERS');
+        setShowMobileMenu(false); // 若有指定 Tab，手機版直接顯示內容
+    } else if (initialTab === 'create_shop' || initialTab === 'CREATE_SHOP') {
+        setActiveTab('CREATE_SHOP');
+        setShowMobileMenu(false);
+    }
   }, [initialTab]);
 
   const myOrders = useMemo(() => {
@@ -122,7 +131,8 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
         </div>
       )}
 
-      <aside className="w-full md:w-64 space-y-2 shrink-0">
+      {/* ★ 修改：Sidebar 加入響應式隱藏邏輯 */}
+      <aside className={`w-full md:w-64 space-y-2 shrink-0 ${showMobileMenu ? 'block' : 'hidden md:block'}`}>
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 sticky top-24">
           <div className="flex items-center gap-3 mb-6">
             <img src={user.logo || 'https://placehold.co/100'} className="w-10 h-10 rounded-xl object-cover bg-slate-100 border" />
@@ -144,7 +154,10 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
             ].map(item => (
               <button 
                 key={item.id}
-                onClick={() => setActiveTab(item.id as any)}
+                onClick={() => {
+                    setActiveTab(item.id as any);
+                    setShowMobileMenu(false); // ★ 手機版點擊後收起選單
+                }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === item.id ? 'bg-[#EE4D2D] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
               >
                 <i className={`fa-solid ${item.icon} w-5`}></i>
@@ -154,7 +167,10 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
             
             {user.role !== 'SELLER' && (
                 <button 
-                    onClick={() => setActiveTab('CREATE_SHOP')}
+                    onClick={() => {
+                        setActiveTab('CREATE_SHOP');
+                        setShowMobileMenu(false);
+                    }}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'CREATE_SHOP' ? 'bg-green-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                 >
                     <i className="fa-solid fa-store w-5"></i>
@@ -178,7 +194,19 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
         </div>
       </aside>
 
-      <div className="flex-1 space-y-6">
+      {/* ★ 修改：內容區塊加入響應式隱藏邏輯 */}
+      <div className={`flex-1 space-y-6 ${showMobileMenu ? 'hidden md:block' : 'block'}`}>
+
+         {/* ★ 新增：手機版顯示「返回功能選單」按鈕 */}
+         <div className="md:hidden mb-4">
+           <button 
+              onClick={() => setShowMobileMenu(true)}
+              className="flex items-center gap-2 text-slate-600 font-bold bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100"
+           >
+              <i className="fa-solid fa-chevron-left"></i>
+              返回功能選單
+           </button>
+         </div>
 
          {activeTab === 'ACCOUNT' && (
             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8">
@@ -275,11 +303,13 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
                                 {order.items.map((item, idx) => (
                                     <div key={idx} className="flex gap-4">
                                     <div className="w-16 h-16 bg-slate-100 rounded-lg overflow-hidden shrink-0 border border-slate-200">
-                                        <img src={item.image || 'https://placehold.co/100'} className="w-full h-full object-cover" />
+                                        {/* ★ 修正 1：item.image -> item.images?.[0] */}
+                                        <img src={item.images?.[0] || 'https://placehold.co/100'} className="w-full h-full object-cover" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="text-sm font-bold text-slate-800 line-clamp-1">{item.name}</div>
-                                        <div className="text-xs text-slate-500 mt-1">{item.variantName ? `規格: ${item.variantName}` : '單一規格'} x {item.qty}</div>
+                                        {/* ★ 修正 2：item.variantName -> item.selectedVariant */}
+                                        <div className="text-xs text-slate-500 mt-1">{item.selectedVariant ? `規格: ${item.selectedVariant}` : '單一規格'} x {item.qty}</div>
                                     </div>
                                     <div className="text-right">
                                         <div className="text-sm font-black text-slate-700">${item.price.toLocaleString()}</div>

@@ -62,7 +62,7 @@ const App: React.FC = () => {
   // 功能按鈕展開狀態
   const [isFabOpen, setIsFabOpen] = useState(false);
   
-  // ★ 新增：商店重置 Key，用於強制刷新 Shop 元件回到預設狀態
+  // 商店重置 Key，用於強制刷新 Shop 元件回到預設狀態
   const [shopRefreshKey, setShopRefreshKey] = useState(0);
 
   const [viewedOrderIds, setViewedOrderIds] = useState<string[]>(() => {
@@ -73,6 +73,16 @@ const App: React.FC = () => {
       return [];
     }
   });
+
+  // ★ 新增：當彈窗內容變更時，自動捲動到最上方
+  useEffect(() => {
+    if (modalContent) {
+      const modalContainer = document.getElementById('modal-scroll-container');
+      if (modalContainer) {
+        modalContainer.scrollTop = 0;
+      }
+    }
+  }, [modalContent]);
 
   const handleMarkAsViewed = (orderId: string) => {
     if (!viewedOrderIds.includes(orderId)) {
@@ -228,7 +238,7 @@ const App: React.FC = () => {
            
            if (m.isRead) return false;
 
-           // ★ 嚴格檢查本地最後讀取時間
+           // 嚴格檢查本地最後讀取時間
            const lastRead = localStorage.getItem(`insbuy_last_read_${myId}_${m.senderId}`);
            if (lastRead && new Date(m.timestamp) <= new Date(lastRead)) {
                return false; 
@@ -505,7 +515,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F5F5F5]">
+    <div className="min-h-screen flex flex-col bg-[#F5F5F5] overflow-x-hidden w-full relative">
       {toast && (
         <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[1000] px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-fade-in-up border bg-white ${toast.type === 'success' ? 'text-green-600 border-green-100' : 'text-red-600 border-red-100'}`}>
           <i className={`fa-solid ${toast.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}`}></i>
@@ -529,11 +539,13 @@ const App: React.FC = () => {
       {modalContent && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[85vh]">
-            <div className="bg-[#EE4D2D] p-5 flex justify-between items-center text-white">
+            <div className="bg-[#EE4D2D] p-5 flex justify-between items-center text-white shrink-0">
               <h3 className="font-black text-lg">{modalContent.title}</h3>
               <button onClick={() => setModalContent(null)}><i className="fa-solid fa-xmark"></i></button>
             </div>
-            <div className="p-8 overflow-y-auto whitespace-pre-wrap font-sans text-slate-600">
+            
+            {/* ★ 修改：加入 ID 以便控制滾動，並在底部加入按鈕 */}
+            <div id="modal-scroll-container" className="p-8 overflow-y-auto whitespace-pre-wrap font-sans text-slate-600 flex-1">
                {modalContent.content}
                
                {modalContent.title === '幫助中心' && (
@@ -575,6 +587,18 @@ const App: React.FC = () => {
                      </div>
                   </div>
                )}
+
+               {/* ★ 新增：當是條款類內容時，顯示底部確認按鈕 */}
+               {['服務條款', '隱私權條款', '平台免責聲明'].includes(modalContent.title) && (
+                  <div className="mt-12 pt-6 border-t border-slate-100">
+                     <button 
+                        onClick={() => setModalContent(null)}
+                        className="w-full py-3 bg-[#EE4D2D] text-white rounded-xl font-bold hover:bg-red-600 transition shadow-lg"
+                     >
+                        我已全部了解，回上一頁
+                     </button>
+                  </div>
+               )}
             </div>
           </div>
         </div>
@@ -590,15 +614,20 @@ const App: React.FC = () => {
          setSearchQuery={setSearchQuery} 
          onShowHelp={() => setModalContent({ title: '幫助中心', content: siteSettings.helpCenter || '暫無內容' })} 
          onSearch={handleSearch}
-         onReset={() => setShopRefreshKey(prev => prev + 1)} // ★ 點擊 Logo 時更新 Key
+         onReset={() => setShopRefreshKey(prev => prev + 1)} // 點擊 Logo 時更新 Key
       />
 
-      <main className="container mx-auto px-4 py-8 flex-1 max-w-7xl pb-32">
+      {/* ★ 修改：主要容器間距調整
+          pt-2 pb-8 (手機版)：減少上方 padding 為 2 (約8px)，解決搜尋選項距離過大問題。
+          md:py-8 (電腦版)：維持原本的舒適間距。
+          w-full overflow-hidden：確保子元件不超出寬度。
+      */}
+      <main className="container mx-auto px-4 pt-2 pb-8 md:py-8 flex-1 max-w-7xl w-full overflow-hidden">
         {!isDataLoaded ? (
           <div className="flex justify-center items-center h-64 text-slate-400 font-bold animate-pulse">正在載入資料...</div>
         ) : (
           <>
-            {/* ★ 關鍵：使用 key 強制重置 Shop 元件狀態 */}
+            {/* 關鍵：使用 key 強制重置 Shop 元件狀態 */}
             {view === View.SHOP && <Shop key={currentShopId || `home-${shopRefreshKey}`} products={filteredProducts} categories={categories.filter(c => currentShopId ? c.shop_id === currentShopId : true)} systemCategories={systemCategories} currentShop={currentShop || undefined} currentUser={user} orders={orders} searchQuery={appliedSearch} onOpenProduct={(p) => navigateTo(View.PRODUCT, p)} onFollowShop={handleFollowShop} onNavigate={navigateTo} />}
             
             {view === View.PRODUCT && selectedProduct && (

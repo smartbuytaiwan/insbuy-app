@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Product, Category, User, View, Order, ShopReview } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Product, Category, User, View, Order } from '../types';
 import API from '../api';
 
 interface ShopProps {
@@ -32,7 +32,7 @@ const Shop: React.FC<ShopProps> = ({
 }) => {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   
-  // ★ 修改：熱銷商品模式狀態預設為 true (進入首頁即顯示熱銷)
+  // 熱銷商品模式狀態預設為 true (進入首頁即顯示熱銷)
   const [isHotMode, setIsHotMode] = useState(true);
   
   const [sortBy, setSortBy] = useState<'POPULAR' | 'LATEST' | 'SALES' | 'PRICE_ASC' | 'PRICE_DESC'>('LATEST');
@@ -183,17 +183,14 @@ const Shop: React.FC<ShopProps> = ({
   const displayProducts = useMemo(() => {
     let result = [...products];
 
-    // ★ 修改：熱銷商品優先邏輯
+    // 熱銷商品優先邏輯
     if (isHotMode) {
         // 嚴格篩選：必須有 pin_rank 且 pin_rank 不為 null/undefined 且 pin_rank > 0
-        // 其他沒設定的都不能出現在熱銷商品
         result = result.filter(p => typeof p.pin_rank === 'number' && p.pin_rank !== null && p.pin_rank > 0);
-        
         // 熱銷模式下強制依照 Rank 排序
         result.sort((a, b) => (a.pin_rank || 9999) - (b.pin_rank || 9999));
-        
     } else {
-        // 一般模式 (包含 "全部商品" 或 特定分類)
+        // 一般模式
         if (selectedCategoryId) {
           const targetIds = [selectedCategoryId];
           const children = [...categories, ...systemCategories]
@@ -207,7 +204,6 @@ const Shop: React.FC<ShopProps> = ({
         
         // 一般模式的排序
         result.sort((a, b) => {
-            // Rank 優先 (如果有設定的話，仍然排前面)
             const rankA = (a.pin_rank !== undefined && a.pin_rank !== null) ? a.pin_rank : 9999;
             const rankB = (b.pin_rank !== undefined && b.pin_rank !== null) ? b.pin_rank : 9999;
             
@@ -225,7 +221,7 @@ const Shop: React.FC<ShopProps> = ({
         });
     }
 
-    // 通用篩選 (價格與地區) - 適用於熱銷與一般模式
+    // 通用篩選
     if (minPrice) result = result.filter(p => p.price >= Number(minPrice));
     if (maxPrice) result = result.filter(p => p.price <= Number(maxPrice));
 
@@ -302,15 +298,13 @@ const Shop: React.FC<ShopProps> = ({
       }
   };
 
-  // 判斷是否可以評分
   const canRateSeller = useMemo(() => {
     if (!currentUser || !currentShop) return false;
-    if (currentUser.id === currentShop.id) return false; // 不能評自己
-    // 檢查是否有「已完成」的訂單
+    if (currentUser.id === currentShop.id) return false; 
     return orders.some(o => 
       (o.shop_id === currentShop.shop_id || o.shop_id === currentShop.id) && 
       o.status === 'COMPLETED' && 
-      (o.receiver_phone === currentUser.phone || o.receiver_phone === currentUser.id) // 簡單身分核對
+      (o.receiver_phone === currentUser.phone || o.receiver_phone === currentUser.id) 
     );
   }, [currentUser, currentShop, orders]);
 
@@ -319,27 +313,25 @@ const Shop: React.FC<ShopProps> = ({
     try {
       await API.addShopReview(currentShop.id, {
         userId: currentUser.id,
-        userName: currentUser.shop_name || currentUser.name, // 公布店名或帳號
+        userName: currentUser.shop_name || currentUser.name, 
         rating: ratingVal,
         comment: ratingComment
       });
       alert('評分已送出！');
       setShowRateModal(false);
       setRatingComment('');
-      window.location.reload(); // 簡單重整以顯示最新數據
+      window.location.reload(); 
     } catch (e) {
       alert('評分失敗，請檢查網路連線');
     }
   };
 
-  // 篩選評價
   const filteredReviews = useMemo(() => {
     if (!currentShop || !currentShop.shop_reviews) return [];
     if (reviewFilter === 'ALL') return currentShop.shop_reviews;
     return currentShop.shop_reviews.filter(r => r.rating === parseInt(reviewFilter));
   }, [currentShop, reviewFilter]);
 
-  // 手機版切換標籤 Helper
   const toggleMobileTab = (tab: 'CATEGORY' | 'REGION' | 'PRICE') => {
      if (activeMobileTab === tab) setActiveMobileTab(null);
      else setActiveMobileTab(tab);
@@ -347,6 +339,141 @@ const Shop: React.FC<ShopProps> = ({
 
   return (
     <div className="space-y-6">
+      
+      {/* ★ 修正：使用 fixed 強制釘在 Header 下方，解決 overflow-hidden 導致 sticky 失效的問題 */}
+      <div className="md:hidden">
+         <div className="fixed top-16 left-0 right-0 z-40 bg-white shadow-md">
+             {/* 1. 篩選頁籤 (Category / Region / Price Range) */}
+             <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100 text-sm font-bold text-slate-600">
+                <button 
+                   onClick={() => toggleMobileTab('CATEGORY')} 
+                   className={`py-3 flex items-center justify-center gap-1 bg-white ${activeMobileTab === 'CATEGORY' ? 'text-[#EE4D2D]' : ''}`}
+                >
+                   商品分類 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'CATEGORY' ? 'rotate-180' : ''}`}></i>
+                </button>
+                <button 
+                   onClick={() => toggleMobileTab('REGION')} 
+                   className={`py-3 flex items-center justify-center gap-1 bg-white ${activeMobileTab === 'REGION' ? 'text-[#EE4D2D]' : ''}`}
+                >
+                   區域搜尋 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'REGION' ? 'rotate-180' : ''}`}></i>
+                </button>
+                <button 
+                   onClick={() => toggleMobileTab('PRICE')} 
+                   className={`py-3 flex items-center justify-center gap-1 bg-white ${activeMobileTab === 'PRICE' ? 'text-[#EE4D2D]' : ''}`}
+                >
+                   價格範圍 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'PRICE' ? 'rotate-180' : ''}`}></i>
+                </button>
+             </div>
+
+             {/* 2. 手機版排序功能 (Sorting Options) - 加在這裡確保一起固定 */}
+             <div className="flex items-center gap-2 p-2 bg-slate-50 overflow-x-auto no-scrollbar border-b border-slate-100">
+                 <span className="text-xs font-bold text-slate-400 px-1 shrink-0">排序：</span>
+                 {[
+                   { id: 'POPULAR', label: '綜合排名' },
+                   { id: 'LATEST', label: '最新上架' },
+                   { id: 'SALES', label: '最熱銷' },
+                 ].map(opt => (
+                   <button 
+                     key={opt.id}
+                     onClick={() => setSortBy(opt.id as any)}
+                     className={`px-3 py-1.5 rounded text-xs font-bold whitespace-nowrap transition shrink-0 ${sortBy === opt.id ? 'bg-[#EE4D2D] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
+                   >
+                     {opt.label}
+                   </button>
+                 ))}
+                 <select 
+                    className={`px-3 py-1.5 rounded text-xs font-bold outline-none border border-slate-200 shrink-0 ${sortBy.includes('PRICE') ? 'bg-[#EE4D2D] text-white border-[#EE4D2D]' : 'bg-white text-slate-600'}`}
+                    onChange={(e) => setSortBy(e.target.value as any)}
+                    value={sortBy.includes('PRICE') ? sortBy : ''}
+                 >
+                    <option value="" disabled hidden>價格排序</option>
+                    <option value="PRICE_ASC" className="text-slate-800 bg-white">價格由低到高</option>
+                    <option value="PRICE_DESC" className="text-slate-800 bg-white">價格由高到低</option>
+                 </select>
+             </div>
+
+             {/* 手機版 下拉內容區域 (Dropdown Content) */}
+             {activeMobileTab && (
+                <div className="absolute top-full left-0 right-0 bg-white shadow-xl border-t border-slate-100 p-4 animate-fade-in-down max-h-[60vh] overflow-y-auto z-40">
+                   {/* 1. 商品分類 (網格狀) */}
+                   {activeMobileTab === 'CATEGORY' && (
+                      <div className="grid grid-cols-2 gap-3">
+                         <button 
+                            onClick={() => { setIsHotMode(true); setSelectedCategoryId(null); setActiveMobileTab(null); }} 
+                            className={`p-3 rounded-lg border text-sm font-bold text-center transition flex items-center justify-center gap-2 ${isHotMode ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
+                         >
+                            <i className="fa-solid fa-fire text-red-500"></i> 熱銷商品
+                         </button>
+                         <button 
+                            onClick={() => { setIsHotMode(false); setSelectedCategoryId(null); setActiveMobileTab(null); }} 
+                            className={`p-3 rounded-lg border text-sm font-bold text-center transition ${!isHotMode && selectedCategoryId === null ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
+                         >
+                            全部商品
+                         </button>
+                         
+                         {(currentShop ? shopDisplayCategories : systemCategories.filter(c => !c.parent_id)).map(cat => (
+                            <button 
+                               key={cat.id}
+                               onClick={() => { setIsHotMode(false); setSelectedCategoryId(cat.id); setActiveMobileTab(null); }}
+                               className={`p-3 rounded-lg border text-sm font-bold text-center truncate ${!isHotMode && selectedCategoryId === cat.id ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
+                            >
+                               {cat.name}
+                            </button>
+                         ))}
+                      </div>
+                   )}
+
+                   {/* 2. 區域搜尋 (Checkbox 列表) */}
+                   {activeMobileTab === 'REGION' && (
+                      <div className="space-y-3">
+                         {allDisplayOrigins.map(origin => (
+                            <label key={origin} className="flex items-center gap-3 p-2 border-b border-slate-50 last:border-0 cursor-pointer">
+                               <input 
+                                  type="checkbox" 
+                                  className="w-5 h-5 accent-[#EE4D2D]"
+                                  checked={selectedOrigins.includes(origin)}
+                                  onChange={(e) => {
+                                     if(e.target.checked) setSelectedOrigins([...selectedOrigins, origin]);
+                                     else setSelectedOrigins(selectedOrigins.filter(o => o !== origin));
+                                  }}
+                               />
+                               <span className="text-slate-700 font-bold">{origin}</span>
+                            </label>
+                         ))}
+                         <button onClick={() => setActiveMobileTab(null)} className="w-full py-2 bg-[#EE4D2D] text-white rounded-lg font-bold mt-2">確認</button>
+                      </div>
+                   )}
+
+                   {/* 3. 價格範圍 */}
+                   {activeMobileTab === 'PRICE' && (
+                      <div className="space-y-4">
+                         <div className="flex items-center gap-2">
+                            <input 
+                               type="number" 
+                               placeholder="$ 最低" 
+                               className="flex-1 min-w-0 w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:border-[#EE4D2D]"
+                               value={minPrice}
+                               onChange={e => setMinPrice(e.target.value)}
+                            />
+                            <span className="text-slate-300 shrink-0">-</span>
+                            <input 
+                               type="number" 
+                               placeholder="$ 最高" 
+                               className="flex-1 min-w-0 w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:border-[#EE4D2D]"
+                               value={maxPrice}
+                               onChange={e => setMaxPrice(e.target.value)}
+                            />
+                         </div>
+                         <button onClick={() => setActiveMobileTab(null)} className="w-full py-3 bg-[#EE4D2D] text-white rounded-xl font-bold">套用價格篩選</button>
+                      </div>
+                   )}
+                </div>
+             )}
+         </div>
+         {/* 3. 佔位區塊 (Spacer) - 防止 fixed 遮擋內容，高度約等於上方 fixed 區塊的高度 (Tab + Sort ~ 90px) */}
+         <div className="h-[96px] w-full"></div>
+      </div>
+
       {currentShop && (
         <div className="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-100 animate-fade-in group/banner">
           {/* Banner 區域 */}
@@ -402,109 +529,6 @@ const Shop: React.FC<ShopProps> = ({
            </div>
         </div>
       )}
-
-      {/* 手機版 3 欄位篩選控制條 (Sticky) */}
-      <div className="md:hidden sticky top-16 z-30 bg-white shadow-sm border-b border-slate-100 -mx-4 px-4">
-         <div className="grid grid-cols-3 divide-x divide-slate-100 text-sm font-bold text-slate-600">
-            <button 
-               onClick={() => toggleMobileTab('CATEGORY')} 
-               className={`py-3 flex items-center justify-center gap-1 ${activeMobileTab === 'CATEGORY' ? 'text-[#EE4D2D]' : ''}`}
-            >
-               商品分類 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'CATEGORY' ? 'rotate-180' : ''}`}></i>
-            </button>
-            <button 
-               onClick={() => toggleMobileTab('REGION')} 
-               className={`py-3 flex items-center justify-center gap-1 ${activeMobileTab === 'REGION' ? 'text-[#EE4D2D]' : ''}`}
-            >
-               區域搜尋 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'REGION' ? 'rotate-180' : ''}`}></i>
-            </button>
-            <button 
-               onClick={() => toggleMobileTab('PRICE')} 
-               className={`py-3 flex items-center justify-center gap-1 ${activeMobileTab === 'PRICE' ? 'text-[#EE4D2D]' : ''}`}
-            >
-               價格範圍 <i className={`fa-solid fa-caret-down transition-transform ${activeMobileTab === 'PRICE' ? 'rotate-180' : ''}`}></i>
-            </button>
-         </div>
-
-         {/* 手機版 下拉內容區域 */}
-         {activeMobileTab && (
-            <div className="absolute top-full left-0 right-0 bg-white shadow-xl border-t border-slate-100 p-4 animate-fade-in-down max-h-[60vh] overflow-y-auto z-40">
-               
-               {/* 1. 商品分類 (網格狀) */}
-               {activeMobileTab === 'CATEGORY' && (
-                  <div className="grid grid-cols-2 gap-3">
-                     <button 
-                        onClick={() => { setIsHotMode(true); setSelectedCategoryId(null); setActiveMobileTab(null); }} 
-                        className={`p-3 rounded-lg border text-sm font-bold text-center transition flex items-center justify-center gap-2 ${isHotMode ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
-                     >
-                        <i className="fa-solid fa-fire text-red-500"></i> 熱銷商品
-                     </button>
-                     <button 
-                        onClick={() => { setIsHotMode(false); setSelectedCategoryId(null); setActiveMobileTab(null); }} 
-                        className={`p-3 rounded-lg border text-sm font-bold text-center transition ${!isHotMode && selectedCategoryId === null ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
-                     >
-                        全部商品
-                     </button>
-                     
-                     {(currentShop ? shopDisplayCategories : systemCategories.filter(c => !c.parent_id)).map(cat => (
-                        <button 
-                           key={cat.id}
-                           onClick={() => { setIsHotMode(false); setSelectedCategoryId(cat.id); setActiveMobileTab(null); }}
-                           className={`p-3 rounded-lg border text-sm font-bold text-center truncate ${!isHotMode && selectedCategoryId === cat.id ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D]' : 'border-slate-200 text-slate-600'}`}
-                        >
-                           {cat.name}
-                        </button>
-                     ))}
-                  </div>
-               )}
-
-               {/* 2. 區域搜尋 (Checkbox 列表) */}
-               {activeMobileTab === 'REGION' && (
-                  <div className="space-y-3">
-                     {allDisplayOrigins.map(origin => (
-                        <label key={origin} className="flex items-center gap-3 p-2 border-b border-slate-50 last:border-0 cursor-pointer">
-                           <input 
-                              type="checkbox" 
-                              className="w-5 h-5 accent-[#EE4D2D]"
-                              checked={selectedOrigins.includes(origin)}
-                              onChange={(e) => {
-                                 if(e.target.checked) setSelectedOrigins([...selectedOrigins, origin]);
-                                 else setSelectedOrigins(selectedOrigins.filter(o => o !== origin));
-                              }}
-                           />
-                           <span className="text-slate-700 font-bold">{origin}</span>
-                        </label>
-                     ))}
-                     <button onClick={() => setActiveMobileTab(null)} className="w-full py-2 bg-[#EE4D2D] text-white rounded-lg font-bold mt-2">確認</button>
-                  </div>
-               )}
-
-               {/* 3. 價格範圍 - ★ 修正：CSS 避免超出螢幕 (min-w-0, flex-1) */}
-               {activeMobileTab === 'PRICE' && (
-                  <div className="space-y-4">
-                     <div className="flex items-center gap-2">
-                        <input 
-                           type="number" 
-                           placeholder="$ 最低" 
-                           className="flex-1 min-w-0 w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:border-[#EE4D2D]"
-                           value={minPrice}
-                           onChange={e => setMinPrice(e.target.value)}
-                        />
-                        <span className="text-slate-300 shrink-0">-</span>
-                        <input 
-                           type="number" 
-                           placeholder="$ 最高" 
-                           className="flex-1 min-w-0 w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:border-[#EE4D2D]"
-                           value={maxPrice}
-                           onChange={e => setMaxPrice(e.target.value)}
-                        />
-                     </div>
-                     <button onClick={() => setActiveMobileTab(null)} className="w-full py-3 bg-[#EE4D2D] text-white rounded-xl font-bold">套用價格篩選</button>
-                  </div>
-               )}
-            </div>
-         )}
-      </div>
 
       <div className="flex flex-col md:flex-row gap-6 items-start">
         {/* 左側邊欄：手機版隱藏 (因為上方已有篩選列)，電腦版顯示 */}
@@ -646,23 +670,28 @@ const Shop: React.FC<ShopProps> = ({
         </aside>
 
         <div className="flex-1 w-full">
-          <div className="bg-slate-100 p-2 rounded-xl flex flex-wrap items-center gap-2 mb-6">
-            <span className="text-xs font-bold text-slate-500 px-2">排序：</span>
-            {[
-              { id: 'POPULAR', label: '綜合排名' },
-              { id: 'LATEST', label: '最新上架' },
-              { id: 'SALES', label: '最熱銷' },
-            ].map(opt => (
-              <button 
-                key={opt.id}
-                onClick={() => setSortBy(opt.id as any)}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition ${sortBy === opt.id ? 'bg-[#EE4D2D] text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-              >
-                {opt.label}
-              </button>
-            ))}
+          {/* ★ 修改 3：電腦版排序功能列 (手機版隱藏，因為已整合到 sticky header) */}
+          <div className="hidden md:flex bg-slate-100 p-2 rounded-xl flex-col md:flex-row md:items-center gap-2 mb-6">
+            {/* Mobile: Horizontal scrollable container */}
+            <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">
+               <span className="text-xs font-bold text-slate-500 px-2 shrink-0">排序：</span>
+               {[
+                 { id: 'POPULAR', label: '綜合排名' },
+                 { id: 'LATEST', label: '最新上架' },
+                 { id: 'SALES', label: '最熱銷' },
+               ].map(opt => (
+                 <button 
+                   key={opt.id}
+                   onClick={() => setSortBy(opt.id as any)}
+                   className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition shrink-0 ${sortBy === opt.id ? 'bg-[#EE4D2D] text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                 >
+                   {opt.label}
+                 </button>
+               ))}
+            </div>
+            
             <select 
-              className={`px-4 py-2 rounded-lg text-xs font-bold outline-none cursor-pointer ${sortBy.includes('PRICE') ? 'bg-[#EE4D2D] text-white' : 'bg-white text-slate-600'}`}
+              className={`w-full md:w-auto px-4 py-2 rounded-lg text-xs font-bold outline-none cursor-pointer ${sortBy.includes('PRICE') ? 'bg-[#EE4D2D] text-white' : 'bg-white text-slate-600'}`}
               onChange={(e) => setSortBy(e.target.value as any)}
               value={sortBy.includes('PRICE') ? sortBy : ''}
             >
@@ -720,7 +749,6 @@ const Shop: React.FC<ShopProps> = ({
                             className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                           />
                         )}
-                        {/* 僅在有設定 Rank 的商品上顯示「Rank」標籤 */}
                         {product.pin_rank && product.pin_rank > 0 && (
                           <div className="absolute top-2 left-2 bg-[#EE4D2D] text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm">
                             NO.{product.pin_rank}
