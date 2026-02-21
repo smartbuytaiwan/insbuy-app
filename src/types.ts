@@ -61,12 +61,13 @@ export interface Product {
   is_pinned?: boolean;
   pin_rank?: number; // 1-99
   origin?: string;
-  // ★ 新增：詳細出貨地點 (如：台北市中山區)
-  shipping_origin?: string;
-  // ★ 新增：SEO 關鍵字
-  keywords?: string[];
+  shipping_origin?: string; 
+  keywords?: string[]; 
   questions?: { title: string, required: boolean }[];
   reviews?: Review[];
+  is_preorder?: boolean; // ★ 修復預購欄位
+  preorder_end_date?: string; // ★ 修復預購日期
+  preorder_arrival_date?: string; // ★ 修復預計到貨日
 }
 
 export interface OrderItem extends Product {
@@ -78,22 +79,23 @@ export interface OrderItem extends Product {
 
 export interface Order {
   id: string;
-  items: OrderItem[];
+  items: CartItem[];
   total_amount: number;
   shipping_fee: number;
-  payment_method: 'TRANSFER' | 'COD' | 'CASH';
+  payment_method: string;
   status: 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED';
   cancellation_reason?: string;
-  seller_note?: string; 
+  seller_note?: string;
   created_at: string;
   receiver_name: string;
   receiver_phone: string;
   ship_method: string;
-  store_name?: string; 
-  payment_note?: string; 
-  remarks?: string; 
-  answers?: { question: string, answer: string }[]; 
-  shop_id: string; 
+  store_name: string;
+  payment_note?: string;
+  remarks?: string;
+  answers?: { question: string, answer: string }[];
+  shop_id: string;
+  affiliate_info?: any; // ★ 修復：加入分潤資訊的型別
 }
 
 export interface CartItem extends Product {
@@ -101,6 +103,7 @@ export interface CartItem extends Product {
   selectedVariant?: string;
   // ★ 修正：加入 finalPrice 以解決 Checkout.tsx 的錯誤
   finalPrice: number;
+  isReviewed?: boolean;
 }
 
 export interface User {
@@ -111,6 +114,7 @@ export interface User {
   password?: string; 
   role: 'BUYER' | 'SELLER' | 'ADMIN' | 'PERMISSION_EDITOR';
   level: number;
+  level_expire_at?: string; // ★ 補上缺少的到期日定義
   shop_id?: string;
   shop_name?: string;
   shop_description?: string;
@@ -167,6 +171,11 @@ export interface LevelConfig {
   can_edit_active_product: boolean;
   point_feedback_rate: number;
   discount_rate: number;
+  can_use_preorder: boolean;
+  max_drafts: number;
+  can_view_stats: boolean;
+  can_edit_banner: boolean;
+  can_edit_logo: boolean;
 }
 
 export interface SiteSettings {
@@ -206,7 +215,8 @@ export enum View {
   ADMIN_HOME = 'ADMIN_HOME',
   BUYER_DASHBOARD = 'BUYER_DASHBOARD',
   CHAT = 'CHAT',
-  USER_MANAGEMENT = 'USER_MANAGEMENT'
+  USER_MANAGEMENT = 'USER_MANAGEMENT',
+  INFLUENCER_DASHBOARD = 'INFLUENCER_DASHBOARD' // ★ 新增這個網紅後台的路由
 }
 
 export const SYSTEM_CATEGORIES = [
@@ -221,3 +231,39 @@ export const SYSTEM_CATEGORIES = [
   '寵物用品',
   '其他'
 ];
+
+// ==========================================
+// 以下為新增的網紅分潤系統型別定義
+// ==========================================
+export interface Influencer {
+  id: string;
+  account: string;
+  name: string;
+  email: string;
+  phone: string;
+  password?: string;
+  created_at: string;
+}
+
+export interface AffiliateLink {
+  id: string;
+  shop_id: string;
+  influencer_id: string;
+  influencer_name: string;
+  product_id: string;
+  primary_rate: number;
+  secondary_rate: number;
+  code: string;
+  start_date: string; // ★ 修復：活動開始日期
+  end_date: string;   // ★ 修復：活動結束日期
+  created_at: string;
+}
+
+export interface AffiliateClick {
+  id: string;
+  link_id?: string;
+  shop_id: string;
+  influencer_id?: string;
+  code: string;
+  clicked_at: string;
+}

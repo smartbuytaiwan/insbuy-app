@@ -9,6 +9,7 @@ interface ShopProps {
   currentShop?: User; 
   currentUser?: User | null;
   orders?: Order[]; // 接收訂單以計算銷量
+  allSellers?: User[]; // 新增：接收賣家列表以計算等級加權
   searchQuery?: string; // 接收全域搜尋字串，用於自動解除熱銷鎖定
   onOpenProduct: (product: Product) => void;
   onFollowShop: (shopId: string) => void;
@@ -25,6 +26,7 @@ const Shop: React.FC<ShopProps> = ({
   currentShop, 
   currentUser, 
   orders = [],
+  allSellers = [],
   onOpenProduct, 
   onFollowShop,
   onNavigate,
@@ -230,11 +232,19 @@ const Shop: React.FC<ShopProps> = ({
                 return rankA - rankB; 
             }
 
+            // 計算商品加權分數 = 總銷售額(銷量*單價) * 賣家等級
+            const getProductWeight = (prod: Product) => {
+                const seller = allSellers.find(u => u.shop_id === prod.shop_id || u.id === prod.shop_id);
+                const level = seller ? seller.level : 1;
+                const revenue = getSoldData(prod.id) * prod.price;
+                return revenue * level;
+            };
+
             if (sortBy === 'PRICE_ASC') return a.price - b.price;
             if (sortBy === 'PRICE_DESC') return b.price - a.price;
             if (sortBy === 'SALES') return getSoldData(b.id) - getSoldData(a.id);
             if (sortBy === 'LATEST') return (b.id > a.id ? 1 : -1);
-            if (sortBy === 'POPULAR') return getSoldData(b.id) - getSoldData(a.id);
+            if (sortBy === 'POPULAR') return getProductWeight(b) - getProductWeight(a); // 改為加權分數排序
 
             return 0;
         });
@@ -854,12 +864,29 @@ const Shop: React.FC<ShopProps> = ({
                             className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                           />
                         )}
+                        
+                        {/* ★ 新增：預購徽章 (顯示在圖片右上角) */}
+                        {(product as any).is_preorder && (
+                            <div className="absolute top-0 right-0 bg-[#EE4D2D] text-white text-[11px] font-black px-2 py-1.5 rounded-bl-xl shadow-md z-10 flex items-center gap-1">
+                                <i className="fa-solid fa-fire"></i> 熱烈預購中
+                            </div>
+                        )}
+
+                        {/* 原本的熱銷排名標籤 (改為黃色，避免跟預購標籤撞色) */}
                         {product.pin_rank && product.pin_rank > 0 && (
-                          <div className="absolute top-2 left-2 bg-[#EE4D2D] text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm">
+                          <div className="absolute top-2 left-2 bg-yellow-500 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm z-10">
                             NO.{product.pin_rank}
                           </div>
                         )}
+                        
+                        {/* 原本的特價標籤 */}
+                        {product.original_price > product.price && (!product.pin_rank || product.pin_rank === 0) && (
+                          <div className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-black px-2 py-1 rounded shadow-sm z-10">
+                            SALE
+                          </div>
+                        )}
                       </div>
+
                       <div className="p-3 flex flex-col flex-1">
                         <h3 className="text-sm font-bold text-slate-800 line-clamp-2 mb-1 group-hover:text-[#EE4D2D] transition h-10">
                           {product.name}

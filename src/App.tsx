@@ -13,6 +13,7 @@ import BuyerDashboard from './components/BuyerDashboard';
 import ChatRoom from './components/ChatRoom';
 import UserManagement from './components/UserManagement';
 import API from './api';
+import InfluencerDashboard from './components/InfluencerDashboard';
 
 const SYSTEM_ADMIN_USER: User = {
   id: 'ADMIN',
@@ -55,14 +56,14 @@ const App: React.FC = () => {
   const [siteSettings, setSiteSettings] = useState<SiteSettings>({
     termsOfService: '', privacyPolicy: '', disclaimer: '', helpCenter: '', announcement: '', announcementImage: '', announcementActive: false, antiScamMessage: '', registrationEnabled: true
   });
-  const [isDataLoaded, setIsDataLoaded] = useState(false);
+  
+  // 預設為 true，讓 UI 直接顯示，不要等待 API
+  const [isDataLoaded, setIsDataLoaded] = useState(true);
+  
   const [fetchError, setFetchError] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // 功能按鈕展開狀態
   const [isFabOpen, setIsFabOpen] = useState(false);
-  
-  // 商店重置 Key，用於強制刷新 Shop 元件回到預設狀態
   const [shopRefreshKey, setShopRefreshKey] = useState(0);
 
   const [viewedOrderIds, setViewedOrderIds] = useState<string[]>(() => {
@@ -74,7 +75,6 @@ const App: React.FC = () => {
     }
   });
 
-  // ★ 新增：當彈窗內容變更時，自動捲動到最上方
   useEffect(() => {
     if (modalContent) {
       const modalContainer = document.getElementById('modal-scroll-container');
@@ -97,81 +97,74 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
+    const initApp = async () => {
         setFetchError(false);
         const savedUser = localStorage.getItem('insbuy_user');
         if (savedUser) setUser(JSON.parse(savedUser));
         
         const savedCart = localStorage.getItem('insbuy_cart');
         if (savedCart) setCart(JSON.parse(savedCart));
-        
-        try {
-           const sysCatRes = await fetch('http://localhost:3001/api/categories?shop_id=SYSTEM');
-           const sysCats = await sysCatRes.json();
-           if (Array.isArray(sysCats) && sysCats.length > 0) {
-              setSystemCategories(sysCats);
-           } else {
-              const initialSysCats: Category[] = DEFAULT_SYSTEM_STRINGS.map((name, index) => ({
-                id: `sys_${index}`,
-                shop_id: 'SYSTEM',
-                name: name,
-                parent_id: null,
-                type: 'MANUAL',
-                product_ids: [],
-                auto_rules: {},
-                sort_order: index,
-                is_active: true,
-                layout_style: 'STANDARD'
-              }));
-              setSystemCategories(initialSysCats);
-           }
-        } catch (e) {
-           console.warn('Failed to fetch system categories', e);
-        }
 
-        const data = await API.getInitialData();
-        setProducts(data.products);
-        setCategories(data.categories);
-        
-        setAllUsers([...data.users, SYSTEM_ADMIN_USER]);
-        
-        setSiteSettings(data.settings);
-        setPermissions(data.permissions);
-        
-        const orderData = await API.getOrders();
-        setOrders(orderData);
+        // 平行載入所有資料
+        API.getSettings().then(setSiteSettings).catch(console.error);
+        API.getProducts().then(setProducts).catch(console.error);
+        API.getCategories().then(setCategories).catch(console.error);
+        API.getUsers().then(users => {
+            setAllUsers([...users, SYSTEM_ADMIN_USER]);
+            // 確保每次重整頁面時，同步更新當前使用者的最新等級與權限
+            if (savedUser) {
+                const parsedUser = JSON.parse(savedUser);
+                const freshUser = users.find(u => u.id === parsedUser.id);
+                if (freshUser) {
+                    setUser(freshUser);
+                    localStorage.setItem('insbuy_user', JSON.stringify(freshUser));
+                }
+            }
+        }).catch(console.error);
+        API.getPermissions().then(setPermissions).catch(console.error);
+        API.getOrders().then(setOrders).catch(console.error);
 
-        setIsDataLoaded(true);
-      } catch (error) {
-        console.error("Failed to connect to backend:", error);
-        showToast('無法連接伺服器，請確保後端已啟動', 'error');
-        setFetchError(true);
-        setIsDataLoaded(true);
-      }
+        fetch('http://127.0.0.1:3001/api/categories?shop_id=SYSTEM')
+           .then(res => res.json())
+           .then(sysCats => {
+               if (Array.isArray(sysCats) && sysCats.length > 0) {
+                  setSystemCategories(sysCats);
+               } else {
+                  const initialSysCats: Category[] = DEFAULT_SYSTEM_STRINGS.map((name, index) => ({
+                    id: `sys_${index}`,
+                    shop_id: 'SYSTEM',
+                    name: name,
+                    parent_id: null,
+                    type: 'MANUAL',
+                    product_ids: [],
+                    auto_rules: {},
+                    sort_order: index,
+                    is_active: true,
+                    layout_style: 'STANDARD'
+                  }));
+                  setSystemCategories(initialSysCats);
+               }
+           })
+           .catch(() => {});
     };
-    fetchData();
+    initApp();
   }, []);
 
+  // 訂單輪詢：每 60 秒一次
   useEffect(() => {
     if (!user) return; 
-
     const syncOrders = async () => {
       try {
         const latestOrders = await API.getOrders();
         setOrders(latestOrders);
-      } catch (e) {
-        // 靜默失敗
-      }
+      } catch (e) {}
     };
-
-    const intervalId = setInterval(syncOrders, 3000);
+    const intervalId = setInterval(syncOrders, 60000); 
     return () => clearInterval(intervalId);
   }, [user]);
 
   const pendingOrderCount = useMemo(() => {
     if (!user || (user.role !== 'SELLER' && user.role !== 'ADMIN')) return 0;
-    
     return orders.filter(o => {
        const isMyOrder = user.role === 'ADMIN' || o.shop_id === (user.shop_id || user.id);
        const isActive = o.status === 'PENDING' || o.status === 'CONFIRMED';
@@ -181,7 +174,7 @@ const App: React.FC = () => {
   }, [orders, user, viewedOrderIds]);
 
   useEffect(() => {
-    if (isDataLoaded && !fetchError && siteSettings.announcementActive) {
+    if (siteSettings.announcementActive) {
       const today = new Date().toISOString().split('T')[0];
       const lastViewedDate = localStorage.getItem('insbuy_last_announcement_date');
       if (lastViewedDate !== today && (siteSettings.announcement || siteSettings.announcementImage)) {
@@ -190,7 +183,7 @@ const App: React.FC = () => {
         setShowAnnouncement(true);
       }
     }
-  }, [siteSettings, isDataLoaded, fetchError]);
+  }, [siteSettings]);
 
   const handleCloseAnnouncement = () => {
     setShowAnnouncement(false);
@@ -204,23 +197,38 @@ const App: React.FC = () => {
     try {
       localStorage.setItem('insbuy_cart', JSON.stringify(cart));
     } catch (error) {
-      console.error('LocalStorage Quota Exceeded:', error);
-      if (cart.length > 0) {
-        showToast('警告：瀏覽器儲存空間已滿，購物車可能無法保存', 'error');
-      }
+      console.error('LocalStorage Quota Exceeded');
     }
   }, [cart]);
 
+  // ★ 整合愛聊：自動幫忙轉換，找出最原始的帳號 ID
+  const getUnifiedChatId = (id: string, users: User[]) => {
+      const found = users.find(u => u.id === id || u.shop_id === id || u.phone === id);
+      return found ? found.id : id;
+  };
+
+  // ★ 愛聊全域整合：統一轉換為底層帳號 ID
+  const resolveGlobalChatId = (id: string | null, users: User[]) => {
+      if (!id) return null;
+      if (id === 'ADMIN') return id;
+      const found = users.find(u => u.id === id || u.shop_id === id || u.phone === id);
+      return found ? found.id : id;
+  };
+
   useEffect(() => {
     if (chatTarget && user) {
-      const myId = user.shop_id || user.id;
-      API.markMessagesRead(chatTarget, myId).then(() => {
-         const event = new Event('insbuy_message_read');
-         window.dispatchEvent(event);
-      }).catch(() => {});
+      const myId = user.role === 'ADMIN' ? 'ADMIN' : user.id;
+      const trueTarget = resolveGlobalChatId(chatTarget, allUsers);
+      if (trueTarget) {
+          API.markMessagesRead(trueTarget, myId).then(() => {
+             const event = new Event('insbuy_message_read');
+             window.dispatchEvent(event);
+          }).catch(() => {});
+      }
     }
-  }, [chatTarget, user]);
+  }, [chatTarget, user, allUsers]);
 
+  // 訊息輪詢：每 10 秒一次
   useEffect(() => {
     const checkUnread = async () => {
       if (!user) {
@@ -228,34 +236,48 @@ const App: React.FC = () => {
         return;
       }
       try {
-        const myId = user.role === 'ADMIN' ? SYSTEM_ADMIN_USER.id : (user.shop_id || user.id);
+        const myId = user.role === 'ADMIN' ? SYSTEM_ADMIN_USER.id : user.id;
         const allMsgs = await API.getAllUserMessages(myId);
+        const trueTarget = resolveGlobalChatId(chatTarget, allUsers);
         
         const count = allMsgs.filter((m: any) => {
-           if (m.receiverId !== myId) return false;
-           // 正在聊天的對象不計入未讀
-           if (chatTarget && m.senderId === chatTarget) return false;
+           // 1. 確認是傳給我的 (支援買家、賣家ID、手機號碼等多重身分)
+           if (m.receiverId !== myId && m.receiverId !== user?.shop_id && m.receiverId !== user?.phone) return false;
            
+           // 如果後端已註記為已讀，直接略過
            if (m.isRead) return false;
-
-           // 嚴格檢查本地最後讀取時間
-           const lastRead = localStorage.getItem(`insbuy_last_read_${myId}_${m.senderId}`);
-           if (lastRead && new Date(m.timestamp) <= new Date(lastRead)) {
-               return false; 
+           
+           // 2. 收集發送者「所有的可能 ID」(包含原始ID, 商店ID, 手機號碼)
+           const senderObj = allUsers.find(u => u.id === m.senderId || u.shop_id === m.senderId || u.phone === m.senderId);
+           const senderIds = [m.senderId];
+           if (senderObj) {
+               if (senderObj.id) senderIds.push(senderObj.id);
+               if (senderObj.shop_id) senderIds.push(senderObj.shop_id);
+               if (senderObj.phone) senderIds.push(senderObj.phone);
            }
-           return true; 
+           
+           // 3. 如果目前正好點開這個人的對話框，就不算未讀！
+           if (trueTarget && senderIds.includes(trueTarget)) return false;
+           
+           // 4. 終極檢查：檢查本地「所有關聯 ID」的已讀時間
+           const msgTime = new Date(m.timestamp).getTime();
+           for (const sId of senderIds) {
+               const lastRead = localStorage.getItem(`insbuy_last_read_${myId}_${sId}`);
+               if (lastRead && msgTime <= new Date(lastRead).getTime()) {
+                   return false; // 只要有任何一個 ID 顯示已讀，這則訊息就算已讀！
+               }
+           }
+           
+           return true; // 躲過所有檢查的才是真正的未讀
         }).length;
 
         setUnreadCount(count);
-      } catch (e) {
-        // ignore
-      }
+      } catch (e) {}
     };
 
     checkUnread();
-    const interval = setInterval(checkUnread, 3000); 
+    const interval = setInterval(checkUnread, 10000); 
     window.addEventListener('insbuy_message_read', checkUnread);
-
     return () => {
         clearInterval(interval);
         window.removeEventListener('insbuy_message_read', checkUnread);
@@ -269,7 +291,9 @@ const App: React.FC = () => {
       setCurrentShopId(null);
       return;
     }
-    const parts = hash.split('/');
+    // ★ 修復：將網址的路徑與參數 (?ref=...) 分開，避免找錯商品 ID 導致白畫面
+    const pathString = hash.split('?')[0];
+    const parts = pathString.split('/');
     const viewName = parts[0] as View;
     const id = parts[1];
 
@@ -301,22 +325,20 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    if(isDataLoaded) {
-      handleHashRouting(products);
-      const onHashChange = () => handleHashRouting();
+      if(products.length > 0) {
+        handleHashRouting(products);
+      }
+      const onHashChange = () => handleHashRouting(products);
       window.addEventListener('hashchange', onHashChange);
       return () => window.removeEventListener('hashchange', onHashChange);
-    }
-  }, [isDataLoaded, products]);
+  }, [products]);
 
   const navigateTo = (newView: View, product?: Product, targetId?: string) => {
     let hash = `#/${newView}`;
     
     if (product) {
       setSelectedProduct(product);
-      if (newView === View.PRODUCT) {
-         hash += `/${product.id}`;
-      }
+      if (newView === View.PRODUCT) hash += `/${product.id}`;
     }
 
     if (targetId) {
@@ -325,15 +347,12 @@ const App: React.FC = () => {
       else if (newView === View.BUYER_DASHBOARD) setDashboardTab(targetId);
       else if (newView === View.ADMIN_HOME) setAdminTab(targetId);
 
-      if (newView !== View.PRODUCT) {
-           hash += `/${targetId}`;
-      }
+      if (newView !== View.PRODUCT) hash += `/${targetId}`;
     } else if (newView === View.SHOP) {
       setCurrentShopId(null);
-      // 如果回到首頁且沒有指定 ID，清空搜尋
       if (!targetId) {
         setSearchQuery('');
-        setAppliedSearch(''); // 重置搜尋
+        setAppliedSearch(''); 
       }
     }
     
@@ -343,22 +362,15 @@ const App: React.FC = () => {
 
   const handleSearch = async (query: string) => {
     try {
-      setIsDataLoaded(false); 
-      
       setAppliedSearch(query); 
       setSearchQuery(query); 
-      
       setCurrentShopId(null);
       setView(View.SHOP);
-
       const searchResults = await API.getProducts(undefined, query);
-      
       setProducts(searchResults); 
       showToast(query ? `搜尋完成：${query}` : '已顯示所有商品');
     } catch (e) {
       showToast('搜尋發生錯誤', 'error');
-    } finally {
-      setIsDataLoaded(true);
     }
   };
 
@@ -384,7 +396,6 @@ const App: React.FC = () => {
          navigateTo(View.ADMIN_HOME);
          return;
       }
-
       const loggedInUser = await API.login({
         phoneOrEmail: u.phone || u.email,
         password: u.password,
@@ -393,10 +404,8 @@ const App: React.FC = () => {
       setUser(loggedInUser);
       localStorage.setItem('insbuy_user', JSON.stringify(loggedInUser));
       showToast(`歡迎回來，${loggedInUser.name}！`);
-      
       const freshOrders = await API.getOrders();
       setOrders(freshOrders);
-      
       navigateTo((loggedInUser.role === 'SELLER' || loggedInUser.role === 'ADMIN') ? View.ADMIN_HOME : View.SHOP);
     } catch (e: any) {
       showToast(e.response?.data?.message || '帳號或密碼錯誤', 'error');
@@ -441,7 +450,6 @@ const App: React.FC = () => {
     const followerCount = allUsers.filter(u => u.following?.includes(shopId)).length;
     const shopUser = allUsers.find(u => u.shop_id === shopId || u.id === shopId);
     const joinTime = shopUser?.created_at ? calculateJoinTime(shopUser.created_at) : '近期';
-
     return { productCount, ratingCount: totalRatings, averageRating: parseFloat(averageRating), followerCount, responseRate: 95, responseTime: '幾小時內', joinTime };
   };
 
@@ -500,15 +508,27 @@ const App: React.FC = () => {
     return { ...shopUser, stats: { ...shopUser.stats, ...dynamicStats } };
   }, [currentShopId, allUsers, products]);
 
-  const handleUpdateOrderStatus = async (id: string, status: Order['status'], cancellationReason?: string) => {
-    await API.updateOrder(id, status, cancellationReason);
-    setOrders(prev => prev.map(o => o.id === id ? {...o, status, cancellation_reason: cancellationReason} : o));
+  const handleUpdateOrderStatus = async (id: string, status: Order['status'], cancellationReason?: string, sellerNote?: string) => {
+    await API.updateOrder(id, status, cancellationReason, sellerNote);
+    setOrders(prev => prev.map(o => {
+      if (o.id === id) {
+         return {
+            ...o,
+            ...(status !== undefined && { status }),
+            ...(cancellationReason !== undefined && { cancellation_reason: cancellationReason }),
+            ...(sellerNote !== undefined && { seller_note: sellerNote })
+         };
+      }
+      return o;
+    }));
   };
 
+  // 如果後端完全沒回應 (例如沒開)，才顯示錯誤
   if (fetchError) {
     return (
       <div className="min-h-screen flex flex-col bg-[#F5F5F5] items-center justify-center p-8 text-center">
         <h2 className="text-2xl font-bold text-slate-800 mb-2">無法連接到伺服器</h2>
+        <p className="text-slate-500 mb-4">請確認後端程式 (node server.js) 是否正在執行。</p>
         <button onClick={() => window.location.reload()} className="px-8 py-3 bg-[#EE4D2D] text-white rounded-xl font-bold mt-4">重新連線</button>
       </div>
     );
@@ -544,7 +564,6 @@ const App: React.FC = () => {
               <button onClick={() => setModalContent(null)}><i className="fa-solid fa-xmark"></i></button>
             </div>
             
-            {/* ★ 修改：加入 ID 以便控制滾動，並在底部加入按鈕 */}
             <div id="modal-scroll-container" className="p-8 overflow-y-auto whitespace-pre-wrap font-sans text-slate-600 flex-1">
                {modalContent.content}
                
@@ -588,7 +607,6 @@ const App: React.FC = () => {
                   </div>
                )}
 
-               {/* ★ 新增：當是條款類內容時，顯示底部確認按鈕 */}
                {['服務條款', '隱私權條款', '平台免責聲明'].includes(modalContent.title) && (
                   <div className="mt-12 pt-6 border-t border-slate-100">
                      <button 
@@ -604,7 +622,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Header 接收 searchQuery (輸入框顯示) 與 handleSearch (按下搜尋) */}
       <Header 
          user={user} 
          cartCount={cart.length} 
@@ -614,21 +631,13 @@ const App: React.FC = () => {
          setSearchQuery={setSearchQuery} 
          onShowHelp={() => setModalContent({ title: '幫助中心', content: siteSettings.helpCenter || '暫無內容' })} 
          onSearch={handleSearch}
-         onReset={() => setShopRefreshKey(prev => prev + 1)} // 點擊 Logo 時更新 Key
+         onReset={() => setShopRefreshKey(prev => prev + 1)} 
       />
 
-      {/* ★ 修改：主要容器間距調整
-          pt-2 pb-8 (手機版)：減少上方 padding 為 2 (約8px)，解決搜尋選項距離過大問題。
-          md:py-8 (電腦版)：維持原本的舒適間距。
-          w-full overflow-hidden：確保子元件不超出寬度。
-      */}
       <main className="container mx-auto px-4 pt-2 pb-8 md:py-8 flex-1 max-w-7xl w-full overflow-hidden">
-        {!isDataLoaded ? (
-          <div className="flex justify-center items-center h-64 text-slate-400 font-bold animate-pulse">正在載入資料...</div>
-        ) : (
-          <>
-            {/* 關鍵：使用 key 強制重置 Shop 元件狀態 */}
-            {view === View.SHOP && <Shop key={currentShopId || `home-${shopRefreshKey}`} products={filteredProducts} categories={categories.filter(c => currentShopId ? c.shop_id === currentShopId : true)} systemCategories={systemCategories} currentShop={currentShop || undefined} currentUser={user} orders={orders} searchQuery={appliedSearch} onOpenProduct={(p) => navigateTo(View.PRODUCT, p)} onFollowShop={handleFollowShop} onNavigate={navigateTo} />}
+        {/* 取消了 isDataLoaded 的等待畫面，直接渲染內容 */}
+        <>
+            {view === View.SHOP && <Shop key={currentShopId || `home-${shopRefreshKey}`} products={filteredProducts} categories={categories.filter(c => currentShopId ? c.shop_id === currentShopId : true)} systemCategories={systemCategories} currentShop={currentShop || undefined} currentUser={user} orders={orders} allSellers={allUsers.filter(u => u.role === 'SELLER')} searchQuery={appliedSearch} onOpenProduct={(p) => navigateTo(View.PRODUCT, p)} onFollowShop={handleFollowShop} onNavigate={navigateTo} />}
             
             {view === View.PRODUCT && selectedProduct && (
                 <ProductDetail 
@@ -642,7 +651,27 @@ const App: React.FC = () => {
                            navigateTo(View.REGISTER_BUYER);
                            return;
                         }
-                        setCart([...cart, item]); 
+                        
+                        // 檢查購物車內是否已有相同商品與規格
+                        const existingIndex = cart.findIndex(c => c.id === item.id && c.selectedVariant === item.selectedVariant);
+                        const maxStock = item.variants?.find(v => v.name === item.selectedVariant)?.stock || item.total_stock;
+
+                        if (existingIndex > -1) {
+                            const currentQty = cart[existingIndex].qty;
+                            if (currentQty + item.qty > maxStock) {
+                                alert(`庫存不足！該規格目前僅剩 ${maxStock} 件，您購物車中已有 ${currentQty} 件。`);
+                                return;
+                            }
+                            const newCart = [...cart];
+                            newCart[existingIndex].qty += item.qty;
+                            setCart(newCart);
+                        } else {
+                            if (item.qty > maxStock) {
+                                alert(`庫存不足！該規格目前僅剩 ${maxStock} 件`);
+                                return;
+                            }
+                            setCart([...cart, item]); 
+                        }
                         showToast('已加入購物車！'); 
                     }} 
                     onNavigate={navigateTo} 
@@ -655,13 +684,58 @@ const App: React.FC = () => {
               <Cart 
                 items={cart} 
                 allUsers={allUsers} 
-                onUpdateQty={(idx, newQty) => { if (newQty < 1) { setCart(cart.filter((_, i) => i !== idx)); showToast('商品已移除'); } else { const n = [...cart]; n[idx].qty = newQty; setCart(n); } }} 
+                onUpdateQty={(idx, newQty) => { 
+                   if (newQty < 1) { 
+                      setCart(cart.filter((_, i) => i !== idx)); 
+                      showToast('商品已移除'); 
+                   } else { 
+                      const item = cart[idx];
+                      const productInfo = products.find(p => p.id === item.id);
+                      const maxStock = productInfo?.variants?.find(v => v.name === item.selectedVariant)?.stock ?? productInfo?.total_stock ?? item.total_stock;
+                      
+                      if (newQty > maxStock) {
+                          alert(`庫存不足！該規格目前僅剩 ${maxStock} 件`);
+                          return;
+                      }
+                      
+                      const n = [...cart]; 
+                      n[idx].qty = newQty; 
+                      setCart(n); 
+                   } 
+                }} 
                 onRemove={(idx) => { setCart(cart.filter((_, i) => i !== idx)); showToast('商品已移除'); }} 
                 onCheckout={(selectedItems) => { 
+                   // ★ 新增：結帳前加總相同商品規格的數量，進行終極庫存防呆
+                   const sumMap: Record<string, {qty: number, maxStock: number, name: string, variant: string}> = {};
+                   for (const item of selectedItems) {
+                       const key = `${item.id}-${item.selectedVariant || ''}`;
+                       const productInfo = products.find(p => p.id === item.id);
+                       if (!productInfo) {
+                           alert(`商品 [${item.name}] 已失效或下架`);
+                           return;
+                       }
+                       const maxStock = productInfo.variants?.find(v => v.name === item.selectedVariant)?.stock ?? productInfo.total_stock;
+                       
+                       if (!sumMap[key]) {
+                           sumMap[key] = { qty: 0, maxStock, name: item.name, variant: item.selectedVariant || '單一規格' };
+                       }
+                       sumMap[key].qty += item.qty;
+                   }
+                   
+                   // ★ 檢查總數量是否大於庫存
+                   for (const key in sumMap) {
+                       if (sumMap[key].qty > sumMap[key].maxStock) {
+                           alert(`庫存不足！\n商品 [${sumMap[key].name}] - [${sumMap[key].variant}]\n您總共勾選了 ${sumMap[key].qty} 件，但目前庫存僅剩 ${sumMap[key].maxStock} 件。\n請在購物車內調整數量或刪除重複項目後再結帳。`);
+                           return; // 阻擋進入結帳頁面
+                       }
+                   }
+
                    setCheckoutItems(selectedItems);
                    navigateTo(View.CHECKOUT); 
                 }} 
                 onClear={() => { setCart([]); showToast('購物車已清空'); }} 
+                // ★ 修正 1：讓購物車返回上一頁 (利用瀏覽器歷史紀錄，完美記住是從商品還是首頁來的)
+                onCancel={() => window.history.back()} 
               />
             )}
             
@@ -670,6 +744,8 @@ const App: React.FC = () => {
                 cart={checkoutItems.length > 0 ? checkoutItems : cart} 
                 user={user} 
                 products={products} 
+                // ★ 修正 2：傳入 onCancel 給 Checkout，讓它退回購物車
+                onCancel={() => navigateTo(View.CART)} 
                 onSubmit={async (order) => { 
                   try { 
                     await API.createOrder(order); 
@@ -729,6 +805,7 @@ const App: React.FC = () => {
             {view === View.ADMIN_HOME && user && (user.role === 'SELLER' || user.role === 'ADMIN') && (
               <AdminDashboard 
                 user={user} 
+                permissions={permissions}
                 products={user.role === 'ADMIN' ? products : products.filter(p => p.shop_id === (user.shop_id || user.id))} 
                 orders={orders.filter(o => o.shop_id === (user.shop_id || user.id))} 
                 buyOrders={orders.filter(o => o.receiver_phone === user.phone)} 
@@ -738,7 +815,7 @@ const App: React.FC = () => {
                 onUpdateSystemCategories={async (newCats) => { 
                    setSystemCategories(newCats as Category[]);
                    try {
-                       await fetch('http://localhost:3001/api/categories/bulk', {
+                       await fetch('http://127.0.0.1:3001/api/categories/bulk', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ categories: newCats, shopId: 'SYSTEM' })
@@ -748,7 +825,17 @@ const App: React.FC = () => {
                    }
                 }} 
                 onUpdateProducts={async () => { setProducts(await API.getProducts()); }} 
-                onUpdateCategories={async (newCategories) => { try { const freshData = await API.getInitialData(); setCategories(freshData.categories); showToast('分類同步成功'); } catch(e) { showToast('同步失敗','error'); } }} 
+                onUpdateCategories={async (newCategories) => { 
+                   try { 
+                       const shopId = user.shop_id || user.id;
+                       await API.updateCategories(newCategories, shopId); 
+                       const freshCategories = await API.getCategories(); 
+                       setCategories(freshCategories); 
+                       showToast('分類同步成功'); 
+                   } catch(e) { 
+                       showToast('同步失敗','error'); 
+                   } 
+                }}
                 onUpdateUser={async (updatedUser) => { await API.updateUser(updatedUser); const others = allUsers.filter(u => u.id !== updatedUser.id); setAllUsers([...others, updatedUser]); setUser(updatedUser); localStorage.setItem('insbuy_user', JSON.stringify(updatedUser)); }} 
                 onUpdateOrderStatus={handleUpdateOrderStatus} 
                 onNavigate={navigateTo} 
@@ -782,21 +869,20 @@ const App: React.FC = () => {
             {view === View.CHAT && <ChatRoom currentUser={user?.role === 'ADMIN' ? SYSTEM_ADMIN_USER : user} targetId={chatTarget} allUsers={allUsers} currentProduct={selectedProduct} siteSettings={siteSettings} />}
             
             {view === View.USER_MANAGEMENT && <UserManagement currentUser={user} users={allUsers} orders={orders} permissions={permissions} siteSettings={siteSettings} onUpdateUsers={async (updatedUsers) => { setAllUsers([...updatedUsers, SYSTEM_ADMIN_USER]); }} onUpdatePermissions={async (updatedPermissions) => { await API.updatePermissions(updatedPermissions); setPermissions(updatedPermissions); }} onUpdateSiteSettings={async (updatedSettings) => { await API.updateSettings(updatedSettings); setSiteSettings(updatedSettings); }} onNavigate={navigateTo} onUpdateOrderStatus={handleUpdateOrderStatus} />}
+            
+            {/* ★ 網紅專屬後台渲染 */}
+            {view === View.INFLUENCER_DASHBOARD && (
+               <InfluencerDashboard currentUser={user} onNavigate={navigateTo} />
+            )}
           </>
-        )}
       </main>
       
       <div className="fixed bottom-8 right-8 z-[999] flex flex-col gap-4 items-end">
-        {/* 管理員按鈕 (維持獨立) */}
         {user && user.role === 'ADMIN' && <button onClick={() => navigateTo(View.USER_MANAGEMENT)} className="px-4 py-2 bg-slate-800 text-white rounded-full text-[10px] font-black shadow-xl hover:bg-slate-700 transition flex items-center gap-2 mb-2"><i className="fa-solid fa-users-gear"></i> 使用者管理 (ADMIN)</button>}
         
-        {/* 整合功能選單 */}
         <div className="relative flex flex-col items-end gap-3">
-            
-            {/* 展開的子按鈕 */}
             {isFabOpen && (
                <>
-                  {/* 上架按鈕 */}
                   {user && (user.role === 'SELLER' || user.role === 'ADMIN') && (
                     <button 
                         onClick={() => {
@@ -810,7 +896,6 @@ const App: React.FC = () => {
                     </button>
                   )}
 
-                  {/* 訂單通知按鈕 */}
                   {user && (user.role === 'SELLER' || user.role === 'ADMIN') && (
                     <button 
                         onClick={() => {
@@ -825,7 +910,6 @@ const App: React.FC = () => {
                     </button>
                   )}
 
-                  {/* 愛聊按鈕 */}
                   <button 
                       onClick={() => {
                           navigateTo(View.CHAT);
@@ -839,12 +923,10 @@ const App: React.FC = () => {
                </>
             )}
 
-            {/* 主功能開關按鈕 */}
             <button 
                 onClick={() => setIsFabOpen(!isFabOpen)} 
                 className={`w-16 h-16 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.3)] border-4 border-white flex flex-col items-center justify-center text-white hover:scale-110 transition-all z-20 ${isFabOpen ? 'bg-slate-800' : 'primary-gradient'}`}
             >
-              {/* 如果收合時有通知，在主按鈕顯示紅點 */}
               {!isFabOpen && (pendingOrderCount > 0 || unreadCount > 0) && (
                   <div className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full border border-white animate-pulse"></div>
               )}

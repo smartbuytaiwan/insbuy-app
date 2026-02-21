@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { CartItem, User, Order, ShippingRule, BankInfo, Product } from '../types';
+import API from '../api';
 
 interface CheckoutProps {
   cart: CartItem[];
   user: User | null;
   products: Product[]; // ★ 新增：接收最新商品列表以進行庫存檢查
   onSubmit: (order: Order) => void;
+  onCancel: () => void; // ★ 新增：返回上一步的功能
 }
 
-const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit }) => {
+const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onCancel }) => {
   // 檢查是否為純電子商品訂單
   const isDigitalOrder = useMemo(() => cart.every(item => item.product_type === 'DIGITAL'), [cart]);
 
@@ -52,6 +54,48 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit }) =
   // ★ 新增：備註與問卷回答狀態
   const [remarks, setRemarks] = useState('');
   const [answers, setAnswers] = useState<Record<string, string>>({});
+// ==========================================
+  // 分潤系統：計算邏輯
+  // ==========================================
+  const [affiliateData, setAffiliateData] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchAffiliate = async () => {
+       const savedRef = localStorage.getItem('insbuy_affiliate');
+       if (savedRef && cart.length > 0) {
+           try {
+               const parsed = JSON.parse(savedRef);
+               // 檢查期限
+               if (new Date().getTime() > parsed.expiry) {
+                   localStorage.removeItem('insbuy_affiliate');
+                   return;
+               }
+               
+               // 根據購物車第一樣商品的 shop_id 抓取該店家的分潤連結設定
+               // 註：這裡假設購物車都是同一家店的商品 (Cart.tsx 有限制)
+               const shopId = cart[0].shop_id;
+               const links = await API.getAffiliateLinks(shopId);
+               
+               // 找到對應代碼的設定
+               // 找到對應代碼的設定
+               const matchedLink = links.find((l: any) => l.code === parsed.code);
+               if (matchedLink) {
+                   // ★ 檢查專案是否在有效期限內
+                   const today = new Date().toISOString().split('T')[0];
+                   if (today >= matchedLink.start_date && today <= matchedLink.end_date) {
+                       setAffiliateData(matchedLink);
+                       console.log('已套用網紅分潤：', matchedLink.influencer_name);
+                   } else {
+                       console.log('該網紅分潤活動已過期或尚未開始，不計入分潤。');
+                   }
+               }
+           } catch (e) {
+               console.error('分潤讀取失敗', e);
+           }
+       }
+    };
+    fetchAffiliate();
+  }, [cart]);
 
   // 當可用付款方式改變時，重新校正
   useEffect(() => {
@@ -70,11 +114,26 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit }) =
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + item.finalPrice * item.qty, 0), [cart]);
 
+  // 計算運費：包含進階規則 (件數、免運門檻)
   const shippingFee = useMemo(() => {
     if (isDigitalOrder) return 0;
-    const rule = availableRules.find(r => r.name === form.method) || availableRules[0];
-    return rule ? (cartTotal >= rule.free_threshold ? 0 : rule.fee) : 0;
-  }, [form.method, cartTotal, availableRules, isDigitalOrder]);
+    const rule = availableRules.find(r => r.name === form.method); // ★ 修正: 將 selectedShippingMethod 改為 form.method
+    if (!rule) return 0;
+    
+    // 1. 滿額免運檢查
+    if (rule.free_threshold && cartTotal >= rule.free_threshold) return 0; // ★ 修正: 將 totalAmount 改為 cartTotal
+
+    // 2. 幾件收一次運費檢查
+    const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
+    if (rule.limit_qty && rule.limit_qty > 0) {
+        // 例如：limit_qty=4, totalItems=5 -> Math.ceil(5/4) = 2 趟運費
+        const multiples = Math.ceil(totalItems / rule.limit_qty);
+        return rule.fee * multiples;
+    }
+
+    // 3. 預設單趟運費
+    return rule.fee || 0;
+  }, [form.method, cartTotal, availableRules, isDigitalOrder, cart]);
 
   const currentRule = useMemo(() => availableRules.find(r => r.name === form.method) || availableRules[0], [form.method, availableRules]);
 
@@ -124,6 +183,42 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit }) =
             }
         }
     }
+// ★ 分潤金額計算與「歷史快照算式」寫入 (送出前最後確認)
+    let affiliateInfo = null;
+    if (affiliateData) {
+        let totalCommission = 0;
+        const details: any[] = [];
+        
+        cart.forEach(item => {
+            const itemPrice = item.finalPrice || item.price;
+            const itemTotal = itemPrice * item.qty;
+            const isPrimary = item.id === affiliateData.product_id;
+            const rate = isPrimary ? affiliateData.primary_rate : affiliateData.secondary_rate;
+            const commission = Math.round(itemTotal * (rate / 100));
+            
+            totalCommission += commission;
+            // ★ 無論分潤是否為 0，都寫入這項商品的詳細算式快照
+            details.push({
+                name: item.name,
+                price: itemPrice,
+                qty: item.qty,
+                rate: rate,
+                commission: commission
+            });
+        });
+
+        // 只要有觸發分潤連結，就算總分潤為 0 (例如商品全是 0 元)，也把紀錄寫入
+        if (affiliateData.code) {
+            affiliateInfo = {
+                code: affiliateData.code,
+                influencer_id: affiliateData.influencer_id,
+                influencer_name: affiliateData.influencer_name,
+                total_commission: totalCommission,
+                status: 'ESTIMATED',
+                details: details 
+            };
+        }
+    }
 
     // 整理問卷回答
     const formattedAnswers = questions.map(q => ({
@@ -146,7 +241,9 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit }) =
       payment_note: form.payment_note,
       remarks: remarks, // ★ 傳送備註
       answers: formattedAnswers, // ★ 傳送問卷回答
-      shop_id: cart[0].shop_id 
+      shop_id: cart[0].shop_id,
+      // @ts-ignore (忽略型別檢查，因為後端已經支援但前端 types.ts 可能還沒更新)
+      affiliate_info: affiliateInfo
     };
     onSubmit(newOrder);
   };
@@ -178,17 +275,29 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit }) =
         ) : (
           <div className="space-y-4">
             <label className="block text-xs font-black text-slate-500 uppercase tracking-widest">選擇運送方式</label>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {availableRules.map(rule => (
                 <button 
                   key={rule.name} 
                   onClick={() => setForm({...form, method: rule.name})} 
-                  className={`p-4 border-2 rounded-2xl font-black text-xs flex flex-col items-center gap-1 transition-all ${
-                    form.method === rule.name ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D] shadow-md' : 'border-slate-50 text-slate-400 hover:border-slate-100'
+                  className={`p-4 border-2 rounded-2xl font-black text-xs flex flex-col items-center justify-center gap-1.5 transition-all text-center ${
+                    form.method === rule.name ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D] shadow-md' : 'border-slate-50 text-slate-400 hover:border-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  <span>{rule.name}</span>
-                  <span className="text-[9px] opacity-60 font-bold">${rule.fee} / 滿 ${rule.free_threshold} 免運</span>
+                  <span className="text-sm">{rule.name}</span>
+                  <span className={`text-[10px] ${form.method === rule.name ? 'text-[#EE4D2D]' : 'text-slate-500'}`}>單趟 ${rule.fee}</span>
+                  
+                  {/* ★ 顯示免運門檻 */}
+                  {rule.free_threshold > 0 && (
+                      <span className={`text-[9px] px-2 py-0.5 rounded-full ${form.method === rule.name ? 'bg-[#EE4D2D] text-white' : 'bg-slate-200 text-slate-500'}`}>
+                          滿 ${rule.free_threshold} 免運
+                      </span>
+                  )}
+                  
+                  {/* ★ 顯示計件運費規則 */}
+                  {rule.limit_qty && rule.limit_qty > 0 ? (
+                      <span className="text-[9px] opacity-70">每滿 {rule.limit_qty} 件收一筆</span>
+                  ) : null}
                 </button>
               ))}
             </div>
@@ -321,9 +430,22 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit }) =
             </div>
         </div>
 
-        <button onClick={handleSubmit} className="w-full h-16 primary-gradient text-white rounded-[1.5rem] font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all mt-10 text-xl flex items-center justify-center gap-3">
-          <i className="fa-solid fa-check-to-slot"></i> 提交訂單
-        </button>
+        <div className="flex gap-4 mt-10">
+            <button 
+                onClick={onCancel} 
+                className="w-1/3 md:w-40 h-16 bg-white border-2 border-slate-200 text-slate-500 rounded-[1.5rem] font-bold shadow-sm hover:bg-slate-50 active:scale-95 transition-all flex items-center justify-center gap-2"
+            >
+                <i className="fa-solid fa-arrow-left"></i> 回上一步
+            </button>
+            
+            <button 
+                onClick={handleSubmit} 
+                className="flex-1 h-16 primary-gradient text-white rounded-[1.5rem] font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex flex-col items-center justify-center"
+            >
+                <div className="flex items-center gap-2 text-lg md:text-xl"><i className="fa-solid fa-check-to-slot"></i> 提交訂單</div>
+                <div className="text-[10px] md:text-xs opacity-90 font-normal mt-0.5">總計 ${(cartTotal + shippingFee).toLocaleString()} {shippingFee > 0 && `(含運費 $${shippingFee})`}</div>
+            </button>
+        </div>
       </div>
     </div>
   );

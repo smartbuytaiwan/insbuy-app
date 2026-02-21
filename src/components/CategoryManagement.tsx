@@ -18,8 +18,9 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ shopId, categor
   const [tempName, setTempName] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // ★ 新增功能：手動重新整理分類
+// ★ 新增功能：手動重新整理分類
   const handleRefresh = async () => {
+    if (shopId === 'SYSTEM') return; // ★ 防呆：系統分類不呼叫此 API
     try {
       setIsRefreshing(true);
       const freshCategories = await API.getCategories(shopId);
@@ -53,17 +54,20 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ shopId, categor
     const newCategories = [...categories, newCat];
     
     try {
-      // 3. 先更新畫面 (解決消失問題) - 讓使用者覺得反應即時
+      // 3. 先更新畫面 (解決消失問題)
       onUpdateCategories(newCategories);
       
       // 4. 清除輸入狀態
       setAddingState(null);
 
-      // 5. 後端儲存
-      await API.updateCategories(newCategories, shopId);
-      
-      // 6. 確保資料同步 (可選，再次從後端拉取以確保 ID 正確等)
-      // handleRefresh(); 
+      // 5. ★ 防呆：徹底清洗資料，確保不會將 MongoDB 內部的 _id 和 __v 送回後端導致衝突
+      if (shopId !== 'SYSTEM') {
+         const cleanCategories = newCategories.map(c => {
+             const { _id, __v, ...cleanCat } = c as any;
+             return cleanCat;
+         });
+         await API.updateCategories(cleanCategories, shopId);
+      }
     } catch (e) {
       alert('儲存失敗，請檢查網路連線');
       console.error(e);
@@ -87,7 +91,14 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ shopId, categor
     
     try {
       onUpdateCategories(filteredCategories); // 先更新畫面
-      await API.updateCategories(filteredCategories, shopId); // 再存檔
+      // ★ 防呆
+      if (shopId !== 'SYSTEM') {
+         const cleanCategories = filteredCategories.map(c => {
+             const { _id, __v, ...cleanCat } = c as any;
+             return cleanCat;
+         });
+         await API.updateCategories(cleanCategories, shopId);
+      }
     } catch (e) {
       alert('刪除失敗');
     }
@@ -101,7 +112,14 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ shopId, categor
     try {
       onUpdateCategories(updatedCategories);
       setEditingNameId(null);
-      await API.updateCategories(updatedCategories, shopId);
+      // ★ 防呆
+      if (shopId !== 'SYSTEM') {
+         const cleanCategories = updatedCategories.map(c => {
+             const { _id, __v, ...cleanCat } = c as any;
+             return cleanCat;
+         });
+         await API.updateCategories(cleanCategories, shopId);
+      }
     } catch (e) {
       alert('更新失敗');
     }
@@ -136,7 +154,14 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ shopId, categor
       
       try {
         onUpdateCategories(newCategories);
-        await API.updateCategories(newCategories, shopId);
+        // ★ 防呆
+        if (shopId !== 'SYSTEM') {
+           const cleanCategories = newCategories.map(c => {
+               const { _id, __v, ...cleanCat } = c as any;
+               return cleanCat;
+           });
+           await API.updateCategories(cleanCategories, shopId);
+        }
       } catch (e) { /* ignore */ }
     }
   };

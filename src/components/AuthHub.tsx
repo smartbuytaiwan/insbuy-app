@@ -111,6 +111,17 @@ const AuthHub: React.FC<AuthHubProps> = ({ onLogin, onNavigate }) => {
             onClick={() => setShowForgotModal(true)}
           >忘記密碼？</button>
         </div>
+        {/* ★ 新增：網紅後台專屬入口 (僅在商家夥伴分頁顯示) */}
+        {role === 'SELLER' && (
+            <div className="mt-6 pt-5 border-t border-slate-100 text-center animate-fade-in-up">
+                <button
+                    onClick={() => onNavigate('INFLUENCER_DASHBOARD' as View)}
+                    className="text-xs font-black text-[#EE4D2D] hover:text-[#d73211] hover:scale-105 transition-all flex items-center justify-center gap-2 mx-auto bg-orange-50 border border-orange-100 px-6 py-3 rounded-full shadow-sm"
+                >
+                    <i className="fa-solid fa-chart-line text-lg"></i> 網紅夥伴？點此登入成效後台
+                </button>
+            </div>
+        )}
       </div>
       
       <div 

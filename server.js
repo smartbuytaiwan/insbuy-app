@@ -12,15 +12,17 @@ const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI;
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '10mb' }));
 
-// --- Nodemailer Setup ---
 const transporter = nodemailer.createTransport({
   jsonTransport: true 
 });
 
-// --- Database Schemas ---
+const isUrl = (str) => {
+  return typeof str === 'string' && (str.startsWith('http://') || str.startsWith('https://'));
+};
 
+// --- Database Schemas ---
 const messageSchema = new mongoose.Schema({
   senderId: String,
   receiverId: String,
@@ -41,6 +43,7 @@ const userSchema = new mongoose.Schema({
   plain_password: { type: String }, 
   role: String,
   level: Number,
+  level_expire_at: String, // ★ 功能4新增：會員等級到期日
   shop_id: String,
   created_at: String,
   logo: String,
@@ -74,6 +77,9 @@ const productSchema = new mongoose.Schema({
   images: [String],
   price: Number,
   original_price: Number,
+  is_preorder: { type: Boolean, default: false },
+  preorder_end_date: String,
+  preorder_arrival_date: String,
   status: String,
   product_type: String,
   digital_files: [String],
@@ -89,7 +95,7 @@ const productSchema = new mongoose.Schema({
   pin_rank: { type: Number, default: null },
   origin: String,
   shipping_origin: String, 
-  keywords: [String], // ★ 新增關鍵字欄位
+  keywords: [String], 
   questions: [{ title: String, required: Boolean }],
   reviews: [{ id: String, userId: String, userName: String, rating: Number, comment: String, createdAt: String }]
 });
@@ -110,6 +116,15 @@ const orderSchema = new mongoose.Schema({
   store_name: String,
   payment_note: String,
   remarks: String, 
+  // ★ 新增：分潤資訊欄位
+  affiliate_info: {
+    code: String,          
+    influencer_id: String, 
+    influencer_name: String,
+    total_commission: Number, 
+    status: { type: String, default: 'ESTIMATED' },
+    details: Array // ★ 關鍵修復：允許 MongoDB 儲存陣列格式的詳細算式
+  },
   answers: [{ question: String, answer: String }], 
   shop_id: String
 });
@@ -156,7 +171,13 @@ const permissionSchema = new mongoose.Schema({
   max_variants_per_product: Number,
   can_edit_active_product: Boolean,
   point_feedback_rate: Number,
-  discount_rate: Number
+  discount_rate: Number,
+  // 👇 確保下面這五行有確實加進去
+  can_use_preorder: Boolean,
+  max_drafts: Number,
+  can_view_stats: Boolean,
+  can_edit_banner: Boolean,
+  can_edit_logo: Boolean
 });
 
 const reportSchema = new mongoose.Schema({
@@ -181,7 +202,48 @@ const Permission = mongoose.model('Permission', permissionSchema);
 const Message = mongoose.model('Message', messageSchema);
 const Report = mongoose.model('Report', reportSchema);
 
-// --- Helper Functions ---
+// ==========================================
+// --- Affiliate (專業版分潤系統) Schemas & Models ---
+// ==========================================
+
+// 1. 獨立的網紅帳號資料表
+const influencerSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true }, // 系統ID (例: INF-12345)
+  account: { type: String, required: true, unique: true }, // 登入帳號
+  name: String,
+  email: String,
+  phone: String,
+  password: { type: String, required: true },
+  created_at: String
+});
+
+// 2. 分潤專案資料表 (加入開始與結束日期)
+const affiliateLinkSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true },
+  shop_id: String,
+  influencer_id: String, // 綁定 Influencer.id
+  influencer_name: String,
+  product_id: String,
+  primary_rate: Number,
+  secondary_rate: Number,
+  code: { type: String, required: true, unique: true },
+  start_date: String,
+  end_date: String,
+  created_at: String
+});
+
+const affiliateClickSchema = new mongoose.Schema({
+  id: String,
+  link_id: String,
+  shop_id: String,
+  influencer_id: String,
+  code: String,
+  clicked_at: String
+});
+
+const Influencer = mongoose.model('Influencer', influencerSchema);
+const AffiliateLink = mongoose.model('AffiliateLink', affiliateLinkSchema);
+const AffiliateClick = mongoose.model('AffiliateClick', affiliateClickSchema);
 
 const generateNextUserId = async () => {
   const now = new Date();
@@ -189,164 +251,257 @@ const generateNextUserId = async () => {
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
   const datePrefix = `${yyyy}${mm}${dd}`; 
-
-  const lastUser = await User.findOne({ id: { $regex: new RegExp(`^${datePrefix}`) } })
-                             .sort({ id: -1 })
-                             .exec();
-
+  const lastUser = await User.findOne({ id: { $regex: new RegExp(`^${datePrefix}`) } }).sort({ id: -1 }).exec();
   let sequence = 1;
   if (lastUser && lastUser.id) {
     const lastSeqStr = lastUser.id.substring(8); 
     const lastSeq = parseInt(lastSeqStr, 10);
-    if (!isNaN(lastSeq)) {
-      sequence = lastSeq + 1;
-    }
+    if (!isNaN(lastSeq)) sequence = lastSeq + 1;
   }
-
   return `${datePrefix}${String(sequence).padStart(4, '0')}`;
 };
 
 // --- Routes ---
+// ==========================================
+// --- Affiliate (專業版分潤系統) API Routes ---
+// ==========================================
+
+// 網紅註冊 (強化版：精準判斷重複與真實報錯)
+app.post('/api/influencers/register', async (req, res) => {
+  try {
+    const { account, password, name, email, phone } = req.body;
+
+    if (!account || !password || !name || !email || !phone) {
+         return res.status(400).json({ message: '請填寫所有註冊欄位！' });
+    }
+
+    // 嚴格檢查「網紅資料庫」內是否已有重複的 (名稱 / 帳號 / 信箱 / 電話)
+    const existing = await Influencer.findOne({
+         $or: [{ account }, { email }, { phone }, { name }]
+    });
+
+    if (existing) {
+        let conflictField = '資料';
+        if (existing.account === account) conflictField = '登入帳號';
+        else if (existing.name === name) conflictField = '顯示名稱 (頻道名)';
+        else if (existing.email === email) conflictField = '聯絡信箱';
+        else if (existing.phone === phone) conflictField = '手機號碼';
+
+        return res.status(400).json({ message: `此「${conflictField}」已被其他網紅註冊過，請更換！` });
+    }
+
+    // 建立獨立的網紅帳號
+    const newId = `INF-${Math.floor(100000 + Math.random() * 900000)}`;
+    const hashedPw = await bcrypt.hash(password, 10);
+
+    const influencer = new Influencer({
+        id: newId, account, password: hashedPw, name, email, phone, created_at: new Date().toISOString()
+    });
+
+    await influencer.save();
+    res.json(influencer);
+
+  } catch (error) {
+    console.error("網紅註冊發生錯誤:", error);
+    res.status(500).json({ message: '伺服器錯誤，無法註冊: ' + (error.message || '未知錯誤') });
+  }
+});
+
+// 網紅登入
+app.post('/api/influencers/login', async (req, res) => {
+  try {
+    const { account, password } = req.body;
+    const influencer = await Influencer.findOne({ account }).lean();
+    if (!influencer) return res.status(401).json({ message: '帳號或密碼錯誤' });
+    
+    const isValid = await bcrypt.compare(password, influencer.password);
+    if (!isValid) return res.status(401).json({ message: '帳號或密碼錯誤' });
+    
+    delete influencer.password; 
+    res.json(influencer);
+  } catch (error) { res.status(500).json({ message: 'Login failed' }); }
+});
+
+// 賣家建立專案時，透過帳號驗證並取得網紅資料
+app.get('/api/influencers/account/:account', async (req, res) => {
+  try {
+    const influencer = await Influencer.findOne({ account: req.params.account }).select('-password').lean();
+    if (!influencer) return res.status(404).json({ message: '找不到此網紅帳號' });
+    res.json(influencer);
+  } catch (error) { res.status(500).json({ message: 'Error fetching influencer' }); }
+});
+
+// 取得分潤專案 (賣家看自己的)
+app.get('/api/affiliate-links', async (req, res) => {
+  try {
+    const { shop_id } = req.query;
+    const links = await AffiliateLink.find({ shop_id }).sort({ created_at: -1 }).lean();
+    res.json(links);
+  } catch (error) { res.status(500).json({ message: 'Error fetching links' }); }
+});
+
+// 網紅看全站再到前端過濾
+app.get('/api/affiliate-links/all', async (req, res) => {
+  try {
+    const links = await AffiliateLink.find({}).sort({ created_at: -1 }).lean();
+    res.json(links);
+  } catch (error) { res.status(500).json({ message: 'Error fetching links' }); }
+});
+
+// 賣家建立分潤專案
+app.post('/api/affiliate-links', async (req, res) => {
+  try {
+    const existingCode = await AffiliateLink.findOne({ code: req.body.code });
+    if (existingCode) return res.status(400).json({ message: '此專屬代碼已存在，請換一個' });
+    
+    const { influencer_id, start_date, end_date } = req.body;
+    const overlapping = await AffiliateLink.findOne({
+      influencer_id,
+      $or: [
+        { start_date: { $lte: end_date }, end_date: { $gte: start_date } }
+      ]
+    });
+    if (overlapping) return res.status(400).json({ message: '此網紅在該日期區間內已有其他進行中的專案，無法重複建立。' });
+
+    const link = new AffiliateLink({ ...req.body, id: `aff-${Date.now()}`, created_at: new Date().toISOString() });
+    await link.save();
+    res.json(link);
+  } catch (error) { res.status(500).json({ message: 'Create link failed' }); }
+});
+
+// 提前結束分潤活動
+app.put('/api/affiliate-links/:id', async (req, res) => {
+  try {
+    const link = await AffiliateLink.findOneAndUpdate({ id: req.params.id }, req.body, { new: true });
+    res.json(link);
+  } catch (error) { res.status(500).json({ message: 'Update link failed' }); }
+});
+
+app.post('/api/affiliate-clicks', async (req, res) => {
+  try {
+    const click = new AffiliateClick({ ...req.body, id: `clk-${Date.now()}`, clicked_at: new Date().toISOString() });
+    await click.save();
+    res.json(click);
+  } catch (error) { res.status(500).json({ message: 'Record click failed' }); }
+});
+
+app.get('/api/debug/cleanup', async (req, res) => {
+  try {
+    console.log('--- 開始執行深度清理 ---');
+    const users = await User.find({});
+    let uCount = 0;
+    for (const u of users) {
+       let changed = false;
+       if (u.logo && u.logo.length > 500 && !u.logo.startsWith('http')) { u.logo = ''; changed = true; }
+       if (u.banner && u.banner.length > 500 && !u.banner.startsWith('http')) { u.banner = ''; changed = true; }
+       if (changed) { await User.updateOne({ _id: u._id }, { $set: { logo: u.logo, banner: u.banner } }); uCount++; }
+    }
+    const products = await Product.find({});
+    let pCount = 0;
+    for (const p of products) {
+      if (p.images && Array.isArray(p.images)) {
+        const cleanImgs = p.images.filter(img => img && img.startsWith('http') && img.length < 2000);
+        if (cleanImgs.length !== p.images.length) { p.images = cleanImgs; await p.save(); pCount++; }
+      }
+    }
+    const orders = await Order.find({});
+    let oCount = 0;
+    for (const o of orders) {
+      let changed = false;
+      if (o.items && Array.isArray(o.items)) {
+        const newItems = o.items.map(item => {
+          if (item.images && Array.isArray(item.images)) {
+             const cleanImgs = item.images.filter(img => img && img.startsWith('http') && img.length < 2000);
+             if (cleanImgs.length !== item.images.length) { item.images = cleanImgs; changed = true; }
+          }
+          return item;
+        });
+        if (changed) { await Order.updateOne({ _id: o._id }, { $set: { items: newItems } }); oCount++; }
+      }
+    }
+    res.json({ success: true, message: `清理完成: ${uCount} Users, ${pCount} Products, ${oCount} Orders.` });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 app.get('/api/messages', async (req, res) => {
   try {
     const { user1, user2, userId } = req.query;
     if (userId && !user1 && !user2) {
-       const messages = await Message.find({
-         $or: [{ senderId: userId }, { receiverId: userId }]
-       }).sort({ timestamp: 1 });
+       const messages = await Message.find({ $or: [{ senderId: userId }, { receiverId: userId }] }).sort({ timestamp: 1 }).lean(); 
        return res.json(messages);
     }
     if (user1 && user2) {
-      const messages = await Message.find({
-        $or: [
-          { senderId: user1, receiverId: user2 },
-          { senderId: user2, receiverId: user1 }
-        ]
-      }).sort({ timestamp: 1 });
+      const messages = await Message.find({ $or: [{ senderId: user1, receiverId: user2 }, { senderId: user2, receiverId: user1 }] }).sort({ timestamp: 1 }).lean();
       return res.json(messages);
     }
     res.json([]);
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching messages' });
-  }
+  } catch (error) { res.status(500).json({ message: 'Error fetching messages' }); }
 });
 
 app.post('/api/messages', async (req, res) => {
   try {
     const { content, text, ...rest } = req.body;
-    const newMessage = new Message({
-      ...rest,
-      content: content || text
-    });
+    const newMessage = new Message({ ...rest, content: content || text });
     await newMessage.save();
     res.json(newMessage);
-  } catch (e) {
-    res.status(500).json({ message: 'Message send failed' });
-  }
+  } catch (e) { res.status(500).json({ message: 'Message send failed' }); }
 });
 
 app.put('/api/messages/read', async (req, res) => {
   try {
     const { senderId, receiverId } = req.body;
-    await Message.updateMany(
-      { senderId, receiverId, isRead: false },
-      { $set: { isRead: true } }
-    );
+    await Message.updateMany({ senderId, receiverId, isRead: false }, { $set: { isRead: true } });
     res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to mark as read' });
-  }
+  } catch (error) { res.status(500).json({ message: 'Failed to mark as read' }); }
 });
 
-// ★ 修改：純文字搜尋 (無 AI, 無限制, 快速)
 app.get('/api/products', async (req, res) => {
   const { shop_id, q } = req.query;
-  
   try {
-    // 1. 取得停權黑名單
-    const suspendedUsers = await User.find({ is_suspended: true });
-    const suspendedIds = suspendedUsers.map(u => u.id);
-    const suspendedShopIds = suspendedUsers.map(u => u.shop_id).filter(id => id); 
-    const allSuspendedIds = [...suspendedIds, ...suspendedShopIds];
-    
-    // 2. 建立查詢條件
-    let query = {
-      shop_id: { $nin: allSuspendedIds } // 排除停權賣家
-    };
-
-    if (shop_id) {
-      query.shop_id = shop_id;
-    }
-
-    // ★ 關鍵：如果有搜尋詞，使用 Regex 進行模糊搜尋，加入關鍵字搜尋
+    const suspendedUsers = await User.find({ is_suspended: true }).lean();
+    const allSuspendedIds = [...suspendedUsers.map(u => u.id), ...suspendedUsers.map(u => u.shop_id).filter(id => id)];
+    let query = { shop_id: { $nin: allSuspendedIds } };
+    if (shop_id) query.shop_id = shop_id;
     if (q) {
-      console.log(`正在搜尋: ${q}`);
-      const regex = new RegExp(q, 'i'); // 'i' 代表不分大小寫
-      query.$or = [
-        { name: regex },
-        { description: regex },
-        { keywords: regex } // 支援搜尋關鍵字
-      ];
+      const regex = new RegExp(q, 'i');
+      query.$or = [{ name: regex }, { description: regex }, { keywords: regex }];
     }
-
-    // 3. 執行查詢
     const productsQuery = Product.find(query);
-    
-    // 為了效能，如果不是在搜特定店家或關鍵字，限制回傳數量 (預設 100)
-    if (!q && !shop_id) {
-       productsQuery.limit(100); 
-    }
-
-    const products = await productsQuery.exec();
-    
-    // 4. 排序 (有 Pin 的排前面)
-    const activeProducts = products.filter(p => !allSuspendedIds.includes(p.shop_id));
-    activeProducts.sort((a, b) => {
-      const rankA = a.pin_rank !== null && a.pin_rank !== undefined ? a.pin_rank : 9999;
-      const rankB = b.pin_rank !== null && b.pin_rank !== undefined ? b.pin_rank : 9999;
-      return rankA - rankB;
-    });
-
+    if (!q && !shop_id) productsQuery.limit(100);
+    const products = await productsQuery.lean().exec();
+    const cleanProducts = products.map(p => ({
+        ...p,
+        images: p.images ? p.images.filter(img => isUrl(img)) : []
+    }));
+    const activeProducts = cleanProducts.filter(p => !allSuspendedIds.includes(p.shop_id));
+    activeProducts.sort((a, b) => (a.pin_rank || 9999) - (b.pin_rank || 9999));
     res.json(activeProducts);
-  } catch (error) {
-    console.error("Search Error:", error);
-    res.status(500).json({ message: 'Failed to fetch products' });
-  }
+  } catch (error) { res.status(500).json({ message: 'Failed to fetch products' }); }
 });
 
 app.post('/api/products', async (req, res) => {
   try {
-    const productData = req.body;
-    const product = new Product(productData);
+    const product = new Product(req.body);
     await product.save();
     res.json(product);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: 'Create product failed' });
-  }
+  } catch (e) { res.status(500).json({ message: 'Create product failed' }); }
 });
 
 app.put('/api/products/:id', async (req, res) => {
   try {
     const product = await Product.findOneAndUpdate({ id: req.params.id }, req.body, { new: true });
     res.json(product);
-  } catch (e) {
-    res.status(500).json({ message: 'Update failed' });
-  }
+  } catch (e) { res.status(500).json({ message: 'Update failed' }); }
 });
 
 app.patch('/api/products/:id/close', async (req, res) => {
   try {
-    const product = await Product.findOneAndUpdate(
-      { id: req.params.id }, 
-      { status: 'CLOSED' }, 
-      { new: true }
-    );
+    const product = await Product.findOneAndUpdate({ id: req.params.id }, { status: 'CLOSED' }, { new: true });
     res.json(product);
-  } catch (e) {
-    res.status(500).json({ message: '操作失敗' });
-  }
+  } catch (e) { res.status(500).json({ message: 'Failed' }); }
 });
 
 app.delete('/api/products/:id', async (req, res) => {
@@ -358,202 +513,164 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: '此信箱尚未註冊' });
-
-    const pwdToSend = user.plain_password;
-    if (!pwdToSend) {
-      return res.status(400).json({ message: '此為舊帳號，無法還原原始密碼，請聯繫管理員重設。' });
-    }
-
-    const mailOptions = {
-      from: '"InsBuy 客服中心" <service@insbuy.com>',
+    if (!user) return res.status(404).json({ message: 'Not found' });
+    if (!user.plain_password) return res.status(400).json({ message: 'Old account' });
+    await transporter.sendMail({
+      from: '"InsBuy" <service@insbuy.com>',
       to: email,
-      subject: '【InsBuy】您的帳號密碼查詢結果',
-      text: `親愛的用戶您好：\n\n您的密碼為：${pwdToSend}\n\n請登入後儘速修改密碼以保安全。`,
-      html: `<p>親愛的用戶您好：</p><p>您的密碼為：<strong>${pwdToSend}</strong></p><p>請登入後儘速修改密碼以保安全。</p>`
-    };
-
-    const info = await transporter.sendMail(mailOptions);
-    console.log("Email sent info (模擬):", info);
-
-    res.json({ message: '密碼已發送至您的信箱', preview: info });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: '寄信失敗', error });
-  }
+      subject: 'Password Recovery',
+      text: `Your password: ${user.plain_password}`
+    });
+    res.json({ message: 'Sent' });
+  } catch (error) { res.status(500).json({ message: 'Failed', error }); }
 });
 
 app.post('/api/users', async (req, res) => {
   try {
-    const { name, phone, email, password, role, level, id } = req.body; 
-    const existingUser = await User.findOne({ $or: [{ phone }, { email }] });
-    if (existingUser) return res.status(400).json({ message: '帳號(電話或信箱)已存在，請勿重複註冊。' });
-
+    const { name, phone, email, password, role, level } = req.body; 
+    if (await User.findOne({ $or: [{ phone }, { email }] })) return res.status(400).json({ message: 'Exists' });
     const newId = await generateNextUserId();
-    const hashedPassword = await bcrypt.hash(password, 10);
-
     const newUser = new User({
-      id: newId,
-      name, phone, email,
-      password: hashedPassword,
-      plain_password: password,
-      role: role || 'BUYER',
-      level: level || 1,
-      shop_id: role === 'SELLER' ? `S-${Date.now()}` : undefined,
-      created_at: new Date().toISOString(),
-      stats: { ratingCount: 0, productCount: 0, followerCount: 0, responseRate: 100, responseTime: '1小時內', joinTime: new Date().toISOString(), averageRating: 0 },
-      is_suspended: false,
-      google_map_url: ''
+      id: newId, name, phone, email, password: await bcrypt.hash(password, 10), plain_password: password,
+      role: role || 'BUYER', level: level || 1, shop_id: role === 'SELLER' ? `S-${Date.now()}` : undefined,
+      created_at: new Date().toISOString(), is_suspended: false, google_map_url: '',
+      following: [], // ★ 補上這行
+      stats: { ratingCount: 0, productCount: 0, followerCount: 0, responseRate: 100, responseTime: '1h', joinTime: new Date().toISOString(), averageRating: 0 }
     });
     await newUser.save();
     res.json(newUser);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error', error });
-  }
+  } catch (error) { res.status(500).json({ message: 'Error', error }); }
 });
 
 app.get('/api/users', async (req, res) => {
-  const users = await User.find({});
-  res.json(users);
+  try {
+    const users = await User.find({}).lean();
+    
+    // ★ 功能4新增：全域檢查並更新過期的會員等級
+    const today = new Date().toISOString().split('T')[0];
+    for (let u of users) {
+      if (u.level_expire_at && u.level_expire_at < today) {
+          await User.updateOne({ _id: u._id }, { $set: { level: 1 }, $unset: { level_expire_at: "" } });
+          u.level = 1;
+          u.level_expire_at = null;
+      }
+    }
+
+    const cleanUsers = users.map(u => ({
+      ...u,
+      logo: isUrl(u.logo) ? u.logo : '',
+      banner: isUrl(u.banner) ? u.banner : '' 
+    }));
+    res.json(cleanUsers);
+  } catch (e) {
+    console.error("Users Error:", e);
+    res.status(500).json({ message: "Failed to fetch users" });
+  }
 });
 
 app.delete('/api/users/:id', async (req, res) => {
-  try {
-    await User.deleteOne({ id: req.params.id });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ message: 'Delete user failed' });
-  }
+  await User.deleteOne({ id: req.params.id });
+  res.json({ success: true });
 });
 
 app.post('/api/users/:id/reviews', async (req, res) => {
   try {
     const { userId, userName, rating, comment } = req.body;
     const user = await User.findOne({ id: req.params.id });
-    
-    if (!user) return res.status(404).json({ message: 'Seller not found' });
-
-    const newReview = {
-      id: `sr-${Date.now()}`,
-      userId,
-      userName,
-      rating,
-      comment,
-      createdAt: new Date().toISOString()
-    };
-
-    if (!user.shop_reviews) user.shop_reviews = [];
-    user.shop_reviews.unshift(newReview);
-
-    const totalReviews = user.shop_reviews.length;
-    const sumRating = user.shop_reviews.reduce((sum, r) => sum + r.rating, 0);
-    const averageRating = totalReviews > 0 ? parseFloat((sumRating / totalReviews).toFixed(1)) : 0;
-
-    user.stats.ratingCount = totalReviews;
-    user.stats.averageRating = averageRating;
-
+    if (!user) return res.status(404).json({ message: 'Not found' });
+    user.shop_reviews.unshift({ id: `sr-${Date.now()}`, userId, userName, rating, comment, createdAt: new Date().toISOString() });
+    user.stats.ratingCount = user.shop_reviews.length;
+    user.stats.averageRating = user.stats.ratingCount > 0 ? parseFloat((user.shop_reviews.reduce((a,b)=>a+b.rating,0)/user.stats.ratingCount).toFixed(1)) : 0;
     await user.save();
     res.json(user);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: 'Failed to add shop review' });
-  }
+  } catch (e) { res.status(500).json({ message: 'Failed' }); }
 });
 
 app.post('/api/auth/register', async (req, res) => {
   try {
     const settings = await Settings.findOne({ key: 'main' });
-    if (settings && settings.registrationEnabled === false) {
-       return res.status(403).json({ message: '目前系統已關閉註冊功能，請聯繫管理員。' });
-    }
-
-    const { password, role, level, name, phone, email, id, ...otherData } = req.body;
-    
-    const existing = await User.findOne({ $or: [{ phone }, { email }] });
-    if (existing) return res.status(400).json({ message: '該手機或信箱已被註冊，請勿重複使用。' });
-
+    if (settings && settings.registrationEnabled === false) return res.status(403).json({ message: 'Closed' });
+    const { password, role, level, name, phone, email, ...other } = req.body;
+    if (await User.findOne({ $or: [{ phone }, { email }] })) return res.status(400).json({ message: 'Exists' });
     const newId = await generateNextUserId();
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
     const user = new User({
-      id: newId,
-      name, phone, email,
-      password: hashedPassword,
-      plain_password: password,
-      role: role || 'BUYER', 
-      level: level || 1,
-      shop_id: role === 'SELLER' ? `S-${Date.now()}` : undefined,
-      created_at: new Date().toISOString(),
-      is_suspended: false,
-      google_map_url: '',
-      ...otherData 
+      ...other, // ★ 把其餘欄位(shop_name等)放在最前面
+      id: newId, name, phone, email, password: await bcrypt.hash(password, 10), plain_password: password,
+      role: role || 'BUYER', level: level || 1, shop_id: role === 'SELLER' ? `S-${Date.now()}` : undefined,
+      created_at: new Date().toISOString(), is_suspended: false, google_map_url: '', 
+      following: [], // ★ 補上這行
+      stats: { ratingCount: 0, productCount: 0, followerCount: 0, responseRate: 100, responseTime: '即時', joinTime: '剛剛', averageRating: 0 }
     });
-    
     await user.save();
     res.json(user);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Register failed', error });
-  }
+  } catch (error) { res.status(500).json({ message: 'Failed', error }); }
 });
 
 app.post('/api/users/:id/upgrade', async (req, res) => {
   try {
-    const { shop_name, tax_id, shop_description } = req.body;
     const user = await User.findOne({ id: req.params.id });
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    user.role = 'SELLER';
-    user.shop_id = user.shop_id || `S-${Date.now()}`;
-    user.shop_name = shop_name;
-    user.tax_id = tax_id;
-    user.shop_description = shop_description;
-    
+    if (!user) return res.status(404).json({ message: 'Not found' });
+    Object.assign(user, { role: 'SELLER', shop_id: user.shop_id || `S-${Date.now()}`, ...req.body });
     await user.save();
     res.json(user);
-  } catch (error) {
-    res.status(500).json({ message: 'Upgrade failed', error });
-  }
+  } catch (e) { res.status(500).json({ message: 'Failed' }); }
 });
 
 app.post('/api/auth/login', async (req, res) => {
   const { phoneOrEmail, password, role } = req.body;
   try {
-    const query = { $or: [{ id: phoneOrEmail }, { phone: phoneOrEmail }, { email: phoneOrEmail }] };
-    const user = await User.findOne(query);
-    if (!user) return res.status(401).json({ message: 'User not found' });
+    const user = await User.findOne({ $or: [{ id: phoneOrEmail }, { phone: phoneOrEmail }, { email: phoneOrEmail }] });
+    if (!user) return res.status(401).json({ message: 'Not found' });
+    if (user.is_suspended) return res.status(403).json({ message: 'Suspended' });
+    if (!await bcrypt.compare(password, user.password)) return res.status(401).json({ message: 'Invalid' });
 
-    if (user.is_suspended) {
-        return res.status(403).json({ message: '此帳號已被停用，請聯繫管理員。' });
+    // ★ 功能4新增：檢查會員等級是否過期，若過期則自動降為 1 級
+    const today = new Date().toISOString().split('T')[0];
+    if (user.level_expire_at && user.level_expire_at < today) {
+        user.level = 1;
+        user.level_expire_at = null; 
+        await User.updateOne({ _id: user._id }, { $set: { level: 1 }, $unset: { level_expire_at: "" } });
     }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
-
-    if (role === 'SELLER') {
-      const allowedRoles = ['SELLER', 'ADMIN', 'PERMISSION_EDITOR'];
-      if (!allowedRoles.includes(user.role)) return res.status(403).json({ message: 'Access denied' });
-    }
+    if (role === 'SELLER' && !['SELLER', 'ADMIN', 'PERMISSION_EDITOR'].includes(user.role)) return res.status(403).json({ message: 'Denied' });
     res.json(user);
-  } catch (error) {
-    res.status(500).json({ message: 'Login error' });
-  }
+  } catch (e) { res.status(500).json({ message: 'Error' }); }
 });
 
 app.put('/api/users/:id', async (req, res) => {
-  const updateData = { ...req.body };
-  if (updateData.password && updateData.password.length < 20) { 
-    updateData.plain_password = updateData.password;
-    updateData.password = await bcrypt.hash(updateData.password, 10);
+  const data = { ...req.body };
+  if (data.password && data.password.length < 20) { 
+    data.plain_password = data.password;
+    data.password = await bcrypt.hash(data.password, 10);
   }
-  const user = await User.findOneAndUpdate({ id: req.params.id }, updateData, { new: true });
+  
+  // ★ 防呆機制：明確處理 level_expire_at，如果前端傳來空字串 (清除日期)，則明確存為 null 讓系統判定為「無期限」
+  if (data.level_expire_at === '' || data.level_expire_at === null) {
+     data.level_expire_at = null;
+  }
+
+  const user = await User.findOneAndUpdate({ id: req.params.id }, data, { new: true });
   res.json(user);
 });
 
 app.get('/api/orders', async (req, res) => {
-  const orders = await Order.find({});
-  res.json(orders);
+  try {
+    const orders = await Order.find({}).lean();
+    const optimizedOrders = orders.map(order => {
+      if (order.items && Array.isArray(order.items)) {
+        order.items = order.items.map(item => {
+          if (item.images && Array.isArray(item.images)) {
+              const cleanImgs = item.images.filter(img => img && img.startsWith('http') && img.length < 2000);
+              item.images = cleanImgs.length > 0 ? [cleanImgs[0]] : [];
+          }
+          return item;
+        });
+      }
+      return order;
+    });
+    res.json(optimizedOrders);
+  } catch (e) {
+    res.status(500).json({ message: "Orders Error" });
+  }
 });
 
 app.post('/api/orders', async (req, res) => {
@@ -563,123 +680,156 @@ app.post('/api/orders', async (req, res) => {
 });
 
 app.patch('/api/orders/:id/status', async (req, res) => {
-  const { status, cancellation_reason, seller_note } = req.body;
-  const updateData = {};
-  
-  if (status) updateData.status = status;
-  if (cancellation_reason) updateData.cancellation_reason = cancellation_reason;
-  if (seller_note !== undefined) updateData.seller_note = seller_note;
-
-  const order = await Order.findOneAndUpdate({ id: req.params.id }, updateData, { new: true });
+  const order = await Order.findOneAndUpdate({ id: req.params.id }, req.body, { new: true });
   res.json(order);
 });
 
 app.get('/api/categories', async (req, res) => {
-  const { shop_id } = req.query;
-  const filter = shop_id ? { shop_id } : {};
-  const categories = await Category.find(filter);
-  res.json(categories);
+  try {
+    const filter = req.query.shop_id ? { shop_id: req.query.shop_id } : {};
+    const categories = await Category.find(filter).lean();
+    res.json(categories);
+  } catch (e) {
+    console.error("Category Error:", e);
+    res.status(500).json({ message: "Category Error" });
+  }
 });
 
 app.post('/api/categories/bulk', async (req, res) => {
   try {
     const { categories, shopId } = req.body;
-    const targetShopId = shopId || (categories && categories.length > 0 ? categories[0].shop_id : null);
-    if (!targetShopId) return res.status(400).json({ message: 'Missing shopId' });
-
-    await Category.deleteMany({ shop_id: targetShopId });
-    if (categories && categories.length > 0) {
-      const validCategories = categories.map(c => {
-        const { _id, ...rest } = c;
-        return { ...rest, shop_id: targetShopId };
-      });
-      const cats = await Category.insertMany(validCategories);
-      res.json(cats);
-    } else {
-      res.json([]);
+    
+    if (!shopId) {
+      return res.status(400).json({ message: 'shopId is required' });
     }
+
+    // 如果傳來的是空陣列，代表商家刪除了所有分類
+    if (!categories || categories.length === 0) {
+       await Category.deleteMany({ shop_id: shopId });
+       return res.status(200).json({ message: '分類已全數清空' });
+    }
+
+    // 1. 取得資料庫中「其他商家」用掉的 ID，避免跨店重複
+    const otherShopCats = await Category.find({ shop_id: { $ne: shopId } }).select('id').lean();
+    const globalUsedIds = new Set(otherShopCats.map(c => c.id));
+
+    const currentPayloadIds = new Set();
+    const idMapping = {};
+    
+    // 2. 清理與檢查 ID，確保 ID 絕對唯一
+    const sanitizedCategories = categories.map((cat, index) => {
+        const { _id, __v, ...cleanCat } = cat;
+        let finalId = cleanCat.id;
+        
+        if (!finalId || currentPayloadIds.has(finalId) || globalUsedIds.has(finalId)) {
+            const newId = `cat_${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${index}`;
+            idMapping[cleanCat.id] = newId; 
+            finalId = newId;
+        }
+        
+        currentPayloadIds.add(finalId);
+        cleanCat.id = finalId;
+        cleanCat.shop_id = shopId;
+        return cleanCat;
+    });
+
+    // 3. 修復子分類的 parent_id 連結
+    const finalCategories = sanitizedCategories.map(cat => {
+        if (cat.parent_id && idMapping[cat.parent_id]) {
+            cat.parent_id = idMapping[cat.parent_id];
+        }
+        return cat;
+    });
+
+    // 4. 找出這次保留下來的 ID 列表
+    const keepIds = finalCategories.map(c => c.id);
+
+    // 5. 先把「不在此次更新名單內」的舊分類刪除 (解決不要的分類)
+    await Category.deleteMany({ shop_id: shopId, id: { $nin: keepIds } });
+
+    // 6. ★ 終極修復：使用 bulkWrite(updateOne) 來更新或新增，徹底避免併發造成的 Duplicate Key 錯誤！
+    const bulkOps = finalCategories.map(cat => ({
+        updateOne: {
+            filter: { id: cat.id },
+            update: { $set: cat },
+            upsert: true // 如果不存在就新增，存在就只做更新
+        }
+    }));
+
+    if (bulkOps.length > 0) {
+        await Category.bulkWrite(bulkOps);
+    }
+
+    res.status(200).json({ message: '分類同步成功' });
   } catch (error) {
-    res.status(500).json({ message: 'Category save failed', error });
+    console.error('分類批量更新失敗:', error);
+    res.status(500).json({ message: '分類更新失敗', error: error.message });
   }
 });
 
 app.get('/api/settings', async (req, res) => {
-  let settings = await Settings.findOne({ key: 'main' });
-  if (!settings) {
-    settings = new Settings({
-      key: 'main', 
-      termsOfService: 'Default Terms', 
-      privacyPolicy: 'Default Privacy Policy',
-      disclaimer: 'Default Disclaimer', 
-      helpCenter: 'Help', 
-      announcement: '', 
-      announcementImage: '',
-      announcementActive: false,
-      registrationEnabled: true
-    });
-    await settings.save();
+  try {
+    let settings = await Settings.findOne({ key: 'main' }).lean();
+    if (!settings) {
+      settings = new Settings({ key: 'main', registrationEnabled: true });
+      await new Settings(settings).save();
+    }
+    res.json(settings);
+  } catch (e) {
+    console.error("Settings Error:", e);
+    res.status(500).json({ message: "Failed to fetch settings" });
   }
-  res.json(settings);
 });
 
 app.put('/api/settings', async (req, res) => {
-  const settings = await Settings.findOneAndUpdate({ key: 'main' }, req.body, { new: true, upsert: true });
-  res.json(settings);
+  try {
+    const settings = await Settings.findOneAndUpdate({ key: 'main' }, req.body, { new: true, upsert: true });
+    res.json(settings);
+  } catch (e) { res.status(500).json({ message: "Settings Update Error" }); }
 });
 
 app.get('/api/permissions', async (req, res) => {
-  const permissions = await Permission.find({});
-  res.json(permissions);
+  try {
+    const permissions = await Permission.find({}).lean();
+    res.json(permissions);
+  } catch (e) {
+    console.error("Permissions Error:", e);
+    res.status(500).json({ message: "Permissions Error" });
+  }
 });
 
 app.post('/api/permissions/bulk', async (req, res) => {
   await Permission.deleteMany({});
-  const permissions = await Permission.insertMany(req.body.permissions);
-  res.json(permissions);
+  await Permission.insertMany(req.body.permissions);
+  res.json(req.body.permissions);
 });
 
 app.post('/api/reports', async (req, res) => {
-  try {
-    const report = new Report({
-      ...req.body,
-      id: `rpt-${Date.now()}`,
-      created_at: new Date().toISOString()
-    });
-    await report.save();
-    res.json(report);
-  } catch (e) {
-    res.status(500).json({ message: 'Report failed' });
-  }
+  const report = new Report({ ...req.body, id: `rpt-${Date.now()}`, created_at: new Date().toISOString() });
+  await report.save();
+  res.json(report);
 });
 
 app.get('/api/reports', async (req, res) => {
-  try {
-    const reports = await Report.find({}).sort({ created_at: -1 });
-    res.json(reports);
-  } catch (e) {
-    res.status(500).json({ message: 'Fetch reports failed' });
-  }
+  const reports = await Report.find({}).sort({ created_at: -1 }).lean();
+  res.json(reports);
 });
 
 app.put('/api/reports/:id', async (req, res) => {
-  try {
-    const report = await Report.findOneAndUpdate({ id: req.params.id }, req.body, { new: true });
-    res.json(report);
-  } catch (e) {
-    res.status(500).json({ message: 'Update report failed' });
-  }
+  const report = await Report.findOneAndUpdate({ id: req.params.id }, req.body, { new: true });
+  res.json(report);
 });
 
 app.delete('/api/reports/:id', async (req, res) => {
-  try {
-    await Report.deleteOne({ id: req.params.id });
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ message: 'Delete report failed' });
-  }
+  await Report.deleteOne({ id: req.params.id });
+  res.json({ success: true });
 });
 
-mongoose.connect(MONGODB_URI)
+// 增加連線設定，避免 timeout
+mongoose.connect(MONGODB_URI, { 
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+  })
   .then(() => {
     console.log('✅ MongoDB 連線成功！');
     app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

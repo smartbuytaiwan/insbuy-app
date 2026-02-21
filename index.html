@@ -3,66 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/jpeg" href="/logo-new.jpg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <link rel="apple-touch-icon" href="/logo-new.jpg">
+    <link rel="apple-touch-icon" sizes="152x152" href="/logo-new.jpg">
+    <link rel="apple-touch-icon" sizes="180x180" href="/logo-new.jpg">
+    <link rel="apple-touch-icon" sizes="167x167" href="/logo-new.jpg">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="InsBuy">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     
     <meta property="og:title" content="InsBuy 拍拍購 - 企業團購與防災用品首選" />
     <meta property="og:description" content="提供一站式企業採購、防災包客製化與各類團購商品。加入拍拍購，享受最優質的購物體驗！" />
     <meta property="og:image" content="/logo-new.jpg" />
     <meta property="og:type" content="website" />
     <title>InsBuy 拍拍購</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['"Noto Sans TC"', 'sans-serif'],
-            },
-            animation: {
-              'fade-in': 'fadeIn 0.5s ease-out',
-              'fade-in-up': 'fadeInUp 0.5s ease-out',
-              'bounce-slow': 'bounce 3s infinite',
-            },
-            keyframes: {
-              fadeIn: {
-                '0%': { opacity: '0' },
-                '100%': { opacity: '1' },
-              },
-              fadeInUp: {
-                '0%': { opacity: '0', transform: 'translateY(20px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              }
-            }
-          }
-        }
-      }
-    </script>
-    <style>
-      body {
-        background-color: #F8FAFC; 
-      }
-      .primary-gradient {
-        background: linear-gradient(135deg, #EE4D2D 0%, #FF7337 100%);
-      }
-      .text-gradient {
-        background: linear-gradient(135deg, #EE4D2D 0%, #FF7337 100%);
-        /* 針對 Chrome, Safari, Edge 的前綴寫法 */
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        /* ★ 新增標準寫法，消除警告並增加相容性 */
-        background-clip: text;
-        color: transparent;
-      }
-      .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-      }
-      .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-      }
-    </style>
   </head>
   <body>
     <div id="root"></div>

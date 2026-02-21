@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Product, CartItem, User, View, ProductVariant, Order } from '../types';
 import API from '../api';
 
@@ -32,6 +32,74 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportData, setReportData] = useState<{subject: string, reason: string}>({ subject: '', reason: '' });
 
+  // ==========================================
+  // 分潤系統：解析網址 ?ref=... 並記錄點擊
+  // ==========================================
+  useEffect(() => {
+    if (!product) return;
+    const hashParts = window.location.hash.split('?');
+    if (hashParts.length > 1) {
+      const urlParams = new URLSearchParams(hashParts[1]);
+      const refCode = urlParams.get('ref');
+      if (refCode) {
+        // 1. 存入瀏覽器，期限設為 30 天
+        const expiry = new Date().getTime() + 30 * 24 * 60 * 60 * 1000;
+        localStorage.setItem('insbuy_affiliate', JSON.stringify({ code: refCode, expiry }));
+        // 2. 靜默呼叫 API 記錄點擊次數 (防呆不跳錯，不影響買家體驗)
+        API.recordAffiliateClick({ code: refCode, shop_id: product.shop_id }).catch(() => {});
+      }
+    }
+  }, [product?.id, product?.shop_id]);
+  
+  // ★ 新增：真正有效的動態 SEO 注入機制
+  useEffect(() => {
+    if (!product) return;
+    
+    // 儲存原本的網頁標題與 meta，離開頁面時可以還原
+    const originalTitle = document.title;
+    const metaKeywords = document.querySelector('meta[name="keywords"]');
+    const metaDescription = document.querySelector('meta[name="description"]');
+    let originalKeywords = '';
+    let originalDesc = '';
+
+    // 1. 動態更新網頁標題
+    document.title = `${product.name} | InsBuy 拍拍購`;
+
+    // 2. 動態寫入 SEO 關鍵字 (給 Google 與 AI 機器人看)
+    if (product.keywords && product.keywords.length > 0) {
+        if (metaKeywords) {
+            originalKeywords = metaKeywords.getAttribute('content') || '';
+            metaKeywords.setAttribute('content', product.keywords.join(', '));
+        } else {
+            const newMeta = document.createElement('meta');
+            newMeta.name = 'keywords';
+            newMeta.content = product.keywords.join(', ');
+            document.head.appendChild(newMeta);
+        }
+    }
+
+    // 3. 動態寫入 SEO 描述
+    if (product.description) {
+        const cleanDesc = product.description.substring(0, 150).replace(/\n/g, ' ');
+        if (metaDescription) {
+            originalDesc = metaDescription.getAttribute('content') || '';
+            metaDescription.setAttribute('content', cleanDesc);
+        } else {
+            const newMetaDesc = document.createElement('meta');
+            newMetaDesc.name = 'description';
+            newMetaDesc.content = cleanDesc;
+            document.head.appendChild(newMetaDesc);
+        }
+    }
+
+    // 當離開此商品頁時，將 SEO 還原，避免污染其他頁面
+    return () => {
+        document.title = originalTitle;
+        if (metaKeywords && originalKeywords) metaKeywords.setAttribute('content', originalKeywords);
+        if (metaDescription && originalDesc) metaDescription.setAttribute('content', originalDesc);
+    };
+  }, [product]);
+
   const seller = useMemo(() => {
     return allSellers.find(u => u.shop_id === product.shop_id || u.id === product.shop_id);
   }, [allSellers, product.shop_id]);
@@ -61,19 +129,37 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
     return count;
   }, [orders, product.id]);
 
-  const handleAddToCart = () => {
-    if (!selectedVariant) return alert('請選擇規格');
-    if (product.product_type === 'PHYSICAL' && selectedVariant.stock < qty) {
-      return alert('庫存不足');
+  const handleAddToCart = (): boolean => {
+    if (!selectedVariant) { 
+        alert('請選擇規格'); 
+        return false; 
     }
+    
+    // 確保當前輸入的數量是有效數字
+    let finalQty = parseInt(qty as any);
+    if (isNaN(finalQty) || finalQty < 1) {
+        alert('請輸入有效的數量');
+        setQty(1);
+        return false;
+    }
+
+    // 嚴格阻擋大於庫存的數量
+    if (product.product_type === 'PHYSICAL' && selectedVariant.stock < finalQty) {
+      alert(`庫存不足！該規格目前僅剩 ${selectedVariant.stock} 件`);
+      setQty(Math.max(1, selectedVariant.stock)); // 自動幫買家修正為最大庫存
+      return false;
+    }
+    
     onAddToCart({
       ...product,
-      qty,
+      qty: finalQty,
       selectedVariant: selectedVariant.name,
       finalPrice: product.price + selectedVariant.price,
       isReviewed: false
     });
+    return true; // 成功加入回傳 true
   };
+
 
   const handleAdminClose = async () => {
     if (!currentUser || currentUser.role !== 'ADMIN') return;
@@ -272,6 +358,26 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
                  </div>
               </div>
 
+              {/* ★ 新增：預購專屬資訊卡塊 (只在預購商品顯示) */}
+              {(product as any).is_preorder && (
+                  <div className="mb-8 bg-orange-50 border border-orange-200 rounded-2xl p-4 md:p-5 animate-fade-in-up">
+                      <div className="flex items-center gap-2 text-[#EE4D2D] font-black mb-3">
+                          <i className="fa-solid fa-fire text-lg"></i>
+                          <span>熱烈預購商品</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-orange-900 font-bold">
+                          <div className="flex items-center gap-2 bg-white/60 px-3 py-2 rounded-xl border border-orange-100">
+                              <i className="fa-regular fa-calendar-xmark text-orange-500 w-4"></i>
+                              <span>結束日期：{(product as any).preorder_end_date || '未設定'}</span>
+                          </div>
+                          <div className="flex items-center gap-2 bg-white/60 px-3 py-2 rounded-xl border border-orange-100">
+                              <i className="fa-solid fa-truck-fast text-orange-500 w-4"></i>
+                              <span>預計到貨：{(product as any).preorder_arrival_date || '未設定'}</span>
+                          </div>
+                      </div>
+                  </div>
+              )}
+
               <div className="space-y-6 mb-8">
                  <div>
                    <h3 className="text-sm font-bold text-slate-500 mb-3">規格選項</h3>
@@ -291,9 +397,28 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
                    <h3 className="text-sm font-bold text-slate-500 mb-3">數量</h3>
                    <div className="flex items-center gap-4">
                      <div className="flex items-center border-2 border-slate-200 rounded-xl overflow-hidden h-10 w-32">
-                        <button onClick={() => setQty(Math.max(1, qty - 1))} className="w-10 h-full hover:bg-slate-100 flex items-center justify-center text-slate-500"><i className="fa-solid fa-minus"></i></button>
-                        <input type="number" className="flex-1 w-full text-center outline-none text-slate-800 font-bold" value={qty} readOnly />
-                        <button onClick={() => setQty(qty + 1)} className="w-10 h-full hover:bg-slate-100 flex items-center justify-center text-slate-500"><i className="fa-solid fa-plus"></i></button>
+                        <button onClick={() => setQty(Math.max(1, (parseInt(qty as any) || 1) - 1))} className="w-10 h-full hover:bg-slate-100 flex items-center justify-center text-slate-500 shrink-0"><i className="fa-solid fa-minus"></i></button>
+                        <input 
+                           type="number" 
+                           className="flex-1 w-full text-center outline-none text-slate-800 font-bold appearance-none m-0" 
+                           value={qty} 
+                           onChange={e => {
+                               const val = parseInt(e.target.value);
+                               if (!isNaN(val)) setQty(val);
+                               else if (e.target.value === '') setQty('' as any); // 允許使用者刪除清空重新輸入
+                           }}
+                           onBlur={() => {
+                               let finalQty = parseInt(qty as any);
+                               if (isNaN(finalQty) || finalQty < 1) finalQty = 1;
+                               const maxStock = selectedVariant?.stock || product.total_stock || 0;
+                               // 若為實體商品且輸入大於庫存，自動修正為最大庫存
+                               if (product.product_type === 'PHYSICAL' && finalQty > maxStock) {
+                                   finalQty = Math.max(1, maxStock);
+                               }
+                               setQty(finalQty);
+                           }}
+                        />
+                        <button onClick={() => setQty((parseInt(qty as any) || 0) + 1)} className="w-10 h-full hover:bg-slate-100 flex items-center justify-center text-slate-500 shrink-0"><i className="fa-solid fa-plus"></i></button>
                      </div>
                      <span className="text-xs text-slate-400">還剩 {selectedVariant?.stock || 0} 件</span>
                    </div>
@@ -304,13 +429,22 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
             <div className="flex flex-col gap-4 border-t pt-6">
               <div className="flex gap-4">
                 <button 
-                  onClick={handleAddToCart}
+                  onClick={() => {
+                      const success = handleAddToCart();
+                      // 加入購物車，如果成功，上方原本就有 showToast 提示
+                  }}
                   className="flex-1 py-4 bg-[#FFEEEC] text-[#EE4D2D] border-2 border-[#EE4D2D] rounded-xl font-bold hover:bg-[#ffdfdb] transition flex items-center justify-center gap-2"
                 >
                   <i className="fa-solid fa-cart-plus"></i> 加入購物車
                 </button>
                 <button 
-                  onClick={() => { handleAddToCart(); onNavigate(View.CART); }}
+                  onClick={() => { 
+                      // ★ 只有在加入購物車「成功」時，才允許跳轉到結帳/購物車畫面
+                      const success = handleAddToCart();
+                      if (success) {
+                          onNavigate(View.CART); 
+                      }
+                  }}
                   className="flex-1 py-4 primary-gradient text-white rounded-xl font-bold shadow-lg shadow-orange-200 hover:scale-[1.02] active:scale-95 transition flex items-center justify-center gap-2"
                 >
                   直接購買
@@ -377,7 +511,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
                     onClick={() => seller && onNavigate(View.CHAT, product, seller.shop_id || seller.id)}
                     className="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700 transition"
                  >
-                    聊聊
+                    愛聊
                  </button>
               </div>
            </div>

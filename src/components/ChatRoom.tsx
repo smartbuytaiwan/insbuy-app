@@ -26,14 +26,29 @@ interface ChatMetadata {
 }
 
 const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, currentProduct, siteSettings, readOnly = false }) => {
-  // 狀態管理
-  const [activeContactId, setActiveContactId] = useState<string | null>(targetId);
+  // ★ 整合愛聊：統一將傳入的 ID (可能是商店的 shop_id) 強制轉換為最原始的帳號 ID
+  const getUnifiedTargetId = (id: string | null) => {
+     if (!id) return null;
+     const user = allUsers.find(u => u.shop_id === id || u.id === id || u.phone === id);
+     return user ? user.id : id;
+  };
+
+  // ★ 愛聊核心整合：強制將所有身份 ID (買家/賣家/電話) 對應到唯一的帳號 ID
+  const resolveTrueId = (id: string | null) => {
+     if (!id) return null;
+     if (id === 'ADMIN') return id;
+     const target = allUsers.find(u => u.id === id || u.shop_id === id || u.phone === id);
+     return target ? target.id : id;
+  };
+
+  // 狀態管理 (使用轉換後的統一 ID)
+  const [activeContactId, setActiveContactId] = useState<string | null>(resolveTrueId(targetId));
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   
   // 紀錄每個聯絡人的最後訊息時間與內容
   const [contactLastTime, setContactLastTime] = useState<Record<string, number>>({});
-  const [lastMessages, setLastMessages] = useState<Record<string, string>>({}); // ★ 新增：最後訊息預覽
+  const [lastMessages, setLastMessages] = useState<Record<string, string>>({}); 
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({}); 
   
   // 輔助功能狀態
@@ -43,12 +58,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const activeContactIdRef = useRef<string | null>(targetId);
+  const activeContactIdRef = useRef<string | null>(resolveTrueId(targetId));
   const pollingRef = useRef<any>(null);
 
   const getMyId = () => {
     if (!currentUser) return '';
-    return currentUser.shop_id || currentUser.id;
+    if (currentUser.role === 'ADMIN') return 'ADMIN';
+    return currentUser.id; // ★ 永遠以最底層的帳號 ID 進行收發，避免對話分裂
   };
 
   // 讀取/儲存 ChatMetadata
@@ -86,9 +102,23 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
 
   const updateLastReadTime = (contactId: string) => {
       const myId = getMyId();
-      localStorage.setItem(`insbuy_last_read_${myId}_${contactId}`, new Date().toISOString());
+      const now = new Date(Date.now() + 1000).toISOString(); // 往後推1秒涵蓋即時訊息
       
-      // ★ 觸發全域事件，通知 App.tsx 更新全域紅點
+      // ★ 終極防呆：找出這個聯絡人「所有的關聯 ID」，一口氣全部標記已讀！
+      const contactUser = allUsers.find(u => u.id === contactId || u.shop_id === contactId || u.phone === contactId);
+      
+      const idsToMark = [contactId];
+      if (contactUser) {
+          if (contactUser.id && !idsToMark.includes(contactUser.id)) idsToMark.push(contactUser.id);
+          if (contactUser.shop_id && !idsToMark.includes(contactUser.shop_id)) idsToMark.push(contactUser.shop_id);
+          if (contactUser.phone && !idsToMark.includes(contactUser.phone)) idsToMark.push(contactUser.phone);
+      }
+      
+      idsToMark.forEach(id => {
+          localStorage.setItem(`insbuy_last_read_${myId}_${id}`, now);
+      });
+      
+      // 觸發全域事件，通知 App.tsx 更新全域紅點
       window.dispatchEvent(new Event('insbuy_message_read'));
   };
 
@@ -118,10 +148,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
     }
   }, [activeContactId, readOnly]);
 
-  // 當外部 targetId 改變時切換
+  // 當外部 targetId 改變時切換 (同步轉換為統一帳號 ID)
   useEffect(() => {
-    if (targetId) setActiveContactId(targetId);
-  }, [targetId]);
+    if (targetId) {
+        const unifiedId = resolveTrueId(targetId);
+        setActiveContactId(unifiedId);
+        activeContactIdRef.current = unifiedId;
+    }
+  }, [targetId, allUsers]);
 
   // 輪詢邏輯
   useEffect(() => {
@@ -146,23 +180,38 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
                 if (!times[partnerId] || msgTime > times[partnerId]) {
                     times[partnerId] = msgTime;
                     // ★ 處理預覽文字：若是圖片或連結，可做特殊顯示
-                    let preview = safeMsg.text;
-                    if (preview.startsWith('[系統通知]')) preview = '[系統通知]';
-                    else if (preview.includes('#/PRODUCT/')) preview = '[商品連結]';
-                    lastMsgs[partnerId] = preview;
+                let preview = safeMsg.text;
+                if (preview.startsWith('[SYS_ORDER_UPDATE]')) preview = '[訂單狀態更新]';
+                else if (preview.startsWith('[系統通知]')) preview = '[系統通知]';
+                else if (preview.includes('#/PRODUCT/')) preview = '[商品連結]';
+                lastMsgs[partnerId] = preview;
                 }
 
-                // 計算未讀 (嚴格檢查 isRead 欄位 與 本地最後讀取時間)
-                if (safeMsg.receiverId === myId) {
-                    // 如果 API 說未讀，且時間晚於我最後讀取的時間 (或者我從未讀過)
-                    const lastRead = getLastReadTime(safeMsg.senderId);
-                    
+                // ★ 改良版左側未讀計算：支援多重身份 (買家/賣家/電話) 徹底消滅幽靈未讀
+                if (safeMsg.receiverId === myId || safeMsg.receiverId === currentUser?.shop_id || safeMsg.receiverId === currentUser?.phone) {
                     if (!safeMsg.isRead) {
-                        // 如果有 lastRead 紀錄，且訊息時間早於 lastRead，則視為已讀 (前端修正)
-                        if (lastRead && new Date(safeMsg.timestamp) <= new Date(lastRead)) {
-                             // skip
-                        } else {
-                             counts[safeMsg.senderId] = (counts[safeMsg.senderId] || 0) + 1;
+                        const senderObj = allUsers.find(u => u.id === safeMsg.senderId || u.shop_id === safeMsg.senderId || u.phone === safeMsg.senderId);
+                        const sIds = [safeMsg.senderId];
+                        if (senderObj) {
+                            if (senderObj.id) sIds.push(senderObj.id);
+                            if (senderObj.shop_id) sIds.push(senderObj.shop_id);
+                            if (senderObj.phone) sIds.push(senderObj.phone);
+                        }
+
+                        let isActuallyRead = false;
+                        const msgTime = new Date(safeMsg.timestamp).getTime();
+                        for (const sId of sIds) {
+                            const lr = localStorage.getItem(`insbuy_last_read_${myId}_${sId}`);
+                            if (lr && msgTime <= new Date(lr).getTime()) {
+                                isActuallyRead = true;
+                                break;
+                            }
+                        }
+
+                        if (!isActuallyRead) {
+                            // 統一計入原始 ID 的未讀，避免同一個人出現兩筆紅點
+                            const finalSenderId = senderObj ? senderObj.id : safeMsg.senderId;
+                            counts[finalSenderId] = (counts[finalSenderId] || 0) + 1;
                         }
                     }
                 }
@@ -212,7 +261,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
     if (messages.length > 0) {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, activeContactId]);
+
+    // ★ 同步修正：只要視窗打開或有新訊息進來，就持續標記為已讀
+    if (activeContactId && currentUser) {
+        updateLastReadTime(activeContactId);
+    }
+  }, [messages, activeContactId, currentUser, allUsers]);
 
   useEffect(() => {
     const handleClick = () => setContextMenu(null);
@@ -226,28 +280,18 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
     
     const myId = getMyId();
     const timestamp = new Date().toISOString();
+    const msgToSend = input;
     
     updateLastReadTime(activeContactId);
+    setInput(''); // 提早清空輸入框，提升流暢度
 
-    const tempMessage: Message = {
-        id: `temp_${Date.now()}`,
-        senderId: myId,
-        receiverId: activeContactId,
-        text: input,
-        timestamp,
-        isRead: false
-    };
-    
-    setMessages(prev => [...prev, tempMessage]);
-    
-    // 立即更新列表預覽
-    setLastMessages(prev => ({...prev, [activeContactId]: input}));
+    // 立即更新左側列表預覽
+    setLastMessages(prev => ({...prev, [activeContactId]: msgToSend}));
     setContactLastTime(prev => ({...prev, [activeContactId]: Date.now()}));
 
-    const msgToSend = input;
-    setInput(''); 
-
     try {
+      // ★ 系統優化：發送給後端後，交由 1 秒輪詢自動拉回最新訊息。
+      // 徹底解決因本地暫存與資料庫同時渲染而造成的「一句話出現兩句」的重疊 Bug。
       await API.sendMessage({
         senderId: myId,
         receiverId: activeContactId,
@@ -255,7 +299,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
         timestamp
       });
     } catch (error) {
-      alert("訊息發送失敗");
+      alert("訊息發送失敗，請檢查網路");
     }
   };
 
@@ -326,20 +370,22 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
     });
   };
 
-  if (!currentUser) return <div className="flex items-center justify-center h-[60vh] text-slate-400">請先登入以使用聊聊功能</div>;
+  if (!currentUser) return <div className="flex items-center justify-center h-[60vh] text-slate-400">請先登入以使用愛聊功能</div>;
 
   // 聯絡人排序邏輯
   const contacts = allUsers.filter(u => {
     const myId = getMyId();
-    if (u.id === myId || u.shop_id === myId || u.id === currentUser.id || u.shop_id === currentUser.shop_id) return false;
+    // 嚴格過濾自己
+    if (u.id === myId || u.id === currentUser.id) return false;
     
     // 顯示條件：是當前目標，或者有對話記錄
-    const uid = u.shop_id || u.id;
-    if (targetId && (uid === targetId)) return true;
+    const uid = u.id; // ★ 列表一律使用底層帳號 ID
+    const trueTarget = resolveTrueId(targetId);
+    if (trueTarget && (uid === trueTarget)) return true;
     return !!contactLastTime[uid]; 
   }).sort((a, b) => {
-     const idA = a.shop_id || a.id;
-     const idB = b.shop_id || b.id;
+     const idA = a.id;
+     const idB = b.id;
 
      // 有未讀的排前面
      const unreadA = (unreadCounts[idA] || 0) > 0 ? 1 : 0;
@@ -354,7 +400,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
      return timeB - timeA;
   });
 
-  const activeUser = allUsers.find(u => (u.shop_id || u.id) === activeContactId);
+  const activeUser = allUsers.find(u => u.id === activeContactId); // ★ 只用原始 ID 找人
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden h-[calc(100vh-120px)] flex relative">
@@ -398,9 +444,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
         
         <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
           {contacts.map(u => {
-            const contactId = u.shop_id || u.id;
+            const contactId = u.id; // ★ 整合愛聊：一律使用原始帳號 ID
             const unread = (activeContactId === contactId || readOnly) ? 0 : (unreadCounts[contactId] || 0);
-            const previewText = lastMessages[contactId] || "尚無訊息";
+            
+            // ★ 補回遺失的訊息預覽文字定義
+            const lastMsg = lastMessages[contactId];
+            const previewText = lastMsg ? (lastMsg.length > 15 ? lastMsg.substring(0, 15) + '...' : lastMsg) : '尚未有對話';
             
             return (
                 <div 
@@ -525,23 +574,73 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
               {messages.map((m, i) => {
                 const safeText = m.text || "";
-                const isSystem = safeText.startsWith('[系統通知]');
+                const isAdvancedSystem = safeText.startsWith('[SYS_ORDER_UPDATE]');
+                const isLegacySystem = safeText.startsWith('[系統通知]');
+                const isSystem = isLegacySystem || isAdvancedSystem;
                 const isMe = !isSystem && (m.senderId === currentUser.id || m.senderId === currentUser.shop_id);
+
+                if (isAdvancedSystem) {
+                    let orderData: any = null;
+                    try {
+                        orderData = JSON.parse(safeText.replace('[SYS_ORDER_UPDATE]', ''));
+                    } catch(e) {}
+                    
+                    if (orderData) {
+                        return (
+                            <div key={i} className="flex justify-center my-4 w-full">
+                                <div className="bg-white border border-slate-200 rounded-xl shadow-sm w-full max-w-[85%] md:max-w-[70%] overflow-hidden">
+                                    <div className="bg-slate-50 px-3 py-2 border-b border-slate-100 flex items-center justify-between">
+                                        <span className="text-xs font-bold text-slate-500"><i className="fa-solid fa-bullhorn mr-1 text-[#EE4D2D]"></i> 訂單狀態更新</span>
+                                        <span className="text-[10px] text-slate-400">{formatMessageTime(m.timestamp)}</span>
+                                    </div>
+                                    <div className="p-3 md:p-4 space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-xs text-slate-500 font-mono">訂單 #{orderData.orderId.slice(-6)}</span>
+                                            <span className="text-sm font-black text-[#EE4D2D]">{orderData.statusLabel}</span>
+                                        </div>
+                                        
+                                        <div className="flex gap-3 bg-slate-50 p-2 rounded-lg items-center border border-slate-100">
+                                            <div className="w-12 h-12 rounded overflow-hidden shrink-0 border border-slate-200 bg-white">
+                                                <img src={orderData.items[0]?.image} className="w-full h-full object-cover" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-xs font-bold text-slate-700 truncate">{orderData.items[0]?.name}</div>
+                                                <div className="text-[10px] text-slate-500 flex justify-between mt-1">
+                                                    <span className="truncate pr-2">{orderData.items[0]?.variant || '單一規格'} x {orderData.items[0]?.qty}</span>
+                                                    <span className="shrink-0 text-slate-700 font-bold">${orderData.items[0]?.price?.toLocaleString()}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {orderData.items.length > 1 && (
+                                            <div className="text-[10px] text-slate-400 text-center font-bold">
+                                                ...還有 {orderData.items.length - 1} 件商品
+                                            </div>
+                                        )}
+
+                                        <div className="text-right text-xs font-bold text-slate-700 pt-2 border-t border-slate-100">
+                                            訂單總金額：<span className="text-[#EE4D2D] text-base ml-1 font-black">${orderData.total?.toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+                }
                 
                 return (
-                  <div key={i} className={`flex ${isSystem ? 'justify-center' : isMe ? 'justify-end' : 'justify-start'}`}>
-                    {!isMe && !isSystem && (
+                  <div key={i} className={`flex ${isLegacySystem ? 'justify-center' : isMe ? 'justify-end' : 'justify-start'}`}>
+                    {!isMe && !isLegacySystem && (
                         <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden mr-2 self-end mb-1 shadow-sm border border-white">
                             <img src={activeUser.logo || 'https://placehold.co/100'} className="w-full h-full object-cover" />
                         </div>
                     )}
                     <div className={`max-w-[75%] md:max-w-[60%] p-3 rounded-2xl text-sm shadow-sm whitespace-pre-wrap leading-relaxed ${
-                        isSystem ? 'bg-black/5 text-slate-500 text-xs py-1 px-4 rounded-full border border-slate-200/50 my-2' : 
+                        isLegacySystem ? 'bg-black/5 text-slate-500 text-xs py-1 px-4 rounded-full border border-slate-200/50 my-2' : 
                         isMe ? 'bg-[#EE4D2D] text-white rounded-br-none' : 
                         'bg-white border border-slate-200 text-slate-700 rounded-bl-none'
                     }`}>
                       {renderMessageContent(safeText)}
-                      {!isSystem && <div className={`text-[9px] text-right mt-1 ${isMe ? 'text-white/70' : 'text-slate-400'}`}>{formatMessageTime(m.timestamp)}</div>}
+                      {!isLegacySystem && <div className={`text-[9px] text-right mt-1 ${isMe ? 'text-white/70' : 'text-slate-400'}`}>{formatMessageTime(m.timestamp)}</div>}
                     </div>
                   </div>
                 );

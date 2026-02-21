@@ -12,7 +12,7 @@ interface UserManagementProps {
   onUpdateUsers: (users: User[]) => void;
   onUpdatePermissions: (permissions: LevelConfig[]) => void;
   onUpdateSiteSettings: (settings: SiteSettings) => void;
-  onNavigate: (view: View) => void;
+  onNavigate: (view: View, product?: any, targetId?: string) => void;
   onUpdateOrderStatus: (orderId: string, status: Order['status'], cancellationReason?: string) => void;
 }
 
@@ -44,7 +44,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
 
   const [settlementRate, setSettlementRate] = useState<number>(5); 
-  const [settlementMsg, setSettlementMsg] = useState<string>('這是本月的結算單，請於 5 日內完成繳費。');
+  // ★ 功能3新增：預設帶入可用變數的範本
+  const [settlementMsg, setSettlementMsg] = useState<string>('您好 [商家名稱]，這是本期的結算單。您共完成 [訂單數] 筆訂單，應繳系統維護費 [系統維護費] 元，請於 5 日內完成繳費。');
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newUser, setNewUser] = useState<Partial<User>>({
@@ -152,27 +153,40 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
     }
   };
 
-  const handleSendSettlement = async (sellerId: string, sellerName: string, revenue: number) => {
-      const fee = Math.round(revenue * (settlementRate / 100));
-      const rangeText = financeTimeRange === 'CUSTOM' ? `${customStartDate} ~ ${customEndDate}` : financeTimeRange;
-      const chatMessage = `本期系統維護費用為 $${fee.toLocaleString()}\n${settlementMsg}`;
-      const confirmMessage = `【系統結算通知】\n商家：${sellerName}\n統計區間：${rangeText}\n總營收(不含取消)：$${revenue.toLocaleString()}\n平台抽成 (${settlementRate}%)：$${fee.toLocaleString()}\n\n將發送以下聊聊訊息給商家：\n----------------\n${chatMessage}\n----------------`;
+  // ★ 功能3新增：接收訂單數與取消數參數，並替換訊息變數
+  const handleSendSettlement = async (sellerId: string, sellerName: string, revenue: number, orderCount: number, cancelledCount: number) => {
+          const fee = Math.round(revenue * (settlementRate / 100));
+          const rangeText = financeTimeRange === 'CUSTOM' ? `${customStartDate} ~ ${customEndDate}` : financeTimeRange;
+          
+          let customizedMsg = settlementMsg
+              .replace(/\[商家名稱\]/g, sellerName)
+              .replace(/\[訂單數\]/g, String(orderCount))
+              .replace(/\[取消數\]/g, String(cancelledCount))
+              .replace(/\[總營收\]/g, revenue.toLocaleString())
+              .replace(/\[系統維護費\]/g, fee.toLocaleString());
 
-      if (confirm(confirmMessage)) {
-          try {
-             await API.sendMessage({
-                 senderId: 'ADMIN', 
-                 receiverId: sellerId,
-                 content: chatMessage,
-                 timestamp: new Date().toISOString()
-             });
-             alert('結算單與聊聊通知已發送成功！');
-          } catch (e) {
-             console.error(e);
-             alert('發送失敗，請檢查 API 連線');
+          const chatMessage = `【管理員訊息】\n${customizedMsg}`;
+          const confirmMessage = `【系統結算通知預覽】\n\n將發送以下愛聊訊息給商家：\n----------------\n${chatMessage}\n----------------`;
+
+          if (confirm(confirmMessage)) {
+              try {
+                 // ★ 系統優化：發送給商家的真實帳號 ID，確保愛聊整合
+                 const targetUser = users.find(u => u.shop_id === sellerId || u.id === sellerId);
+                 const trueReceiverId = targetUser ? targetUser.id : sellerId;
+
+                 await API.sendMessage({
+                     senderId: 'ADMIN', 
+                     receiverId: trueReceiverId,
+                     content: chatMessage,
+                     timestamp: new Date().toISOString()
+                 });
+                 alert('結算單與愛聊通知已發送成功！');
+              } catch (e) {
+                 console.error(e);
+                 alert('發送失敗，請檢查 API 連線');
+              }
           }
-      }
-  };
+      };
 
   const handleStartPermissionEdit = (config: LevelConfig) => {
     setEditingLevelKey(`${config.target_role}-${config.level}`);
@@ -182,13 +196,24 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
   const handleSavePermission = () => {
     if (!editingLevelKey) return;
     const [role, levelStr] = editingLevelKey.split('-');
-    const level = parseInt(levelStr);
+    const originalLevel = parseInt(levelStr);
+    const newLevel = permissionForm.level;
+
+    // ★ 新增：檢查修改後的等級數字是否與現有等級重複
+    if (newLevel !== undefined && originalLevel !== newLevel) {
+        const isDuplicate = permissions.some(p => p.target_role === role && p.level === newLevel);
+        if (isDuplicate) {
+            alert(`此角色已經存在「等級 ${newLevel}」的設定，請選擇其他數字。`);
+            return;
+        }
+    }
+
     const updated = permissions.map(p => 
-      (p.target_role === role && p.level === level) 
+      (p.target_role === role && p.level === originalLevel) 
         ? { ...p, ...permissionForm } 
         : p
     );
-    onUpdatePermissions(updated);
+    onUpdatePermissions(updated as LevelConfig[]);
     setEditingLevelKey(null);
   };
 
@@ -207,11 +232,16 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
       level: newLevelNum,
       role_name: `新${permissionType === 'SELLER' ? '商家' : '會員'}等級`,
       max_products: permissionType === 'SELLER' ? 5 : 0,
-      max_images_per_product: 3,
-      max_variants_per_product: 3,
-      can_edit_active_product: false,
-      point_feedback_rate: 0,
-      discount_rate: 1
+      max_images_per_product: permissionType === 'SELLER' ? 1 : 3,
+        max_variants_per_product: 3,
+        can_edit_active_product: false,
+        point_feedback_rate: 0,
+        discount_rate: 1,
+        can_use_preorder: false,
+        max_drafts: permissionType === 'SELLER' ? 3 : 0,
+        can_view_stats: false,
+        can_edit_banner: false,
+        can_edit_logo: false
     };
     onUpdatePermissions([...permissions, newLevelConfig]);
     setEditingLevelKey(`${permissionType}-${newLevelNum}`);
@@ -444,12 +474,34 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                 onChange={e => setSearchTerm(e.target.value)}
               />
             </div>
-            <button 
-              onClick={() => onNavigate(View.CHAT)}
-              className="px-4 py-2 bg-slate-700 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition hover:bg-slate-600 border border-slate-600"
-            >
-              <i className="fa-regular fa-comments"></i> 管理員聊聊
-            </button>
+            {/* ★ 功能1：管理員愛聊新增直接輸入 ID 功能 */}
+            <div className="flex items-center gap-1 bg-slate-700 rounded-lg border border-slate-600 px-1">
+              <input 
+                type="text" 
+                id="directChatId"
+                placeholder="輸入用戶ID私訊..." 
+                className="bg-transparent text-white text-xs px-2 py-2 outline-none w-28 md:w-32 placeholder-slate-400 font-mono"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const id = e.currentTarget.value.trim();
+                    onNavigate(View.CHAT, undefined, id || undefined);
+                    e.currentTarget.value = '';
+                  }
+                }}
+              />
+              <button 
+                onClick={() => {
+                  const input = document.getElementById('directChatId') as HTMLInputElement;
+                  const id = input?.value.trim();
+                  onNavigate(View.CHAT, undefined, id || undefined);
+                  if(input) input.value = '';
+                }}
+                className="px-2 py-1.5 bg-[#EE4D2D] text-white rounded font-bold text-xs flex items-center gap-1 hover:bg-[#d73211] transition"
+                title="開啟愛聊"
+              >
+                <i className="fa-regular fa-comments"></i> 愛聊
+              </button>
+            </div>
 
             <button 
               onClick={openCreateModal}
@@ -489,7 +541,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                     <input type="number" className="w-full border border-slate-300 rounded-lg p-2" value={settlementRate} onChange={e => setSettlementRate(Number(e.target.value))} />
                  </div>
                  <div className="flex-[3]">
-                    <label className="text-xs font-bold text-slate-500 mb-1 block">結算通知訊息</label>
+                    <label className="text-xs font-bold text-slate-500 mb-1 block">結算通知訊息 (可用變數: [商家名稱] [訂單數] [取消數] [總營收] [系統維護費])</label>
                     <input type="text" className="w-full border border-slate-300 rounded-lg p-2" value={settlementMsg} onChange={e => setSettlementMsg(e.target.value)} />
                  </div>
               </div>
@@ -555,7 +607,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                         <td className="border border-slate-300 px-4 py-3 text-right font-black text-slate-800">${data.totalRevenue.toLocaleString()}</td>
                         <td className="border border-slate-300 px-4 py-3 text-right font-bold text-green-600">${estimatedFee.toLocaleString()}</td>
                         <td className="border border-slate-300 px-4 py-3 text-center">
-                           <button onClick={(e) => { e.stopPropagation(); handleSendSettlement(data.shopId, data.sellerName, data.totalRevenue); }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs hover:bg-slate-700">
+                           {/* ★ 功能3：補上 orderCount 與 cancelledCount 參數 */}
+                           <button onClick={(e) => { e.stopPropagation(); handleSendSettlement(data.shopId, data.sellerName, data.totalRevenue, data.orderCount, data.cancelledCount); }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs hover:bg-slate-700">
                               發送結算單
                            </button>
                         </td>
@@ -621,7 +674,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                 <option value="PRIVACY">🔒 隱私權條款</option> 
                 <option value="DISCLAIMER">⚖️ 免責聲明</option>
                 <option value="HELP">❓ 幫助中心與常見問題</option>
-                <option value="SCAM">🛡️ 聊聊防詐騙警語</option>
+                <option value="SCAM">🛡️ 愛聊防詐騙警語</option>
               </select>
             </div>
 
@@ -708,7 +761,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
 
             {websiteSettingType === 'SCAM' && (
                <div className="space-y-4 animate-fade-in">
-                  <label className="font-bold text-slate-700 block">防詐騙警語 (顯示於聊聊視窗頂部)</label>
+                  <label className="font-bold text-slate-700 block">防詐騙警語 (顯示於愛聊視窗頂部)</label>
                   <input type="text" className="w-full h-12 border border-slate-300 rounded-xl px-4 outline-none focus:border-[#EE4D2D]" value={settingsForm.antiScamMessage || ''} onChange={e => setSettingsForm({...settingsForm, antiScamMessage: e.target.value})} placeholder="例如: 本平台不會要求您操作 ATM 解除分期付款..." />
                </div>
             )}
@@ -740,6 +793,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                  <th className="border border-slate-300 px-4 py-2 w-24 text-center">修改架上</th>
                  <th className="border border-slate-300 px-4 py-2 w-24 text-center">點數回饋</th>
                  <th className="border border-slate-300 px-4 py-2 w-24 text-center">折扣率</th>
+                 <th className="border border-slate-300 px-2 py-2 w-16 text-center">預購</th>
+                 <th className="border border-slate-300 px-2 py-2 w-20 text-center">草稿數</th>
+                 <th className="border border-slate-300 px-2 py-2 w-20 text-center">看統計</th>
+                 <th className="border border-slate-300 px-2 py-2 w-20 text-center">改封面</th>
+                 <th className="border border-slate-300 px-2 py-2 w-20 text-center">改Logo</th>
                  <th className="border border-slate-300 px-4 py-2 w-24 text-center">操作</th>
                </tr>
              </thead>
@@ -747,7 +805,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                 const isEditing = editingLevelKey === `${p.target_role}-${p.level}`;
                 return (
                    <tr key={`${p.target_role}-${p.level}`} className={isEditing ? 'bg-yellow-50' : 'bg-white'}>
-                      <td className="border border-slate-300 px-2 py-2 text-center font-bold">{p.level}</td>
+                      <td className="border border-slate-300 px-2 py-2 text-center font-bold">
+                         {isEditing ? <input type="number" className="w-full border rounded px-1 py-1 text-center font-bold text-[#EE4D2D]" value={permissionForm.level || ''} onChange={e => setPermissionForm({...permissionForm, level: parseInt(e.target.value)})} min="1" /> : p.level}
+                      </td>
                       <td className="border border-slate-300 px-2 py-2">
                          {isEditing ? <input className="w-full border rounded px-2 py-1" value={permissionForm.role_name} onChange={e => setPermissionForm({...permissionForm, role_name: e.target.value})} /> : p.role_name}
                       </td>
@@ -761,7 +821,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                          {isEditing ? <input type="number" className="w-full border rounded px-2 py-1 text-center" value={permissionForm.max_variants_per_product} onChange={e => setPermissionForm({...permissionForm, max_variants_per_product: parseInt(e.target.value)})} /> : p.max_variants_per_product}
                       </td>
                       <td className="border border-slate-300 px-2 py-2 text-center">
-                         {isEditing ? <input type="checkbox" checked={permissionForm.can_edit_active_product} onChange={e => setPermissionForm({...permissionForm, can_edit_active_product: e.target.checked})} /> : (p.can_edit_active_product ? '✅' : '❌')}
+                         {isEditing ? <input type="checkbox" checked={!!permissionForm.can_edit_active_product} onChange={e => setPermissionForm({...permissionForm, can_edit_active_product: e.target.checked})} /> : (p.can_edit_active_product ? '✅' : '❌')}
                       </td>
                       <td className="border border-slate-300 px-2 py-2 text-center">
                          {isEditing ? <input type="number" step="0.01" className="w-full border rounded px-2 py-1 text-center" value={permissionForm.point_feedback_rate} onChange={e => setPermissionForm({...permissionForm, point_feedback_rate: parseFloat(e.target.value)})} /> : `${(p.point_feedback_rate * 100).toFixed(1)}%`}
@@ -770,10 +830,35 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                          {isEditing ? <input type="number" step="0.01" className="w-full border rounded px-2 py-1 text-center" value={permissionForm.discount_rate} onChange={e => setPermissionForm({...permissionForm, discount_rate: parseFloat(e.target.value)})} /> : `${(p.discount_rate * 100).toFixed(0)}%`}
                       </td>
                       <td className="border border-slate-300 px-2 py-2 text-center">
+                         {isEditing ? <input type="checkbox" checked={!!permissionForm.can_use_preorder} onChange={e => setPermissionForm({...permissionForm, can_use_preorder: e.target.checked})} /> : (p.can_use_preorder ? '✅' : '❌')}
+                      </td>
+                      <td className="border border-slate-300 px-2 py-2 text-center">
+                         {isEditing ? <input type="number" className="w-full border rounded px-2 py-1 text-center" value={permissionForm.max_drafts} onChange={e => setPermissionForm({...permissionForm, max_drafts: parseInt(e.target.value)})} /> : p.max_drafts}
+                      </td>
+                      <td className="border border-slate-300 px-2 py-2 text-center">
+                         {isEditing ? <input type="checkbox" checked={!!permissionForm.can_view_stats} onChange={e => setPermissionForm({...permissionForm, can_view_stats: e.target.checked})} /> : (p.can_view_stats ? '✅' : '❌')}
+                      </td>
+                      <td className="border border-slate-300 px-2 py-2 text-center">
+                         {isEditing ? <input type="checkbox" checked={!!permissionForm.can_edit_banner} onChange={e => setPermissionForm({...permissionForm, can_edit_banner: e.target.checked})} /> : (p.can_edit_banner ? '✅' : '❌')}
+                      </td>
+                      <td className="border border-slate-300 px-2 py-2 text-center">
+                         {isEditing ? <input type="checkbox" checked={!!permissionForm.can_edit_logo} onChange={e => setPermissionForm({...permissionForm, can_edit_logo: e.target.checked})} /> : (p.can_edit_logo ? '✅' : '❌')}
+                      </td>
+                      <td className="border border-slate-300 px-2 py-2 text-center">
                          {isEditing ? (
-                            <button onClick={handleSavePermission} className="bg-green-500 text-white px-3 py-1 rounded text-xs">儲存</button>
+                            <div className="flex gap-1 justify-center">
+                                <button onClick={handleSavePermission} className="bg-green-500 text-white px-3 py-1 rounded text-xs hover:bg-green-600 transition">儲存</button>
+                                <button onClick={() => setEditingLevelKey(null)} className="bg-slate-400 text-white px-3 py-1 rounded text-xs hover:bg-slate-500 transition">取消</button>
+                            </div>
                          ) : (
-                            <button onClick={() => handleStartPermissionEdit(p)} className="bg-blue-500 text-white px-3 py-1 rounded text-xs">編輯</button>
+                            <div className="flex gap-1 justify-center">
+                                <button onClick={() => handleStartPermissionEdit(p)} className="bg-blue-500 text-white px-3 py-1 rounded text-xs hover:bg-blue-600 transition">編輯</button>
+                                <button onClick={() => {
+                                    if(confirm(`確定要刪除「${p.role_name} (Lv.${p.level})」嗎？\n請確認目前沒有使用者處於此等級。`)) {
+                                        onUpdatePermissions(permissions.filter(perm => !(perm.target_role === p.target_role && perm.level === p.level)));
+                                    }
+                                }} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition">刪除</button>
+                            </div>
                          )}
                       </td>
                    </tr>
@@ -795,7 +880,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                 <th className="border border-slate-300 px-4 py-2 w-20 text-center">Lv</th>
                 <th className="border border-slate-300 px-4 py-2 w-48">Email</th>
                 <th className="border border-slate-300 px-4 py-2 w-36">電話 (Phone)</th>
-                <th className="border border-slate-300 px-4 py-2 w-32">密碼 (Pwd)</th>
+                {/* ★ 功能4：增加到期日欄位 */}
+                <th className="border border-slate-300 px-2 py-2 w-28 text-center">等級到期日</th>
                 <th className="border border-slate-300 px-4 py-2 w-48 text-center">操作</th>
               </tr>
             </thead>
@@ -853,7 +939,19 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                       </td>
                       <td className="border border-slate-300 px-0 py-0 relative text-center">
                         {isEditing ? (
-                          <input type="number" min="1" max="99" className="w-full h-full text-center bg-yellow-50 outline-none font-bold text-slate-800 inset-0 absolute" value={editForm.level} onChange={e => setEditForm({...editForm, level: parseInt(e.target.value) || 1})} />
+                          <select 
+                             className="w-full h-full text-center bg-yellow-50 outline-none font-bold text-slate-800 inset-0 absolute appearance-none cursor-pointer" 
+                             value={editForm.level} 
+                             onChange={e => setEditForm({...editForm, level: parseInt(e.target.value) || 1})}
+                          >
+                             {permissions.filter(p => p.target_role === u.role).map(p => (
+                                 <option key={p.level} value={p.level}>Lv.{p.level} ({p.role_name})</option>
+                             ))}
+                             {u.role === 'ADMIN' && <option value={99}>Lv.99 (管理員)</option>}
+                             {permissions.filter(p => p.target_role === u.role).length === 0 && u.role !== 'ADMIN' && (
+                                 <option value={editForm.level || 1}>Lv.{editForm.level || 1}</option>
+                             )}
+                          </select>
                         ) : (
                           <div className="px-3 py-2 flex justify-center items-center gap-1">
                             {isRowAdmin && <i className="fa-solid fa-crown text-yellow-500 text-xs animate-pulse"></i>}
@@ -875,17 +973,24 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                           <div className="px-3 py-2 text-slate-600 font-mono text-xs">{u.phone}</div>
                         )}
                       </td>
-                      <td className="border border-slate-300 px-0 py-0 relative">
+                      {/* ★ 密碼欄位已移除 */}
+                      {/* ★ 功能4：到期日編輯欄位 */}
+                      <td className="border border-slate-300 px-0 py-0 relative text-center align-middle">
                         {isEditing ? (
-                          <input type="text" className="w-full h-full px-3 bg-yellow-50 outline-none text-red-600 font-mono inset-0 absolute" value={editForm.password} onChange={e => setEditForm({...editForm, password: e.target.value})} />
+                           <input 
+                             type="date" 
+                             className="w-full h-full px-1 text-center bg-yellow-50 outline-none text-slate-700 text-[10px] md:text-xs absolute inset-0" 
+                             value={(editForm as any).level_expire_at || ''} 
+                             onChange={e => setEditForm({...editForm, level_expire_at: e.target.value} as any)} 
+                           />
                         ) : (
-                          <div className="px-3 py-2 group cursor-pointer relative">
-                            <span className="text-slate-400 tracking-widest text-xs group-hover:hidden">********</span>
-                            <span className="hidden group-hover:block text-red-500 font-mono font-bold text-xs bg-red-50 px-1 rounded">{u.password}</span>
-                          </div>
+                           <div className="px-2 py-2 text-slate-500 text-xs font-mono">
+                             {(u as any).level_expire_at || '無期限'}
+                           </div>
                         )}
                       </td>
                       <td className="border border-slate-300 px-2 py-1 text-center">
+
                         {isEditing ? (
                           <div className="flex gap-1 justify-center">
                             <button onClick={() => handleSave(u.id)} className="w-6 h-6 bg-green-500 text-white rounded hover:bg-green-600 flex items-center justify-center shadow-sm"><i className="fa-solid fa-check text-xs"></i></button>
@@ -898,7 +1003,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
 
                             <button onClick={() => handleStartEdit(u)} className="w-6 h-6 text-blue-500 hover:bg-blue-50 rounded flex items-center justify-center transition" title="編輯"><i className="fa-solid fa-pen text-xs"></i></button>
                             
-                            <button onClick={() => handleShowPassword(u)} className="w-6 h-6 text-purple-500 hover:bg-purple-50 rounded flex items-center justify-center transition" title="查看原始密碼"><i className="fa-regular fa-eye text-xs"></i></button>
+                            <button onClick={() => handleShowPassword(u)} className="w-6 h-6 text-purple-500 hover:bg-purple-50 rounded flex items-center justify-center transition" title="查看真實密碼"><i className="fa-regular fa-eye text-xs"></i></button>
 
                             <button onClick={() => handleTriggerForgotPassword(u)} className="w-6 h-6 text-orange-500 hover:bg-orange-50 rounded flex items-center justify-center transition" title="寄送密碼信"><i className="fa-solid fa-paper-plane text-xs"></i></button>
 
@@ -966,7 +1071,22 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
               <div className="space-y-1"><label className="text-xs font-bold text-slate-500">電子信箱</label><input type="email" className="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-[#EE4D2D]" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} placeholder="example@email.com" /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1"><label className="text-xs font-bold text-slate-500">密碼</label><input type="text" className="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-[#EE4D2D] font-mono" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} placeholder="設定密碼" /></div>
-                <div className="space-y-1"><label className="text-xs font-bold text-slate-500">等級 (Level)</label><input type="number" className="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-[#EE4D2D] text-center font-bold" value={newUser.level} onChange={e => setNewUser({...newUser, level: parseInt(e.target.value) || 1})} /></div>
+                <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500">等級 (Level)</label>
+                   <select 
+                       className="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-[#EE4D2D] text-center font-bold bg-white appearance-none cursor-pointer" 
+                       value={newUser.level} 
+                       onChange={e => setNewUser({...newUser, level: parseInt(e.target.value) || 1})}
+                   >
+                       {permissions.filter(p => p.target_role === newUser.role).map(p => (
+                           <option key={p.level} value={p.level}>Lv.{p.level} ({p.role_name})</option>
+                       ))}
+                       {newUser.role === 'ADMIN' && <option value={99}>Lv.99 (管理員)</option>}
+                       {permissions.filter(p => p.target_role === newUser.role).length === 0 && newUser.role !== 'ADMIN' && (
+                           <option value={1}>Lv.1</option>
+                       )}
+                   </select>
+                </div>
               </div>
               <div className="text-[10px] text-slate-400 bg-slate-50 p-2 rounded">
                 <i className="fa-solid fa-circle-info mr-1"></i> ID 將由系統自動生成：YYYYMMDD流水號

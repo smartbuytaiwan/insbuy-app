@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 全局樣式修正 */
+body {
+  background-color: #F8FAFC; 
+  overflow-x: hidden; /* ★ 強制隱藏水平捲軸，解決手機版面跑版問題 */
+  width: 100%;
+  position: relative;
+  margin: 0;
+  padding: 0;
+  font-family: 'Noto Sans TC', sans-serif;
+}
+
+/* 保留原本定義的漸層樣式 */
+.primary-gradient {
+  background: linear-gradient(135deg, #EE4D2D 0%, #FF7337 100%);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #EE4D2D 0%, #FF7337 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
+
+/* 隱藏捲軸但保留功能 */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}

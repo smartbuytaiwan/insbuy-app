@@ -27,7 +27,6 @@ const BUYER_ORDER_STATUS_OPTIONS = [
 const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSellers, siteSettings, onNavigate, onSubmitReview, onUpdateOrderStatus, onUpdateUser, initialTab }) => {
   const [activeTab, setActiveTab] = useState<'ACCOUNT' | 'ORDERS' | 'REPORTS' | 'CREATE_SHOP'>('ACCOUNT');
   
-  // ★ 新增：手機版導航狀態，預設為 true (顯示選單)
   const [showMobileMenu, setShowMobileMenu] = useState(true);
 
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('ALL');
@@ -53,7 +52,7 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
   useEffect(() => {
     if (initialTab === 'orders' || initialTab === 'ORDERS') {
         setActiveTab('ORDERS');
-        setShowMobileMenu(false); // 若有指定 Tab，手機版直接顯示內容
+        setShowMobileMenu(false); 
     } else if (initialTab === 'create_shop' || initialTab === 'CREATE_SHOP') {
         setActiveTab('CREATE_SHOP');
         setShowMobileMenu(false);
@@ -102,20 +101,31 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
      if (!agreeTerms) return alert('請勾選同意條款');
 
      try {
-         const result = await API.upgradeToSeller(user.id, upgradeForm);
+         // 將原本呼叫不存在的 upgradeToSeller，改為組合更新資料後使用 updateUser
+         const updatedUser = {
+             ...user,
+             role: 'SELLER' as const, // 強制將身分轉為賣家
+             shop_id: user.shop_id || `S-${Date.now()}`, // 若沒有商店ID則自動產生
+             shop_name: upgradeForm.shop_name,
+             tax_id: upgradeForm.tax_id,
+             shop_description: upgradeForm.shop_description
+         };
+         
+         const result = await API.updateUser(updatedUser);
+         
          if (onUpdateUser) {
              onUpdateUser(result);
-             alert('恭喜！您已成功升級為賣家身分。\n頁面將自動重新整理以載入賣家功能。');
+             alert('恭喜！您已成功升級為賣家身分。\n請重新登入更新賣家功能。');
              window.location.reload(); 
          }
      } catch (e) {
-         console.error(e);
+         console.error('升級賣家失敗：', e);
          alert('升級失敗，請檢查網路連線');
      }
   };
 
   return (
-    <div className="flex flex-col md:flex-row gap-6 animate-fade-in pb-20">
+    <div className="flex flex-col md:flex-row gap-6 animate-fade-in pb-20 w-full overflow-x-hidden">
       
       {modalContent && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -131,7 +141,6 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
         </div>
       )}
 
-      {/* ★ 修改：Sidebar 加入響應式隱藏邏輯 */}
       <aside className={`w-full md:w-64 space-y-2 shrink-0 ${showMobileMenu ? 'block' : 'hidden md:block'}`}>
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 sticky top-24">
           <div className="flex items-center gap-3 mb-6">
@@ -156,7 +165,7 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
                 key={item.id}
                 onClick={() => {
                     setActiveTab(item.id as any);
-                    setShowMobileMenu(false); // ★ 手機版點擊後收起選單
+                    setShowMobileMenu(false); 
                 }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === item.id ? 'bg-[#EE4D2D] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
               >
@@ -194,10 +203,8 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
         </div>
       </aside>
 
-      {/* ★ 修改：內容區塊加入響應式隱藏邏輯 */}
-      <div className={`flex-1 space-y-6 ${showMobileMenu ? 'hidden md:block' : 'block'}`}>
+      <div className={`flex-1 space-y-6 min-w-0 ${showMobileMenu ? 'hidden md:block' : 'block'}`}>
 
-         {/* ★ 新增：手機版顯示「返回功能選單」按鈕 */}
          <div className="md:hidden mb-4">
            <button 
               onClick={() => setShowMobileMenu(true)}
@@ -236,15 +243,15 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
          )}
 
          {activeTab === 'ORDERS' && (
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8">
+            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 md:p-8">
                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                   <h2 className="text-xl font-black text-slate-800 border-l-4 border-[#EE4D2D] pl-4">我的訂單</h2>
-                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide max-w-full">
+                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide max-w-full w-full md:w-auto">
                       {BUYER_ORDER_STATUS_OPTIONS.map(opt => (
                         <button 
                           key={opt.value}
                           onClick={() => setOrderStatusFilter(opt.value)}
-                          className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition ${orderStatusFilter === opt.value ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                          className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition shrink-0 ${orderStatusFilter === opt.value ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                         >
                             {opt.label}
                         </button>
@@ -261,29 +268,54 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
                ) : (
                   myOrders.map(order => {
                     const seller = allSellers.find(s => s.shop_id === order.shop_id || s.id === order.shop_id);
+                    const sellerName = seller?.shop_name || order.store_name || '未知賣家';
+                    
+                    // ★ 修正：更寬容的已收款判定，檢查 snake_case 與 camelCase
+                    const sellerNote = (order as any).seller_note || (order as any).sellerNote || '';
+                    const isPaid = (order as any).is_paid || sellerNote.includes('[已收款]');
+
                     return (
                        <div key={order.id} className="border border-slate-100 rounded-2xl overflow-hidden hover:shadow-md transition bg-white">
-                          <div className="p-4 bg-slate-50/50 flex justify-between items-center border-b border-slate-100">
-                             <div className="flex items-center gap-3">
-                                <div className="font-bold text-slate-700 text-sm flex items-center gap-2">
+                          
+                          {/* ★ 新增：訂單編號與時間 Header (置頂顯示) */}
+                          <div className="bg-slate-100/80 px-4 py-2 flex justify-between items-center text-[10px] md:text-xs text-slate-500 font-bold border-b border-slate-200/50">
+                              <span className="font-mono">訂單編號：{order.id}</span>
+                              <span className="flex items-center gap-1"><i className="fa-regular fa-clock"></i> {new Date(order.created_at).toLocaleString('zh-TW')}</span>
+                          </div>
+
+                          <div className="p-4 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-100 gap-2">
+                             <div className="flex items-center gap-3 flex-wrap">
+                                <button 
+                                   onClick={(e) => {
+                                      e.stopPropagation();
+                                      const targetShopId = order.shop_id || seller?.id;
+                                      if(targetShopId) {
+                                          onNavigate(View.SHOP, undefined, targetShopId);
+                                      } else {
+                                          alert('無法連結至賣場 (找不到 Shop ID)');
+                                      }
+                                   }}
+                                   className="font-bold text-slate-700 text-sm flex items-center gap-2 hover:text-[#EE4D2D] transition border border-transparent hover:border-slate-200 hover:bg-white px-2 py-1 rounded-lg"
+                                >
                                    <i className="fa-solid fa-store text-slate-400"></i>
-                                   {seller?.shop_name || order.store_name || '未知賣家'}
-                                </div>
+                                   {sellerName} 
+                                   <i className="fa-solid fa-chevron-right text-xs opacity-50"></i>
+                                </button>
+
                                 <button onClick={() => onNavigate(View.CHAT, undefined, order.shop_id)} className="text-[#EE4D2D] text-xs px-2 py-1 rounded bg-orange-50 hover:bg-orange-100 font-bold border border-orange-100">
-                                   {/* ★ 修改：聊聊 改為 愛聊 */}
                                    <i className="fa-regular fa-comments mr-1"></i>愛聊
                                 </button>
                              </div>
                              
-                             <div className="flex items-center gap-2">
-                                {/* ★ 新增：顯示已收到貨款標籤 */}
-                                {(order as any).is_paid && (
-                                   <span className="text-[10px] bg-green-100 text-green-600 px-2 py-1 rounded border border-green-200 flex items-center gap-1 font-bold">
-                                      <i className="fa-solid fa-check-circle"></i> 已收到貨款
+                             <div className="flex flex-wrap items-center gap-2 self-end md:self-auto">
+                                {/* ★ 顯示已收款狀態 */}
+                                {isPaid && (
+                                   <span className="text-[10px] bg-green-100 text-green-600 px-2 py-1 rounded border border-green-200 flex items-center gap-1 font-bold animate-pulse whitespace-nowrap">
+                                      <i className="fa-solid fa-check-circle"></i> 賣家已收款
                                    </span>
                                 )}
 
-                                <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                                <span className={`text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap ${
                                     order.status === 'COMPLETED' ? 'bg-green-100 text-green-600' :
                                     order.status === 'CANCELLED' ? 'bg-slate-200 text-slate-500' :
                                     'bg-orange-100 text-[#EE4D2D]'
@@ -294,21 +326,14 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
                           </div>
 
                           <div className="p-4">
-                             <div className="flex justify-between items-center mb-4 text-[10px] text-slate-400">
-                                <span>訂單編號: {order.id}</span>
-                                <span><i className="fa-regular fa-clock mr-1"></i>{new Date(order.created_at).toLocaleString('zh-TW')}</span>
-                             </div>
-
                              <div className="space-y-3">
                                 {order.items.map((item, idx) => (
                                     <div key={idx} className="flex gap-4">
                                     <div className="w-16 h-16 bg-slate-100 rounded-lg overflow-hidden shrink-0 border border-slate-200">
-                                        {/* ★ 修正 1：item.image -> item.images?.[0] */}
                                         <img src={item.images?.[0] || 'https://placehold.co/100'} className="w-full h-full object-cover" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="text-sm font-bold text-slate-800 line-clamp-1">{item.name}</div>
-                                        {/* ★ 修正 2：item.variantName -> item.selectedVariant */}
                                         <div className="text-xs text-slate-500 mt-1">{item.selectedVariant ? `規格: ${item.selectedVariant}` : '單一規格'} x {item.qty}</div>
                                     </div>
                                     <div className="text-right">
@@ -328,7 +353,7 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
                           </div>
                           
                           <div className="p-4 bg-slate-50/30 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
-                             <div className="text-xs text-slate-500 font-bold">
+                             <div className="text-xs text-slate-500 font-bold w-full md:w-auto text-center md:text-left">
                                 共 {order.items.reduce((a,b)=>a+b.qty,0)} 件商品 • 總金額 <span className="text-lg text-[#EE4D2D] font-black ml-1">${order.total_amount.toLocaleString()}</span>
                              </div>
                              
@@ -481,7 +506,7 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
               />
               
               <div className="flex gap-2">
-                 <button onClick={handleSubmitReview} className="flex-1 py-2 bg-[#EE4D2D] text-white rounded-lg font-bold text-sm\">送出評價</button>
+                 <button onClick={handleSubmitReview} className="flex-1 py-2 bg-[#EE4D2D] text-white rounded-lg font-bold text-sm">送出評價</button>
                  <button onClick={() => setReviewModalOpen(false)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg font-bold text-sm">取消</button>
               </div>
             </div>
