@@ -40,6 +40,7 @@ export interface ShopReview {
 export interface Product {
   id: string;
   shop_id: string;
+  views?: Record<string, number>; // ★ 新增：商品每日瀏覽量紀錄
   category_ids: string[]; 
   category_id?: string; 
   name: string;
@@ -59,7 +60,9 @@ export interface Product {
   current_amount?: number;
   total_stock: number;
   is_pinned?: boolean;
-  pin_rank?: number; // 1-99
+  pin_rank?: number;
+  is_hidden?: boolean; // ★ 新增：隱藏銷售
+  view_password?: string; // ★ 新增：專屬密碼
   origin?: string;
   shipping_origin?: string; 
   keywords?: string[]; 
@@ -108,7 +111,9 @@ export interface CartItem extends Product {
 
 export interface User {
   id: string;
+  blacklisted_by?: string[]; // ★ 新增：被哪些賣家加入黑名單
   name: string;
+  welcome_message?: string;
   phone: string;
   email?: string;
   password?: string; 
@@ -179,6 +184,7 @@ export interface LevelConfig {
 }
 
 export interface SiteSettings {
+  platform_views?: Record<string, number>;
   key?: string;
   termsOfService: string;
   privacyPolicy: string;

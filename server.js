@@ -4,6 +4,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
+import rateLimit from 'express-rate-limit'; // ★ 新增：API 限流
+import * as xlsx from 'xlsx'; // ★ 新增：Excel 解析
 
 dotenv.config();
 
@@ -13,6 +15,53 @@ const MONGODB_URI = process.env.MONGODB_URI;
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// ==========================================
+// ★ 安全防護 5 & 9：全域 API 請求限流 (防暴力攻擊)
+// ==========================================
+const globalLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 分鐘內
+  max: 800, // ★ 修正：將原本 120 提高到 800，避免愛聊系統的背景輪詢被防火牆阻擋
+  message: { message: "請求過於頻繁，系統已啟動防護限制，請稍後再試。" }
+});
+app.use('/api/', globalLimiter);
+
+// ★ 安全防護 3：商品上架專屬限流 (最快1分鐘1個)
+const productCreationLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 1,
+  message: { message: "上架速率限制：為維護系統穩定，每分鐘只能上架一個商品。" }
+});
+
+// ★ 安全防護 6：隱形蜜罐陷阱 (Honeypot) 攔截器
+const honeypotCheck = (req, res, next) => {
+  if (req.body.bot_trap_field) {
+    console.warn("🤖 觸發蜜罐陷阱！已封鎖機器人攻擊。");
+    return res.status(403).json({ message: "系統偵測到異常行為，請求被拒絕。" });
+  }
+  next();
+};
+
+// ★ 安全防護 1：違規關鍵字與外部連結過濾器
+const BAD_WORDS = ['加LINE', '私下交易', '免運請點網址', '原味', '高仿'];
+const keywordFilter = (req, res, next) => {
+  const content = JSON.stringify(req.body);
+  for (const word of BAD_WORDS) {
+    if (content.includes(word)) {
+      return res.status(400).json({ message: `您的商品或內容包含違規字眼「${word}」，禁止發送＆輸入。` });
+    }
+  }
+  next();
+};
+
+// ★ 安全防護 9：API 分頁與數量限制攔截器 (防止一次撈取十萬筆)
+const paginationCheck = (req, res, next) => {
+   if (req.method === 'GET' && !req.query.limit) {
+       req.query.limit = 100; // 強制預設最高只回傳 100 筆
+   }
+   next();
+};
+app.use('/api/products', paginationCheck);
 
 const transporter = nodemailer.createTransport({
   jsonTransport: true 
@@ -33,7 +82,10 @@ const messageSchema = new mongoose.Schema({
 
 const userSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
+  blacklisted_by: [String], // ★ 新增：被哪些賣家加入黑名單
   name: String,
+  failed_login_attempts: { type: Number, default: 0 }, // ★ 防護 11：登入失敗次數
+  lockout_until: { type: Date, default: null }, // ★ 防護 11：帳號鎖定時間
   shop_name: String,
   shop_description: String,
   tax_id: String, 
@@ -64,11 +116,13 @@ const userSchema = new mongoose.Schema({
   facebook_url: String,
   instagram_url: String,
   threads_url: String,
+  welcome_message: String, // ★ 新增：賣家歡迎訊息
   shop_reviews: [{ id: String, userId: String, userName: String, rating: Number, comment: String, createdAt: String }]
 });
 
 const productSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
+  views: { type: Object, default: {} }, // ★ 新增：商品每日瀏覽量紀錄
   shop_id: String,
   category_ids: [String],
   category_id: String,
@@ -96,6 +150,8 @@ const productSchema = new mongoose.Schema({
   origin: String,
   shipping_origin: String, 
   keywords: [String], 
+  is_hidden: { type: Boolean, default: false }, // ★ 新增：隱藏銷售
+  view_password: { type: String, default: '' }, // ★ 新增：專屬密碼
   questions: [{ title: String, required: Boolean }],
   reviews: [{ id: String, userId: String, userName: String, rating: Number, comment: String, createdAt: String }]
 });
@@ -195,6 +251,11 @@ const reportSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', userSchema);
 const Product = mongoose.model('Product', productSchema);
+// ★ 新增：網站設定 Schema (用來儲存平台總瀏覽量)
+const siteSettingsSchema = new mongoose.Schema({
+  platform_views: { type: Object, default: {} } 
+});
+const SiteSettings = mongoose.model('SiteSettings', siteSettingsSchema);
 const Order = mongoose.model('Order', orderSchema);
 const Category = mongoose.model('Category', categorySchema);
 const Settings = mongoose.model('Settings', settingSchema);
@@ -261,7 +322,29 @@ const generateNextUserId = async () => {
   return `${datePrefix}${String(sequence).padStart(4, '0')}`;
 };
 
-// --- Routes ---
+// ★ 新增：管理員一鍵備份全站資料 (政府調閱用)
+app.get('/api/admin/dump', async (req, res) => {
+  try {
+    // 這裡不做身分驗證 middleware，由前端 ADMIN 權限控制呼叫，或可自行加上驗證
+    const users = await User.find({});
+    const products = await Product.find({});
+    const orders = await Order.find({});
+    const messages = await Message.find({});
+    const reports = await Report.find({});
+    const affiliateLinks = await AffiliateLink.find({});
+    
+    const dumpData = {
+      timestamp: new Date().toISOString(),
+      system: "InsBuy_Full_Backup",
+      data: { users, products, orders, messages, reports, affiliateLinks }
+    };
+    
+    res.json(dumpData);
+  } catch (e) {
+    res.status(500).json({ message: '備份失敗', error: e.message });
+  }
+});
+
 // ==========================================
 // --- Affiliate (專業版分潤系統) API Routes ---
 // ==========================================
@@ -482,7 +565,27 @@ app.get('/api/products', async (req, res) => {
   } catch (error) { res.status(500).json({ message: 'Failed to fetch products' }); }
 });
 
-app.post('/api/products', async (req, res) => {
+// ==========================================
+// ★ 新增功能 4：Excel 快速上架 (專屬通道，不受 1 分鐘 1 個的限制)
+// ==========================================
+app.post('/api/products/bulk', keywordFilter, async (req, res) => {
+  try {
+    const { products } = req.body;
+    if (!Array.isArray(products)) return res.status(400).json({ message: '無效的資料格式' });
+    
+    // 將陣列資料直接整批寫入資料庫
+    await Product.insertMany(products);
+    res.json({ success: true, count: products.length });
+  } catch (e) {
+    console.error("批次上架錯誤:", e);
+    res.status(500).json({ message: '大量上架失敗' });
+  }
+});
+
+// ==========================================
+// 單一商品上架 (加入上架限流、蜜罐防護、關鍵字審查)
+// ==========================================
+app.post('/api/products', productCreationLimiter, honeypotCheck, keywordFilter, async (req, res) => {
   try {
     const product = new Product(req.body);
     await product.save();
@@ -802,6 +905,154 @@ app.post('/api/permissions/bulk', async (req, res) => {
   await Permission.deleteMany({});
   await Permission.insertMany(req.body.permissions);
   res.json(req.body.permissions);
+});
+
+// ==========================================
+// ★ 新增：買家黑名單與停用邏輯
+// ==========================================
+app.post('/api/users/:id/blacklist', async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+    const { sellerId } = req.body;
+    const user = await User.findOne({ id: targetUserId });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (!user.blacklisted_by) user.blacklisted_by = [];
+    
+    // ★ 修改：改為切換 (Toggle) 邏輯
+    if (user.blacklisted_by.includes(sellerId)) {
+        // 如果已經在黑名單中，則解除封鎖
+        user.blacklisted_by = user.blacklisted_by.filter(id => id !== sellerId);
+    } else {
+        // 如果不在黑名單中，則加入
+        user.blacklisted_by.push(sellerId);
+        // ★ 核心邏輯：滿 3 個不同賣家檢舉/黑名單，自動停用帳號
+        if (user.blacklisted_by.length >= 3) {
+            user.is_suspended = true;
+        }
+    }
+    
+    // 儲存並回傳更新後的狀態
+    await User.findOneAndUpdate(
+        { id: targetUserId }, 
+        { blacklisted_by: user.blacklisted_by, is_suspended: user.is_suspended },
+        { new: true } 
+    );
+    res.json(user);
+  } catch (e) {
+    res.status(500).json({ message: "Error" });
+  }
+});
+
+// ==========================================
+// ★ 新增：紀錄商品瀏覽量
+// ==========================================
+// ==========================================
+// ★ 新增：紀錄商品瀏覽量 (含平台瀏覽量連動)
+// ==========================================
+app.post('/api/products/:id/view', async (req, res) => {
+  try {
+    // ★ 修正：統一轉成絕對的 YYYY-MM-DD 格式，避免各系統時間格式不同導致對不起來
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    
+    // 使用 $inc 強制 MongoDB 增加數值，保證絕對寫入成功
+    await Product.findOneAndUpdate(
+        { id: req.params.id },
+        { $inc: { [`views.${today}`]: 1 } },
+        { new: true }
+    );
+    // ★ 連動增加平台總瀏覽量
+    await SiteSettings.findOneAndUpdate(
+        {},
+        { $inc: { [`platform_views.${today}`]: 1 } },
+        { upsert: true, new: true }
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ message: "Error" });
+  }
+});
+
+// ==========================================
+// ★ 新增：紀錄平台總瀏覽量 (首頁等其他地方觸發)
+// ==========================================
+app.post('/api/settings/view', async (req, res) => {
+  try {
+    // ★ 修正：統一轉成絕對的 YYYY-MM-DD 格式
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    
+    await SiteSettings.findOneAndUpdate(
+        {},
+        { $inc: { [`platform_views.${today}`]: 1 } },
+        { upsert: true, new: true }
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ message: "Error" });
+  }
+});
+
+// ★ 新增：取得平台總瀏覽量資料 (供管理員後台使用)
+app.get('/api/platform-views', async (req, res) => {
+  try {
+    const settings = await SiteSettings.findOne({});
+    res.json(settings ? settings.platform_views : {});
+  } catch (e) {
+    res.status(500).json({ message: "Error" });
+  }
+});
+
+// ==========================================
+// ★ 新增：抓取外部網頁標題 API (跨網購比價書籤專用)
+// ==========================================
+app.get('/api/fetch-metadata', async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+
+    // 偽裝成正常瀏覽器，避免被其他電商網站阻擋
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7'
+      }
+    });
+    
+    const html = await response.text();
+    // 使用正規表達式快速提取 <title> 標籤內容
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    let title = titleMatch ? titleMatch[1].trim() : '';
+    
+    // ★ 修復：判斷是否遇到 Cloudflare 等防機器人驗證頁面
+    const blockedTitles = ['Just a moment...', 'Attention Required!', 'Cloudflare', '403 Forbidden', 'Access Denied', 'Not Acceptable', 'Security Check'];
+    const isBlocked = blockedTitles.some(b => title.includes(b)) || !title;
+
+    if (isBlocked) {
+        // 如果遇到阻擋，智慧擷取網域名稱首字母大寫作為標題 (例如 grok.com -> Grok)
+        try {
+            const hostname = new URL(url).hostname.replace('www.', '');
+            const siteName = hostname.split('.')[0];
+            title = siteName.charAt(0).toUpperCase() + siteName.slice(1);
+        } catch(e) {
+            title = '未命名網頁';
+        }
+    }
+    
+    res.json({ title });
+  } catch (error) {
+    console.error('Metadata fetch error:', error.message);
+    // 如果連線完全失敗，也嘗試用網址名稱作為備用標題
+    try {
+        const hostname = new URL(req.query.url).hostname.replace('www.', '');
+        const siteName = hostname.split('.')[0];
+        res.json({ title: siteName.charAt(0).toUpperCase() + siteName.slice(1) });
+    } catch(e) {
+        res.json({ title: '無法自動抓取標題 (請手動輸入)' });
+    }
+  }
 });
 
 app.post('/api/reports', async (req, res) => {

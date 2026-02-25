@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, User } from '../types';
+import API from '../api'; // 引入 API 工具
+import FavoritesModal from './FavoritesModal'; // 引入全新我的最愛視窗
 
 interface HeaderProps {
   user: User | null;
@@ -16,15 +18,48 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, searchQuery, setSearchQuery, onShowHelp, onSearch, onReset }) => {
   const [isListening, setIsListening] = useState(false);
 
+  // ==========================================
+  // ★ 我的最愛 (彈出視窗開關)
+  // ==========================================
+  const [isFavOpen, setIsFavOpen] = useState(false);
+
+  // ★ 多國語言狀態與清單
+  const [isLangOpen, setIsLangOpen] = useState(false);
+  const [currentLang, setCurrentLang] = useState('zh-TW');
+  const LANGUAGES = [
+    { code: 'zh-TW', name: '繁體中文' },
+    { code: 'en', name: 'English' },
+    { code: 'ja', name: '日本語' },
+    { code: 'ko', name: '한국어' },
+    { code: 'vi', name: 'Tiếng Việt' },
+    { code: 'id', name: 'Bahasa Indonesia' }
+  ];
+
+  const handleLanguageChange = (langCode: string) => {
+    setCurrentLang(langCode);
+    setIsLangOpen(false);
+    const select = document.querySelector('.goog-te-combo') as HTMLSelectElement;
+    if (select) {
+        select.value = langCode;
+        select.dispatchEvent(new Event('change'));
+    } else {
+        document.cookie = `googtrans=/zh-TW/${langCode}; path=/;`;
+        window.location.reload();
+    }
+  };
+
+// 1. 若登出則隱藏最愛視窗
+  useEffect(() => {
+     if (!user || !user.id) setIsFavOpen(false);
+  }, [user]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       onSearch(searchQuery);
     }
   };
 
-  // ★ 修改：增強語音輸入的相容性 (支援 Chrome, Safari, Edge 等手機瀏覽器)
   const handleVoiceSearch = () => {
-    // 定義瀏覽器語音 API 介面
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
@@ -34,23 +69,18 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
 
     try {
       const recognition = new SpeechRecognition();
-      recognition.lang = 'zh-TW'; // 設定語言為繁體中文
-      recognition.continuous = false; // 講完一句自動停止
-      recognition.interimResults = false; // 不顯示臨時結果
+      recognition.lang = 'zh-TW'; 
+      recognition.continuous = false; 
+      recognition.interimResults = false; 
 
-      recognition.onstart = () => {
-        setIsListening(true);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
       
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         if (transcript) {
             setSearchQuery(transcript);
-            onSearch(transcript); // 辨識完成後直接搜尋
+            onSearch(transcript); 
         }
       };
 
@@ -59,11 +89,6 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
         setIsListening(false);
         if (event.error === 'not-allowed') {
             alert('請允許瀏覽器使用麥克風權限以進行語音搜尋。');
-        } else if (event.error === 'no-speech') {
-            // 用戶沒說話，不做特別提示，直接結束
-        } else {
-             // 其他錯誤
-             console.log("Voice Search Error: ", event.error);
         }
       };
 
@@ -96,7 +121,7 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
                className="h-8 w-8 md:h-12 md:w-12 object-cover rounded-full" 
              />
           </div>
-          <span className="text-xl md:text-2xl font-black text-white tracking-tight drop-shadow-sm hidden md:block">
+          <span className="text-xl md:text-2xl font-black text-white tracking-tight drop-shadow-sm hidden md:block notranslate">
             InsBuy
           </span>
         </div>
@@ -113,7 +138,6 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
           />
           
           <div className="absolute right-1 top-1 bottom-1 flex items-center gap-0.5 md:gap-1">
-             {/* ★ 修改：加入 type="button" 確保手機瀏覽器點擊不會觸發表單提交，並加上 touch-action 優化觸控 */}
              <button 
                type="button"
                onClick={handleVoiceSearch}
@@ -135,6 +159,45 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
         {/* Actions */}
         <div className="flex items-center gap-2 md:gap-4 shrink-0">
           
+          {/* 多國語言切換選單 */}
+          <div className="relative">
+             <button 
+               onClick={() => { setIsLangOpen(!isLangOpen); setIsFavOpen(false); }}
+               className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition"
+               title="選擇語言 Language"
+             >
+               <i className="fa-solid fa-globe text-lg md:text-xl"></i>
+             </button>
+
+             {isLangOpen && (
+                 <div className="absolute top-14 right-0 w-44 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-[300] animate-fade-in-up">
+                     <div className="bg-slate-50 text-[10px] font-bold text-slate-400 p-3 border-b border-slate-100 uppercase tracking-widest">
+                         Select Language
+                     </div>
+                     {LANGUAGES.map(lang => (
+                         <button 
+                            key={lang.code}
+                            onClick={() => handleLanguageChange(lang.code)}
+                            className={`w-full text-left px-4 py-3 text-sm font-bold hover:bg-orange-50 transition ${currentLang === lang.code ? 'text-[#EE4D2D] bg-orange-50' : 'text-slate-700'}`}
+                         >
+                            {lang.name}
+                         </button>
+                     ))}
+                 </div>
+             )}
+          </div>
+
+          {/* 只有登入後才顯示我的最愛按鈕 */}
+          {user && (
+            <button 
+              onClick={() => { setIsFavOpen(!isFavOpen); setIsLangOpen(false); }}
+              className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition"
+              title="我的最愛"
+            >
+              <i className="fa-solid fa-star text-lg md:text-xl"></i>
+            </button>
+          )}
+
           <button 
             onClick={onShowHelp}
             className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition"
@@ -191,6 +254,23 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
           )}
         </div>
       </div>
+
+      {/* 語音輸入的視覺回饋提示 */}
+      {isListening && (
+         <div className="absolute top-full left-0 w-full bg-slate-800 text-white text-center py-2 text-xs font-bold animate-pulse">
+            <i className="fa-solid fa-microphone-lines mr-2"></i> 正在聆聽您的語音，請說話...
+         </div>
+      )}
+
+      {/* ★ 我的最愛 下拉選單 UI (僅登入時顯示) */}
+      
+      {/* ★ 我的最愛 獨立模組視窗 */}
+      <FavoritesModal 
+          isOpen={isFavOpen} 
+          onClose={() => setIsFavOpen(false)} 
+          user={user} 
+      />
+      
     </header>
   );
 };

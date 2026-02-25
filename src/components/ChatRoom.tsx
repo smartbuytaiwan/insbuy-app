@@ -235,6 +235,18 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
                 const formattedMessages = dbMessages.map(mapMessageData);
                 formattedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
+                // ★ 新增：如果沒有歷史訊息，且對方有設定歡迎詞，則插入一條本地顯示的歡迎訊息
+                if (formattedMessages.length === 0 && activeUser && activeUser.welcome_message) {
+                    formattedMessages.push({
+                        id: 'welcome_msg',
+                        senderId: currentTarget,
+                        receiverId: myId,
+                        text: `[自動回覆] ${activeUser.welcome_message}`,
+                        timestamp: new Date().toISOString(),
+                        isRead: true
+                    });
+                }
+
                 setMessages(prev => {
                     if (prev.length !== formattedMessages.length || JSON.stringify(prev) !== JSON.stringify(formattedMessages)) {
                         return formattedMessages;
@@ -669,7 +681,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
           </>
         ) : (
           /* 電腦版未選擇聯絡人時的預設畫面 */
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-300 bg-slate-50/30 hidden md:flex">
+          <div className="flex-1 hidden md:flex flex-col items-center justify-center text-slate-300 bg-slate-50/30">
             <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-slate-300">
                 <i className="fa-regular fa-comments text-4xl"></i>
             </div>

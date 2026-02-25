@@ -28,6 +28,11 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(product.variants?.[0] || null);
   const [adminRank, setAdminRank] = useState<string>(product.pin_rank?.toString() || '');
 
+  // ★ 新增：密碼驗證相關狀態
+  const [passwordInput, setPasswordInput] = useState('');
+  const [isVerified, setIsVerified] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  
   // 檢舉相關 State
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportData, setReportData] = useState<{subject: string, reason: string}>({ subject: '', reason: '' });
@@ -133,6 +138,13 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
     if (!selectedVariant) { 
         alert('請選擇規格'); 
         return false; 
+    }
+
+    // ★ 安全防護 7：單筆訂單最多買 10 件防呆
+    if (parseInt(qty as any) > 10) {
+        alert("防護機制：為了讓更多人能購買，單一商品單次最多限購 10 件喔！");
+        setQty(10);
+        return false;
     }
     
     // 確保當前輸入的數量是有效數字
@@ -252,6 +264,58 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
       "reviewCount": product.reviews.length
     } : undefined
   };
+
+  // ★ 新增：隱藏商品密碼攔截畫面 (如果商品被隱藏，且未解鎖，就優先顯示這個畫面)
+  if (product.is_hidden && product.view_password && !isVerified) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+         <div className="bg-white p-8 rounded-3xl shadow-xl max-w-sm w-full text-center border border-slate-100">
+            <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
+               <i className="fa-solid fa-lock text-2xl text-[#EE4D2D]"></i>
+            </div>
+            <h2 className="text-xl font-black text-slate-800 mb-2">專屬隱藏商品</h2>
+            <p className="text-sm text-slate-500 mb-6 font-bold">請輸入賣家提供的專屬密碼以查看</p>
+            
+            <div className="text-left mb-4">
+               <input
+                  type="password"
+                  placeholder="請輸入密碼..."
+                  className={`w-full border rounded-xl p-3 text-center outline-none transition focus:border-[#EE4D2D] ${passwordError ? 'border-red-500 bg-red-50' : 'border-slate-200'}`}
+                  value={passwordInput}
+                  onChange={e => { setPasswordInput(e.target.value); setPasswordError(''); }}
+                  onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                          if (passwordInput === product.view_password) setIsVerified(true);
+                          else setPasswordError('密碼錯誤，請確認後重新輸入');
+                      }
+                  }}
+               />
+               {passwordError && (
+                 <div className="text-red-500 text-xs font-bold mt-2 text-center">
+                   <i className="fa-solid fa-circle-exclamation"></i> {passwordError}
+                 </div>
+               )}
+            </div>
+
+            <button
+               onClick={() => {
+                   if (passwordInput === product.view_password) setIsVerified(true);
+                   else setPasswordError('密碼錯誤，請確認後重新輸入');
+               }}
+               className="w-full bg-[#EE4D2D] text-white py-3 rounded-xl font-bold hover:bg-[#d73211] transition shadow-md active:scale-95 mb-3"
+            >
+               確認解鎖
+            </button>
+            <button
+               onClick={() => onNavigate(View.SHOP)}
+               className="w-full bg-slate-100 text-slate-500 py-3 rounded-xl font-bold hover:bg-slate-200 transition active:scale-95"
+            >
+               返回首頁
+            </button>
+         </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in pb-10">
@@ -404,12 +468,22 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
                            value={qty} 
                            onChange={e => {
                                const val = parseInt(e.target.value);
-                               if (!isNaN(val)) setQty(val);
+                               if (!isNaN(val)) {
+                                   // ★ 安全防護 7：手動輸入時防呆
+                                   if (val > 10) {
+                                       alert("防護機制：單一商品單次最多限購 10 件喔！");
+                                       setQty(10);
+                                   } else {
+                                       setQty(val);
+                                   }
+                               }
                                else if (e.target.value === '') setQty('' as any); // 允許使用者刪除清空重新輸入
                            }}
                            onBlur={() => {
                                let finalQty = parseInt(qty as any);
                                if (isNaN(finalQty) || finalQty < 1) finalQty = 1;
+                               // ★ 安全防護 7：失去焦點時最後確認
+                               if (finalQty > 10) finalQty = 10;
                                const maxStock = selectedVariant?.stock || product.total_stock || 0;
                                // 若為實體商品且輸入大於庫存，自動修正為最大庫存
                                if (product.product_type === 'PHYSICAL' && finalQty > maxStock) {
@@ -418,7 +492,15 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
                                setQty(finalQty);
                            }}
                         />
-                        <button onClick={() => setQty((parseInt(qty as any) || 0) + 1)} className="w-10 h-full hover:bg-slate-100 flex items-center justify-center text-slate-500 shrink-0"><i className="fa-solid fa-plus"></i></button>
+                        <button onClick={() => {
+                            // ★ 安全防護 7：按鈕增加時防呆
+                            const currentQty = parseInt(qty as any) || 0;
+                            if (currentQty >= 10) {
+                                alert("防護機制：為了讓更多人能購買，單一商品單次最多限購 10 件喔！");
+                                return;
+                            }
+                            setQty(currentQty + 1);
+                        }} className="w-10 h-full hover:bg-slate-100 flex items-center justify-center text-slate-500 shrink-0"><i className="fa-solid fa-plus"></i></button>
                      </div>
                      <span className="text-xs text-slate-400">還剩 {selectedVariant?.stock || 0} 件</span>
                    </div>

@@ -15,6 +15,78 @@ import UserManagement from './components/UserManagement';
 import API from './api';
 import InfluencerDashboard from './components/InfluencerDashboard';
 
+// ★ 新增：圖形驗證碼元件
+const CaptchaModal = ({ onVerify, onCancel }: { onVerify: () => void, onCancel: () => void }) => {
+  const [code, setCode] = useState('');
+  const [input, setInput] = useState('');
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+
+  const generateCode = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let result = '';
+    for (let i = 0; i < 4; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+    setCode(result);
+  };
+
+  useEffect(() => { generateCode(); }, []);
+
+  useEffect(() => {
+    if (canvasRef.current && code) {
+      const ctx = canvasRef.current.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, 120, 40);
+        ctx.fillStyle = '#f1f5f9';
+        ctx.fillRect(0, 0, 120, 40);
+        ctx.font = 'bold 24px monospace';
+        ctx.fillStyle = '#334155';
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center';
+        // 加入干擾線
+        for(let i=0; i<5; i++) {
+           ctx.strokeStyle = `rgba(0,0,0,0.1)`;
+           ctx.beginPath();
+           ctx.moveTo(Math.random()*120, Math.random()*40);
+           ctx.lineTo(Math.random()*120, Math.random()*40);
+           ctx.stroke();
+        }
+        ctx.fillText(code, 60, 20);
+      }
+    }
+  }, [code]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (input.toUpperCase() === code) onVerify();
+    else { alert('驗證碼錯誤，請重新輸入'); generateCode(); setInput(''); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-scale-up">
+        <h3 className="font-bold text-lg mb-4 text-center">安全驗證</h3>
+        <p className="text-xs text-slate-500 mb-4 text-center">為了確保您的帳號安全，請輸入下方驗證碼</p>
+        <div className="flex justify-center mb-4 cursor-pointer" onClick={generateCode} title="點擊更換">
+           <canvas ref={canvasRef} width={120} height={40} className="rounded border border-slate-200" />
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+           <input 
+             autoFocus
+             type="text" 
+             className="w-full border border-slate-200 rounded-xl px-4 py-3 text-center font-bold outline-none focus:border-[#EE4D2D] tracking-widest uppercase"
+             placeholder="輸入驗證碼"
+             value={input}
+             onChange={e => setInput(e.target.value)}
+           />
+           <div className="flex gap-2">
+             <button type="button" onClick={onCancel} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">取消</button>
+             <button type="submit" className="flex-1 py-3 bg-[#EE4D2D] text-white rounded-xl font-bold shadow-md">確認登入</button>
+           </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const SYSTEM_ADMIN_USER: User = {
   id: 'ADMIN',
   name: 'InsBuy 系統管理員',
@@ -65,6 +137,10 @@ const App: React.FC = () => {
 
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [shopRefreshKey, setShopRefreshKey] = useState(0);
+  const [pendingLoginUser, setPendingLoginUser] = useState<any>(null); // ★ 新增：暫存登入資訊
+  
+  // ★ 新增：購物車遺忘提醒狀態
+  const [showCartReminder, setShowCartReminder] = useState(false);
 
   const [viewedOrderIds, setViewedOrderIds] = useState<string[]>(() => {
     try {
@@ -96,6 +172,33 @@ const App: React.FC = () => {
     }
   };
 
+  // ★ 新增：當商品切換時，自動觸發該商品的瀏覽量 +1
+  useEffect(() => {
+      if (view === View.PRODUCT && selectedProduct && API.recordProductView) {
+          API.recordProductView(selectedProduct.id).catch(() => {});
+      }
+  }, [view, selectedProduct?.id]);
+
+  // ★ 新增：購物車遺忘提醒邏輯
+  useEffect(() => {
+      // 如果購物車有東西，且目前不在購物車或結帳頁面，延遲3秒後顯示提示
+      if (cart.length > 0 && view !== View.CART && view !== View.CHECKOUT) {
+          const timer = setTimeout(() => {
+              setShowCartReminder(true);
+          }, 3000); 
+          return () => clearTimeout(timer);
+      } else {
+          setShowCartReminder(false);
+      }
+  }, [cart.length, view]);
+
+  // ★ 新增：當切換回賣家後台時，重新拉取最新商品資料 (讓瀏覽量數字馬上更新)
+  useEffect(() => {
+      if (view === View.ADMIN_HOME) {
+          API.getProducts().then(setProducts).catch(console.error);
+      }
+  }, [view]);
+
   useEffect(() => {
     const initApp = async () => {
         setFetchError(false);
@@ -104,6 +207,11 @@ const App: React.FC = () => {
         
         const savedCart = localStorage.getItem('insbuy_cart');
         if (savedCart) setCart(JSON.parse(savedCart));
+
+        // ★ 新增：紀錄平台首頁與總體瀏覽量
+        if (API.recordPlatformView) {
+            API.recordPlatformView().catch(() => {});
+        }
 
         // 平行載入所有資料
         API.getSettings().then(setSiteSettings).catch(console.error);
@@ -149,6 +257,20 @@ const App: React.FC = () => {
     };
     initApp();
   }, []);
+
+  // ★ 新增：當商品切換時，自動觸發該商品的瀏覽量 +1
+  useEffect(() => {
+      if (view === View.PRODUCT && selectedProduct && API.recordProductView) {
+          API.recordProductView(selectedProduct.id).catch(() => {});
+      }
+  }, [view, selectedProduct?.id]);
+
+  // ★ 新增：當切換回賣家後台時，重新拉取最新商品資料 (讓瀏覽量數字馬上更新)
+  useEffect(() => {
+      if (view === View.ADMIN_HOME) {
+          API.getProducts().then(setProducts).catch(console.error);
+      }
+  }, [view]);
 
   // 訂單輪詢：每 60 秒一次
   useEffect(() => {
@@ -388,6 +510,15 @@ const App: React.FC = () => {
   };
 
   const QC_login = async (u: any) => {
+    // 觸發驗證碼 Modal，將使用者資料暫存
+    setPendingLoginUser(u);
+  };
+
+  const finalizeLogin = async () => {
+    const u = pendingLoginUser;
+    setPendingLoginUser(null); // 清除暫存
+    if (!u) return;
+
     try {
       if ((u.phone === '1' || u.email === '1') && u.password === '1') {
          setUser(SYSTEM_ADMIN_USER);
@@ -495,10 +626,17 @@ const App: React.FC = () => {
   };
 
   const filteredProducts = useMemo(() => {
-    let list = products.filter(p => p.status === 'OPEN' && p.total_stock > 0);
+    // ★ 徹底排除已隱藏的商品，不論在首頁還是搜尋都不會出現
+    let list = products.filter(p => p.status === 'OPEN' && p.total_stock > 0 && !(p as any).is_hidden);
+    
+    // ★ 新增：過濾黑名單商品 (買家被賣家黑名單後，買家將看不到該賣家的商品)
+    if (user && user.blacklisted_by && user.blacklisted_by.length > 0) {
+        list = list.filter(p => !user.blacklisted_by!.includes(p.shop_id));
+    }
+
     if (currentShopId) list = list.filter(p => p.shop_id === currentShopId);
     return list;
-  }, [products, currentShopId]);
+  }, [products, currentShopId, user]);
 
   const currentShop = useMemo(() => {
     if (!currentShopId) return null;
@@ -542,6 +680,28 @@ const App: React.FC = () => {
           <span className="font-bold text-sm">{toast.message}</span>
         </div>
       )}
+
+      {/* ★ 新增：登入驗證碼 Modal */}
+      {pendingLoginUser && (
+        <CaptchaModal onVerify={finalizeLogin} onCancel={() => setPendingLoginUser(null)} />
+      )}
+
+      {/* ★ 新增：購物車「遺忘提醒」微互動 */}
+      {showCartReminder && cart.length > 0 && view !== View.CART && view !== View.CHECKOUT && (
+         <div className="fixed top-24 right-4 md:right-8 z-[1001] animate-bounce">
+            <div className="bg-[#EE4D2D] text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] relative border-2 border-white flex items-center gap-3">
+               <div className="absolute -top-1.5 right-6 w-3 h-3 bg-[#EE4D2D] border-t-2 border-l-2 border-white transform rotate-45"></div>
+               <span className="relative z-10 flex items-center gap-2">
+                  <i className="fa-solid fa-cart-shopping text-base"></i>
+                  您的購物車裡還有商品等著結帳喔！
+               </span>
+               <button onClick={() => setShowCartReminder(false)} className="ml-1 text-white/70 hover:text-white transition bg-white/20 w-5 h-5 rounded-full flex items-center justify-center">
+                  <i className="fa-solid fa-xmark"></i>
+               </button>
+            </div>
+         </div>
+      )}
+      
       {showAnnouncement && (
         <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
           <div className="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl p-8">

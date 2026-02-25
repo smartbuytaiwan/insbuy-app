@@ -31,6 +31,7 @@ const InputField = ({ label, name, type = "text", placeholder, required = true, 
 
 const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, onShowDisclaimer, siteSettings }) => {
   const [formData, setFormData] = useState({
+    bot_trap_field: '', // ★ 安全防護 6：蜜罐專用假欄位
     name: '',
     phone: '',
     email: '',
@@ -136,6 +137,17 @@ const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, 
               <span onClick={(e) => { e.preventDefault(); onShowDisclaimer(); }} className="text-[#EE4D2D] font-bold hover:underline mx-1">平台免責聲明</span>
             </label>
           </div>
+
+          {/* ★ 安全防護 6：隱形蜜罐陷阱 (真人看不見，機器人會亂填) */}
+          <input 
+            type="text" 
+            name="bot_trap_field"
+            value={formData.bot_trap_field}
+            onChange={(e) => setFormData({...formData, bot_trap_field: e.target.value})}
+            style={{ display: 'none' }} 
+            tabIndex={-1} 
+            autoComplete="off" 
+          />
 
           <button
             type="submit"

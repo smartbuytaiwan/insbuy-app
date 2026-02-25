@@ -11,6 +11,7 @@ interface RegisterSellerProps {
 
 const RegisterSeller: React.FC<RegisterSellerProps> = ({ onComplete, onShowTerms, onShowDisclaimer, onShowPrivacy, siteSettings }) => {
   const [form, setForm] = useState({
+    bot_trap_field: '', // ★ 安全防護 6：蜜罐專用假欄位
     name: '',
     phone: '',
     email: '',
@@ -211,6 +212,17 @@ const RegisterSeller: React.FC<RegisterSellerProps> = ({ onComplete, onShowTerms
                  <span onClick={(e) => { e.preventDefault(); onShowDisclaimer && onShowDisclaimer(); }} className="text-[#EE4D2D] font-bold hover:underline mx-1 cursor-pointer">平台免責聲明</span>
               </label>
            </div>
+
+           {/* ★ 安全防護 6：隱形蜜罐陷阱 (真人看不見，機器人會亂填) */}
+           <input 
+             type="text" 
+             name="bot_trap_field"
+             value={form.bot_trap_field}
+             onChange={(e) => setForm({...form, bot_trap_field: e.target.value})}
+             style={{ display: 'none' }} 
+             tabIndex={-1} 
+             autoComplete="off" 
+           />
 
            <button 
              onClick={handleSubmit}

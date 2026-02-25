@@ -156,8 +156,12 @@ const Shop: React.FC<ShopProps> = ({
         .map(c => c.id);
     targetIds.push(...children);
 
+    // ★ 檢查是否為店長本人
+    const isShopOwner = currentUser && currentShop && currentUser.id === (currentShop.shop_id || currentShop.id);
+
     return products.filter(p => 
         p.shop_id === (currentShop.shop_id || currentShop.id) && 
+        (isShopOwner || !(p as any).is_hidden) && // ★ 新增：非店長且是隱藏商品就不列入計算
         (p.category_ids?.some(id => targetIds.includes(id)) || targetIds.includes(p.category_id || ''))
     ).length;
   };
@@ -203,6 +207,12 @@ const Shop: React.FC<ShopProps> = ({
 
   const displayProducts = useMemo(() => {
     let result = [...products];
+    
+    // ★ 新增：如果不是店家本人，就過濾掉所有隱藏銷售商品，讓別人絕對看不到
+    const isShopOwner = currentUser && currentShop && currentUser.id === (currentShop.shop_id || currentShop.id);
+    if (!isShopOwner) {
+        result = result.filter(p => !(p as any).is_hidden);
+    }
 
     // 熱銷商品優先邏輯
     if (isHotMode) {

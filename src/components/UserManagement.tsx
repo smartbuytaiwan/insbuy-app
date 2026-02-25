@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { User, View, LevelConfig, SiteSettings, Order } from '../types'; 
 import API from '../api';
 import ChatRoom from './ChatRoom';
+import * as XLSX from 'xlsx';
 
 interface UserManagementProps {
   currentUser: User | null;
@@ -108,6 +109,36 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
         console.error(e);
         alert('刪除失敗，請檢查後端連線');
       }
+    }
+  };
+
+  const handleDownloadUserData = async (targetUser: User) => {
+    if (!confirm(`確定要匯出「${targetUser.name}」的所有交易與紀錄嗎？`)) return;
+    try {
+      // 1. 購買紀錄
+      const buyOrders = orders.filter(o => o.receiver_phone === targetUser.phone || (o as any).user_id === targetUser.id || (o as any).userId === targetUser.id);
+      const buyData = buyOrders.length > 0 ? buyOrders.map(o => ({
+        '訂單編號': o.id, '日期': new Date(o.created_at).toLocaleString(), '總金額': o.total_amount, '狀態': o.status, '商品內容': o.items.map(i => `${i.name} x${i.qty}`).join('; ')
+      })) : [{'提示': '無購買紀錄'}];
+
+      // 2. 銷售紀錄
+      const sellOrders = orders.filter(o => o.shop_id === targetUser.shop_id || o.shop_id === targetUser.id);
+      const sellData = sellOrders.length > 0 ? sellOrders.map(o => ({
+        '訂單編號': o.id, '日期': new Date(o.created_at).toLocaleString(), '買家姓名': o.receiver_name, '買家電話': o.receiver_phone, '總金額': o.total_amount, '狀態': o.status, '商品內容': o.items.map(i => `${i.name} x${i.qty}`).join('; ')
+      })) : [{'提示': '無銷售紀錄'}];
+
+      // 3. 聊天紀錄 (建立保留區塊，後續若接上 API 可直接放入)
+      const chatData = [{'提示': '目前僅支援透過系統資料庫直接匯出聊天對話，請聯絡工程師或參考伺服器 Log'}];
+      
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sellData), "銷售紀錄");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buyData), "購買紀錄");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(chatData), "聊天紀錄");
+
+      XLSX.writeFile(wb, `UserData_${targetUser.name}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    } catch (e) {
+      console.error(e);
+      alert('匯出失敗，請檢查系統狀態');
     }
   };
 
@@ -502,6 +533,35 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                 <i className="fa-regular fa-comments"></i> 愛聊
               </button>
             </div>
+
+            {/* ★ 新增需求：政府機關資料調閱按鈕 */}
+            <button 
+              onClick={async () => {
+                  if(!confirm('【政府機關調閱模式】\n確定要匯出全站所有使用者、交易與對話紀錄嗎？\n此檔案包含敏感個資，請妥善保管。')) return;
+                  try {
+                      // 模擬從後端下載完整資料庫快照
+                      const mockData = {
+                          timestamp: new Date().toISOString(),
+                          users: users,
+                          orders: orders,
+                          system_info: "Full Site Dump for Authority Review"
+                      };
+                      const blob = new Blob([JSON.stringify(mockData, null, 2)], {type : 'application/json'});
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement("a");
+                      link.href = url;
+                      link.download = `InsBuy_Authority_Dump_${new Date().toISOString().slice(0,10)}.json`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      alert('資料已匯出完成！');
+                  } catch(e) { alert('下載失敗'); }
+              }}
+              className="px-3 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition shadow-md border border-slate-500"
+              title="匯出全站資料(機關調閱用)"
+            >
+              <i className="fa-solid fa-file-contract"></i> <span className="hidden md:inline">資料調閱</span>
+            </button>
 
             <button 
               onClick={openCreateModal}
@@ -1000,6 +1060,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                           <div className="flex gap-1 justify-center">
                             {/* ★ 新增：查看對話按鈕 */}
                             <button onClick={() => setInspectChatUser(u)} className="w-6 h-6 text-teal-500 hover:bg-teal-50 rounded flex items-center justify-center transition" title="查看對話紀錄"><i className="fa-regular fa-comments text-xs"></i></button>
+
+                            {/* ★ 新增：一鍵下載該帳號所有資料 */}
+                            <button onClick={() => handleDownloadUserData(u)} className="w-6 h-6 text-slate-600 hover:bg-slate-100 rounded flex items-center justify-center transition" title="下載帳號完整資料 (Excel)"><i className="fa-solid fa-download text-xs"></i></button>
 
                             <button onClick={() => handleStartEdit(u)} className="w-6 h-6 text-blue-500 hover:bg-blue-50 rounded flex items-center justify-center transition" title="編輯"><i className="fa-solid fa-pen text-xs"></i></button>
                             

@@ -24,6 +24,14 @@ const BUYER_ORDER_STATUS_OPTIONS = [
   { value: 'CANCELLED', label: '取消/退款' }
 ];
 
+// ★ 新增：視覺化進度條的狀態節點
+const DELIVERY_STEPS = [
+  { status: 'PENDING', label: '待付款', icon: 'fa-wallet' },
+  { status: 'CONFIRMED', label: '準備中', icon: 'fa-box' },
+  { status: 'SHIPPED', label: '運送中', icon: 'fa-truck-fast' },
+  { status: 'COMPLETED', label: '已送達', icon: 'fa-house-circle-check' }
+];
+
 const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSellers, siteSettings, onNavigate, onSubmitReview, onUpdateOrderStatus, onUpdateUser, initialTab }) => {
   const [activeTab, setActiveTab] = useState<'ACCOUNT' | 'ORDERS' | 'REPORTS' | 'CREATE_SHOP'>('ACCOUNT');
   
@@ -283,7 +291,39 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
                               <span className="flex items-center gap-1"><i className="fa-regular fa-clock"></i> {new Date(order.created_at).toLocaleString('zh-TW')}</span>
                           </div>
 
-                          <div className="p-4 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-100 gap-2">
+                          {/* ★ 新增：視覺化包裹配送進度條 */}
+                          {order.status !== 'CANCELLED' && (
+                              <div className="px-6 py-5 bg-white border-b border-slate-100 overflow-hidden relative">
+                                  <div className="relative flex justify-between items-center w-full max-w-lg mx-auto">
+                                      {/* 背景灰線 */}
+                                      <div className="absolute left-0 top-4 -translate-y-1/2 w-full h-1 bg-slate-100 rounded-full z-0"></div>
+                                      {/* 進度橘線 */}
+                                      <div 
+                                          className="absolute left-0 top-4 -translate-y-1/2 h-1 bg-[#EE4D2D] rounded-full z-0 transition-all duration-700 ease-in-out"
+                                          style={{ width: `${(Math.max(0, DELIVERY_STEPS.findIndex(s => s.status === order.status)) / (DELIVERY_STEPS.length - 1)) * 100}%` }}
+                                      ></div>
+                                      
+                                      {DELIVERY_STEPS.map((step, index) => {
+                                          const currentIdx = DELIVERY_STEPS.findIndex(s => s.status === order.status);
+                                          const isActive = index <= currentIdx;
+                                          const isCurrent = index === currentIdx;
+                                          
+                                          return (
+                                              <div key={step.status} className="relative z-10 flex flex-col items-center gap-1.5 w-12">
+                                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs transition-all duration-500 border-2 ${isActive ? 'bg-[#EE4D2D] border-[#EE4D2D] text-white shadow-md scale-110' : 'bg-white border-slate-200 text-slate-300'}`}>
+                                                      <i className={`fa-solid ${step.icon} ${isCurrent && order.status !== 'COMPLETED' ? 'animate-bounce' : ''}`}></i>
+                                                  </div>
+                                                  <span className={`text-[10px] md:text-xs font-bold whitespace-nowrap transition-colors duration-300 ${isActive ? 'text-[#EE4D2D]' : 'text-slate-400'}`}>
+                                                      {step.label}
+                                                  </span>
+                                              </div>
+                                          );
+                                      })}
+                                  </div>
+                              </div>
+                          )}
+
+                          <div className="p-4 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-100 gap-2 relative z-10">
                              <div className="flex items-center gap-3 flex-wrap">
                                 <button 
                                    onClick={(e) => {

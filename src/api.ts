@@ -31,6 +31,8 @@ export const API = {
   },
 
   createProduct: (product: Product) => api.post('/products', product).then(res => res.data),
+  // ★ 新增功能 4：Excel 批次快速上架 API
+  createProductsBulk: (products: Product[]) => api.post('/products/bulk', { products }).then(res => res.data),
   updateProduct: (product: Partial<Product>) => api.put(`/products/${product.id}`, product).then(res => res.data),
   deleteProduct: (id: string) => api.delete(`/products/${id}`).then(res => res.data),
   
@@ -71,6 +73,17 @@ export const API = {
   getReports: () => api.get<Report[]>('/reports').then(res => res.data),
   updateReport: (id: string, updates: any) => api.put(`/reports/${id}`, updates).then(res => res.data),
   deleteReport: (id: string) => api.delete(`/reports/${id}`).then(res => res.data),
+
+  // ==========================================
+  // ★ 新增：黑名單與瀏覽量 API
+  // ==========================================
+  getPlatformViews: () => api.get('/platform-views').then(res => res.data),
+  blacklistUser: (targetUserId: string, sellerId: string) => api.post(`/users/${targetUserId}/blacklist`, { sellerId }).then(res => res.data),
+  recordProductView: (productId: string) => api.post(`/products/${productId}/view`).then(res => res.data),
+  recordPlatformView: () => api.post('/settings/view').then(res => res.data),
+  
+  // ★ 新增：跨網購比價收藏夾的標題抓取 API
+  fetchMetadata: (url: string) => api.get(`/fetch-metadata?url=${encodeURIComponent(url)}`).then(res => res.data),
 
   // ==========================================
   // 以下為專業版分潤系統與補充 API

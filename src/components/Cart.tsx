@@ -220,10 +220,10 @@ const Cart: React.FC<CartProps> = ({ items, allUsers, onUpdateQty, onRemove, onC
                       const globalIdx = group.originalIndices[localIdx]; 
                       const isChecked = checkedIndices.has(globalIdx);
 
-                      // ★ 修改：優先讀取 image，若無則讀取 images[0]，解決圖片不顯示問題
-                      const displayImage = item.image || (item.images && item.images.length > 0 ? item.images[0] : 'https://placehold.co/150');
-                      // ★ 修改：優先讀取 variantName，若無則讀取 selectedVariant
-                      const displayVariant = item.variantName || item.selectedVariant;
+                      // ★ 修復 TypeScript 報錯：直接從陣列讀取圖片，若舊資料有 image 屬性則用 as any 繞過檢查
+                      const displayImage = (item.images && item.images.length > 0) ? item.images[0] : ((item as any).image || 'https://placehold.co/150');
+                      // ★ 修復 TypeScript 報錯：直接讀取 selectedVariant
+                      const displayVariant = item.selectedVariant || (item as any).variantName;
 
                       return (
                         <div key={localIdx} className="flex gap-4 items-center">

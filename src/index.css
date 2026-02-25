@@ -34,3 +34,26 @@ body {
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
+/* ==========================================
+   ★ 全站多國語言：完美隱藏 Google 預設介面與防跑版設定
+   ========================================== */
+/* 徹底隱藏頂部橫幅、彈出視窗與載入動畫 */
+.skiptranslate iframe,
+.goog-te-banner-frame.skiptranslate,
+#goog-gt-tt,
+.goog-te-spinner-pos {
+  display: none !important;
+}
+/* 防止 Google 強制把網頁往下推 40px */
+body {
+  top: 0px !important;
+}
+/* 隱藏滑鼠游標移過時出現的黃色原文高亮框 */
+.goog-text-highlight {
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+/* 保護 FontAwesome Icon 與 Logo 不被翻譯引擎變形破壞 */
+i.fa-solid, i.fa-regular, i.fa-brands, .notranslate {
+  transform: translateZ(0);
+}
