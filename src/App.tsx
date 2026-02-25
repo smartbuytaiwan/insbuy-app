@@ -362,38 +362,40 @@ const App: React.FC = () => {
         const allMsgs = await API.getAllUserMessages(myId);
         const trueTarget = resolveGlobalChatId(chatTarget, allUsers);
         
-        const count = allMsgs.filter((m: any) => {
-           // 1. 確認是傳給我的 (支援買家、賣家ID、手機號碼等多重身分)
-           if (m.receiverId !== myId && m.receiverId !== user?.shop_id && m.receiverId !== user?.phone) return false;
-           
-           // 如果後端已註記為已讀，直接略過
-           if (m.isRead) return false;
-           
-           // 2. 收集發送者「所有的可能 ID」(包含原始ID, 商店ID, 手機號碼)
-           const senderObj = allUsers.find(u => u.id === m.senderId || u.shop_id === m.senderId || u.phone === m.senderId);
-           const senderIds = [m.senderId];
-           if (senderObj) {
-               if (senderObj.id) senderIds.push(senderObj.id);
-               if (senderObj.shop_id) senderIds.push(senderObj.shop_id);
-               if (senderObj.phone) senderIds.push(senderObj.phone);
-           }
-           
-           // 3. 如果目前正好點開這個人的對話框，就不算未讀！
-           if (trueTarget && senderIds.includes(trueTarget)) return false;
-           
-           // 4. 終極檢查：檢查本地「所有關聯 ID」的已讀時間
-           const msgTime = new Date(m.timestamp).getTime();
-           for (const sId of senderIds) {
-               const lastRead = localStorage.getItem(`insbuy_last_read_${myId}_${sId}`);
-               if (lastRead && msgTime <= new Date(lastRead).getTime()) {
-                   return false; // 只要有任何一個 ID 顯示已讀，這則訊息就算已讀！
-               }
-           }
-           
-           return true; // 躲過所有檢查的才是真正的未讀
-        }).length;
+        // 改為計算「有未讀訊息的對話(發送者)數量」，讓外部數字與對話列表的紅點數量一致
+              const unreadSenders = new Set();
 
-        setUnreadCount(count);
+              allMsgs.forEach((m: any) => {
+                 if (m.receiverId !== myId && m.receiverId !== user?.shop_id && m.receiverId !== user?.phone) return;
+                 if (m.isRead) return;
+                 
+                 const senderObj = allUsers.find(u => u.id === m.senderId || u.shop_id === m.senderId || u.phone === m.senderId);
+                 const senderIds = [m.senderId];
+                 if (senderObj) {
+                     if (senderObj.id) senderIds.push(senderObj.id);
+                     if (senderObj.shop_id) senderIds.push(senderObj.shop_id);
+                     if (senderObj.phone) senderIds.push(senderObj.phone);
+                 }
+                 
+                 if (trueTarget && senderIds.includes(trueTarget)) return;
+                 
+                 const msgTime = new Date(m.timestamp).getTime();
+                 let isReallyUnread = true;
+                 for (const sId of senderIds) {
+                     const lastRead = localStorage.getItem(`insbuy_last_read_${myId}_${sId}`);
+                     if (lastRead && msgTime <= new Date(lastRead).getTime()) {
+                         isReallyUnread = false; 
+                         break;
+                     }
+                 }
+                 
+                 if (isReallyUnread) {
+                     // 記錄不重複的發送者 ID
+                     unreadSenders.add(senderObj ? senderObj.id : m.senderId);
+                 }
+              });
+
+              setUnreadCount(unreadSenders.size);
       } catch (e) {}
     };
 

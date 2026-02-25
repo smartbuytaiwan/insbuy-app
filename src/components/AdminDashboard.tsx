@@ -1475,7 +1475,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* =========================================
             ✨ 完整修復的「新增/編輯商品」區塊 ✨
            ========================================= */}
-
+        {activeTab === 'create' && (
+           <AdminProductForm
+              shopId={shopId}
+              sellerConfig={sellerConfig}
+              products={products}
+              onUpdateProducts={onUpdateProducts}
+              systemCategories={systemCategories}
+              categories={categories}
+              form={form}
+              setForm={setForm}
+              editingId={editingId}
+              setEditingId={setEditingId}
+              getInitialForm={getInitialForm}
+              setActiveTab={setActiveTab}
+              setShowMobileMenu={setShowMobileMenu}
+              setGlobalSearchId={setGlobalSearchId}
+              setCropModal={setCropModal}
+           />
+        )}
         
         {/* Buyer Account / Orders (unchanged structure) */}
         {activeTab === 'buying_account' && (

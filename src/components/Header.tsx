@@ -102,7 +102,7 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
 
   return (
     <header className="sticky top-0 z-50 bg-gradient-to-r from-[#EE4D2D] to-[#FF7337] shadow-lg">
-      <div className="container mx-auto px-2 md:px-4 h-16 md:h-20 flex items-center justify-between gap-2 md:gap-8">
+      <div className="container mx-auto px-3 md:px-4 py-2 md:py-0 min-h-[60px] md:h-20 flex flex-wrap md:flex-nowrap items-center justify-between gap-x-2 gap-y-2 md:gap-8">
         
         {/* Logo */}
         <div 
@@ -112,7 +112,7 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
              onNavigate(View.SHOP);
              if (onReset) onReset();
           }}
-          className="flex items-center gap-2 cursor-pointer group shrink-0"
+          className="flex items-center gap-2 cursor-pointer group shrink-0 order-1"
         >
           <div className="bg-white rounded-full p-0.5 shadow-sm group-hover:scale-105 transition-transform overflow-hidden">
              <img 
@@ -127,7 +127,7 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
         </div>
 
         {/* Search Bar */}
-        <div className="flex-1 max-w-2xl relative transition-all duration-300">
+        <div className="w-full md:flex-1 md:w-auto max-w-2xl relative transition-all duration-300 order-3 md:order-2 pb-1 md:pb-0">
           <input 
             type="text" 
             placeholder={isListening ? "聆聽中..." : "搜尋..."}
@@ -157,7 +157,7 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-2 md:gap-4 shrink-0">
+        <div className="flex items-center gap-2 md:gap-4 shrink-0 order-2 md:order-3">
           
           {/* 多國語言切換選單 */}
           <div className="relative">
@@ -270,7 +270,7 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
           onClose={() => setIsFavOpen(false)} 
           user={user} 
       />
-      
+
     </header>
   );
 };
