@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, User } from '../types';
 import API from '../api'; // 引入 API 工具
 import FavoritesModal from './FavoritesModal'; // 引入全新我的最愛視窗
+import CalendarModal from './CalendarModal'; // ★ 引入全新的行事曆視窗
 
 interface HeaderProps {
   user: User | null;
@@ -19,11 +20,11 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
   const [isListening, setIsListening] = useState(false);
 
   // ==========================================
-  // ★ 我的最愛 (彈出視窗開關)
+  // ★ 我的最愛與行事曆 (彈出視窗開關)
   // ==========================================
   const [isFavOpen, setIsFavOpen] = useState(false);
-
-  // ★ 多國語言狀態與清單
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false); // ★ 新增：行事曆開關
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false); // ★ 新增：會員選單開關
   const [isLangOpen, setIsLangOpen] = useState(false);
   const [currentLang, setCurrentLang] = useState('zh-TW');
   const LANGUAGES = [
@@ -102,36 +103,26 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
 
   return (
     <header className="sticky top-0 z-50 bg-gradient-to-r from-[#EE4D2D] to-[#FF7337] shadow-lg">
-      <div className="container mx-auto px-3 md:px-4 py-2 md:py-0 min-h-[60px] md:h-20 flex flex-wrap md:flex-nowrap items-center justify-between gap-x-2 gap-y-2 md:gap-8">
+      {/* ★ 修改：改為 flex-nowrap 強制單行顯示，移除多餘的換行設定 */}
+      <div className="container mx-auto px-2 md:px-4 py-2 min-h-[60px] flex flex-nowrap items-center justify-between gap-2 md:gap-6">
         
         {/* Logo */}
         <div 
-          onClick={() => {
-             setSearchQuery('');
-             onSearch(''); 
-             onNavigate(View.SHOP);
-             if (onReset) onReset();
-          }}
-          className="flex items-center gap-2 cursor-pointer group shrink-0 order-1"
+          onClick={() => { setSearchQuery(''); onSearch(''); onNavigate(View.SHOP); if (onReset) onReset(); }}
+          className="flex items-center gap-1.5 md:gap-2 cursor-pointer group shrink-0"
         >
           <div className="bg-white rounded-full p-0.5 shadow-sm group-hover:scale-105 transition-transform overflow-hidden">
-             <img 
-               src="/logo-new.png" 
-               alt="InsBuy" 
-               className="h-8 w-8 md:h-12 md:w-12 object-cover rounded-full" 
-             />
+             <img src="/logo-new.png" alt="InsBuy" className="h-8 w-8 md:h-11 md:w-11 object-cover rounded-full" />
           </div>
-          <span className="text-xl md:text-2xl font-black text-white tracking-tight drop-shadow-sm hidden md:block notranslate">
-            InsBuy
-          </span>
+          <span className="text-xl font-black text-white tracking-tight drop-shadow-sm hidden md:block notranslate">InsBuy</span>
         </div>
 
-        {/* Search Bar */}
-        <div className="w-full md:flex-1 md:w-auto max-w-2xl relative transition-all duration-300 order-3 md:order-2 pb-1 md:pb-0">
+        {/* Search Bar (加長並佔滿剩餘空間) */}
+        <div className="flex-1 min-w-0 relative transition-all duration-300">
           <input 
             type="text" 
             placeholder={isListening ? "聆聽中..." : "搜尋..."}
-            className={`w-full bg-white border-0 rounded-full py-2 pl-4 pr-20 md:py-2.5 md:pl-6 md:pr-16 text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-orange-300 text-slate-800 shadow-sm placeholder:text-slate-400 ${isListening ? 'ring-2 ring-red-400 animate-pulse' : ''}`}
+            className={`w-full bg-white border-0 rounded-full py-2 pl-3 pr-[70px] md:py-2.5 md:pl-5 md:pr-16 text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-orange-300 text-slate-800 shadow-sm placeholder:text-slate-400 ${isListening ? 'ring-2 ring-red-400 animate-pulse' : ''}`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -141,7 +132,7 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
              <button 
                type="button"
                onClick={handleVoiceSearch}
-               className={`w-8 h-8 rounded-full text-slate-400 hover:text-[#EE4D2D] hover:bg-slate-100 transition flex items-center justify-center touch-manipulation ${isListening ? 'text-red-500 bg-red-50' : ''}`}
+               className={`w-7 h-7 md:w-8 md:h-8 rounded-full text-slate-400 hover:text-[#EE4D2D] hover:bg-slate-100 transition flex items-center justify-center touch-manipulation ${isListening ? 'text-red-500 bg-red-50' : ''}`}
              >
                <i className={`fa-solid ${isListening ? 'fa-microphone-lines animate-bounce' : 'fa-microphone'}`}></i>
              </button>
@@ -149,80 +140,51 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
              <button 
                 type="button"
                 onClick={() => onSearch(searchQuery)}
-                className="bg-gradient-to-r from-[#EE4D2D] to-[#FF7337] text-white w-8 h-8 md:w-10 md:h-full rounded-full hover:opacity-90 transition-opacity flex items-center justify-center shadow-md ml-1"
+                className="bg-gradient-to-r from-[#EE4D2D] to-[#FF7337] text-white w-8 h-8 md:w-10 md:h-full rounded-full hover:opacity-90 transition flex items-center justify-center shadow-md ml-0.5"
              >
-                <i className="fa-solid fa-magnifying-glass text-xs md:text-base"></i>
+                <i className="fa-solid fa-magnifying-glass text-xs md:text-sm"></i>
              </button>
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-2 md:gap-4 shrink-0 order-2 md:order-3">
+        {/* 右側按鈕區塊 (常駐購物車 + 會員專區) */}
+        <div className="flex items-center gap-2 md:gap-4 shrink-0">
           
-          {/* 多國語言切換選單 */}
-          <div className="relative">
-             <button 
-               onClick={() => { setIsLangOpen(!isLangOpen); setIsFavOpen(false); }}
-               className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition"
-               title="選擇語言 Language"
-             >
-               <i className="fa-solid fa-globe text-lg md:text-xl"></i>
-             </button>
-
-             {isLangOpen && (
-                 <div className="absolute top-14 right-0 w-44 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-[300] animate-fade-in-up">
-                     <div className="bg-slate-50 text-[10px] font-bold text-slate-400 p-3 border-b border-slate-100 uppercase tracking-widest">
-                         Select Language
-                     </div>
-                     {LANGUAGES.map(lang => (
-                         <button 
-                            key={lang.code}
-                            onClick={() => handleLanguageChange(lang.code)}
-                            className={`w-full text-left px-4 py-3 text-sm font-bold hover:bg-orange-50 transition ${currentLang === lang.code ? 'text-[#EE4D2D] bg-orange-50' : 'text-slate-700'}`}
-                         >
-                            {lang.name}
-                         </button>
-                     ))}
-                 </div>
-             )}
-          </div>
-
-          {/* 只有登入後才顯示我的最愛按鈕 */}
-          {user && (
-            <button 
-              onClick={() => { setIsFavOpen(!isFavOpen); setIsLangOpen(false); }}
-              className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition"
-              title="我的最愛"
-            >
-              <i className="fa-solid fa-star text-lg md:text-xl"></i>
-            </button>
+          {/* 未登入時：顯示語言與幫助中心 */}
+          {!user && (
+            <div className="hidden md:flex gap-2 relative">
+               <button onClick={() => { setIsLangOpen(!isLangOpen); setIsFavOpen(false); }} className="w-9 h-9 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition"><i className="fa-solid fa-globe text-lg"></i></button>
+               {isLangOpen && (
+                   <div className="absolute top-12 right-10 w-44 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-[300]">
+                       {LANGUAGES.map(lang => (
+                           <button key={lang.code} onClick={() => handleLanguageChange(lang.code)} className={`w-full text-left px-4 py-3 text-sm font-bold hover:bg-orange-50 transition ${currentLang === lang.code ? 'text-[#EE4D2D] bg-orange-50' : 'text-slate-700'}`}>{lang.name}</button>
+                       ))}
+                   </div>
+               )}
+               <button onClick={onShowHelp} className="w-9 h-9 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition"><i className="fa-regular fa-circle-question text-lg"></i></button>
+            </div>
           )}
 
-          <button 
-            onClick={onShowHelp}
-            className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition"
-            title="幫助中心"
-          >
-            <i className="fa-regular fa-circle-question text-lg md:text-xl"></i>
-          </button>
-
+          {/* 購物車 (常駐顯示) */}
           <button 
             onClick={() => onNavigate(View.CART)}
             className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/20 flex items-center justify-center text-white transition relative"
           >
-            <i className="fa-solid fa-cart-shopping text-lg md:text-xl"></i>
+            <i className="fa-solid fa-cart-shopping text-lg"></i>
             {cartCount > 0 && (
-              <span className="absolute top-0 right-0 w-4 h-4 md:w-5 md:h-5 bg-white text-[#EE4D2D] text-[10px] font-bold rounded-full flex items-center justify-center border border-white shadow-sm">
+              <span className="absolute -top-1 -right-1 md:top-0 md:right-0 w-4 h-4 md:w-5 md:h-5 bg-white text-[#EE4D2D] text-[10px] font-bold rounded-full flex items-center justify-center border border-white shadow-sm">
                 {cartCount}
               </span>
             )}
           </button>
 
+          {/* 登入後的會員選單區塊 */}
           {user ? (
-            <div className="flex items-center gap-2 pl-2 md:pl-4 border-l border-white/30">
+            <div className="relative flex items-center pl-2 md:pl-4 border-l border-white/30">
+              {/* 頭像按鈕 (移除了會擋住子元素的 overflow-hidden 設定，並調高 z-index) */}
               <div 
-                onClick={() => onNavigate(user.role === 'BUYER' ? View.BUYER_DASHBOARD : View.ADMIN_HOME)}
-                className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-white border-2 border-white/50 overflow-hidden cursor-pointer"
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-white border-2 border-white/50 cursor-pointer shadow-sm relative z-50 flex items-center justify-center overflow-hidden"
               >
                 {user.logo ? (
                   <img src={user.logo} alt="avatar" className="w-full h-full object-cover" />
@@ -233,37 +195,63 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
                 )}
               </div>
               
-              <button 
-                onClick={onLogout}
-                className="hidden md:flex w-9 h-9 rounded-full hover:bg-white/20 text-white/80 hover:text-white items-center justify-center transition"
-                title="登出"
-              >
-                <i className="fa-solid fa-arrow-right-from-bracket"></i>
-              </button>
+              {/* ★ 新增下拉選單：絕對定位確保不被擋住，並整合所有功能 */}
+              {isUserMenuOpen && (
+                 <>
+                   {/* 手機版/電腦版的透明背景遮罩，點擊旁邊就會關閉選單 */}
+                   <div className="fixed inset-0 z-[200]" onClick={() => setIsUserMenuOpen(false)}></div>
+                   
+                   <div className="absolute top-12 md:top-14 right-0 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-[201] py-2 animate-fade-in-down">
+                      <div className="px-4 py-3 border-b border-slate-50 mb-1 bg-slate-50/50">
+                         <div className="font-bold text-sm text-slate-800 truncate">{user.name}</div>
+                         <div className="text-xs text-slate-400 mt-0.5">Lv.{user.level} {user.role === 'SELLER' ? '商家' : '會員'}</div>
+                      </div>
+
+                      <button onClick={() => { setIsUserMenuOpen(false); onNavigate(user.role === 'BUYER' ? View.BUYER_DASHBOARD : View.ADMIN_HOME); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-gauge w-4 text-center"></i> 後台管理</button>
+
+                      <button onClick={() => { setIsUserMenuOpen(false); setIsFavOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-star w-4 text-center"></i> 我的最愛</button>
+
+                      {/* ★ 新增：行事曆按鈕 (排在我的最愛正下方) */}
+                      <button onClick={() => { setIsUserMenuOpen(false); setIsCalendarOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-regular fa-calendar-days w-4 text-center"></i> 行事曆</button>
+
+                      <button onClick={() => { setIsUserMenuOpen(false); onShowHelp(); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-regular fa-circle-question w-4 text-center"></i> 幫助中心</button>
+
+                      <div className="group relative">
+                          <button className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex justify-between items-center"><span className="flex items-center gap-3"><i className="fa-solid fa-globe w-4 text-center"></i> 選擇語言</span> <i className="fa-solid fa-caret-left text-xs text-slate-300 group-hover:text-[#EE4D2D]"></i></button>
+                          
+                          {/* 語言子選單：滑鼠移入或點擊時往左側彈出 */}
+                          <div className="hidden group-hover:block absolute top-0 right-full w-36 bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden mr-1">
+                             {LANGUAGES.map(lang => (
+                                <button key={lang.code} onClick={() => { setIsUserMenuOpen(false); handleLanguageChange(lang.code); }} className={`w-full text-left px-4 py-3 text-xs font-bold hover:bg-orange-50 ${currentLang === lang.code ? 'text-[#EE4D2D]' : 'text-slate-600'}`}>{lang.name}</button>
+                             ))}
+                          </div>
+                      </div>
+
+                      <div className="border-t border-slate-100 mt-1 pt-1"></div>
+                      <button onClick={() => { setIsUserMenuOpen(false); onLogout(); }} className="w-full text-left px-4 py-3 text-sm font-bold text-red-600 hover:bg-red-50 transition flex items-center gap-3"><i className="fa-solid fa-arrow-right-from-bracket w-4 text-center"></i> 登出帳號</button>
+                   </div>
+                 </>
+              )}
             </div>
           ) : (
-            <div className="flex items-center gap-2 pl-2 md:pl-4 border-l border-white/30">
+            <div className="flex items-center pl-2 md:pl-4 border-l border-white/30">
               <button 
                 onClick={() => onNavigate(View.AUTH)}
-                className="px-3 py-1.5 md:px-5 md:py-2 text-xs md:text-sm font-bold text-white hover:opacity-80 transition flex items-center gap-2 border border-white/40 rounded-full bg-white/10"
+                className="px-3 py-1.5 md:px-5 md:py-2 text-xs md:text-sm font-bold text-[#EE4D2D] bg-white rounded-full hover:bg-slate-50 transition shadow-sm whitespace-nowrap"
               >
-                <i className="fa-regular fa-user"></i>
-                <span className="hidden md:inline">登入</span>
+                登入 / 註冊
               </button>
             </div>
           )}
         </div>
       </div>
 
-      {/* 語音輸入的視覺回饋提示 */}
       {isListening && (
          <div className="absolute top-full left-0 w-full bg-slate-800 text-white text-center py-2 text-xs font-bold animate-pulse">
             <i className="fa-solid fa-microphone-lines mr-2"></i> 正在聆聽您的語音，請說話...
          </div>
       )}
 
-      {/* ★ 我的最愛 下拉選單 UI (僅登入時顯示) */}
-      
       {/* ★ 我的最愛 獨立模組視窗 */}
       <FavoritesModal 
           isOpen={isFavOpen} 
@@ -271,6 +259,12 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
           user={user} 
       />
 
+      {/* ★ 行事曆 獨立模組視窗 */}
+      <CalendarModal 
+          isOpen={isCalendarOpen} 
+          onClose={() => setIsCalendarOpen(false)} 
+          user={user} 
+      />
     </header>
   );
 };

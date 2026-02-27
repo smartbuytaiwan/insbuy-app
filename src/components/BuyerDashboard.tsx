@@ -21,7 +21,7 @@ const BUYER_ORDER_STATUS_OPTIONS = [
   { value: 'CONFIRMED', label: '待出貨' },
   { value: 'SHIPPED', label: '已出貨' }, 
   { value: 'COMPLETED', label: '已完成' },
-  { value: 'CANCELLED', label: '取消/退款' }
+  { value: 'CANCELLED', label: '取消退款' } // ★ 修正 3：縮短名稱以適應手機單行顯示
 ];
 
 // ★ 新增：視覺化進度條的狀態節點
@@ -254,16 +254,23 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 md:p-8">
                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                   <h2 className="text-xl font-black text-slate-800 border-l-4 border-[#EE4D2D] pl-4">我的訂單</h2>
-                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide max-w-full w-full md:w-auto">
-                      {BUYER_ORDER_STATUS_OPTIONS.map(opt => (
-                        <button 
-                          key={opt.value}
-                          onClick={() => setOrderStatusFilter(opt.value)}
-                          className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition shrink-0 ${orderStatusFilter === opt.value ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                        >
-                            {opt.label}
-                        </button>
-                      ))}
+                  {/* ★ 修正：使用 grid 與 flex-wrap 讓狀態列自動換行顯示，並加入訂單數量徽章 */}
+                  <div className="grid grid-cols-3 md:flex md:flex-wrap gap-2 w-full md:w-auto mt-2 md:mt-0">
+                      {BUYER_ORDER_STATUS_OPTIONS.map(opt => {
+                        const count = opt.value === 'ALL' ? orders.length : orders.filter(o => o.status === opt.value).length;
+                        return (
+                          <button 
+                            key={opt.value}
+                            onClick={() => setOrderStatusFilter(opt.value)}
+                            className={`relative px-1 md:px-4 py-2.5 md:py-2 rounded-xl text-[11px] md:text-sm font-bold whitespace-nowrap transition flex items-center justify-center gap-1.5 ${orderStatusFilter === opt.value ? 'bg-slate-800 text-white shadow-md scale-[1.02] z-10' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-100'}`}
+                          >
+                              {opt.label}
+                              <span className={`px-1.5 py-0.5 rounded-full text-[9px] md:text-[10px] font-black ${orderStatusFilter === opt.value ? 'bg-[#EE4D2D] text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                {count}
+                              </span>
+                          </button>
+                        );
+                      })}
                   </div>
                </div>
 

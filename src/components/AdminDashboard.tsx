@@ -1090,7 +1090,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {renderSidebar()}
       </aside>
 
-      <div className={`flex-1 space-y-6 min-w-0 ${showMobileMenu ? 'hidden md:block' : 'block'}`}>
+      {/* ★ 修正 1：加上 w-full max-w-full 確保在手機版時寬度能完整填滿，解決商品列表畫面偏窄的問題 */}
+      <div className={`flex-1 w-full max-w-full space-y-6 min-w-0 ${showMobileMenu ? 'hidden md:block' : 'block'}`}>
         
         <div className="md:hidden mb-4">
            <button 
@@ -1502,14 +1503,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* 購買清單區域：新增「賣家已收款」印章 */}
         {activeTab === 'buying_orders' && (
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 md:p-8">
-            <h2 className="text-2xl font-black text-slate-800 mb-8 border-l-4 border-slate-800 pl-4">我的購買清單</h2>
-            <div className="flex overflow-x-auto pb-2 mb-6 gap-2 scrollbar-hide">
-              {BUYER_ORDER_STATUS_OPTIONS.map(opt => (
-                <button key={opt.value} onClick={() => setBuyOrderStatusFilter(opt.value)} className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition ${buyOrderStatusFilter === opt.value ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
-                  {opt.label}
-                </button>
-              ))}
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 md:p-8 w-full overflow-hidden">
+            <h2 className="text-2xl font-black text-slate-800 mb-6 md:mb-8 border-l-4 border-slate-800 pl-4">我的購買清單</h2>
+            {/* ★ 修正：使用 grid 與 flex-wrap 讓狀態列自動換行顯示 (不需左右滑動)，並在旁邊加入訂單數量 */}
+            <div className="grid grid-cols-3 md:flex md:flex-wrap gap-2 mb-6 w-full">
+              {BUYER_ORDER_STATUS_OPTIONS.map(opt => {
+                // 動態計算該狀態的訂單數量
+                const count = opt.value === 'ALL' 
+                   ? buyOrders.length 
+                   : buyOrders.filter(o => o.status === opt.value).length;
+                   
+                return (
+                  <button 
+                    key={opt.value} 
+                    onClick={() => setBuyOrderStatusFilter(opt.value)} 
+                    className={`relative px-1 md:px-4 py-2.5 md:py-2 rounded-xl text-[11px] md:text-sm font-bold whitespace-nowrap transition flex items-center justify-center gap-1.5 ${buyOrderStatusFilter === opt.value ? 'bg-slate-800 text-white shadow-md scale-[1.02] z-10' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-100'}`}
+                  >
+                    {opt.label}
+                    {/* 數量徽章 */}
+                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] md:text-[10px] font-black ${buyOrderStatusFilter === opt.value ? 'bg-[#EE4D2D] text-white' : 'bg-slate-200 text-slate-500'}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
             
             <div className="space-y-4">

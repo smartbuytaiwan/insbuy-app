@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import API from '../api';
+import DraggableFavItem from './DraggableFavItem'; // ★ 引入我們做好的拖曳元件
 
 interface FavoritesModalProps {
   isOpen: boolean;
@@ -16,19 +17,90 @@ const FavoritesModal: React.FC<FavoritesModalProps> = ({ isOpen, onClose, user }
   const [tempTitle, setTempTitle] = useState('');
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
 
-  // 拖曳相關狀態
-  const [draggedItem, setDraggedItem] = useState<{ id: string, type: 'FOLDER' | 'BOOKMARK' } | null>(null);
+  // 統一的資料儲存與同步 (LocalStorage + API)
+  const syncData = async (newBookmarks: any[], newFolders: any[]) => {
+    setBookmarks(newBookmarks);
+    setFolders(newFolders);
+    localStorage.setItem(`insbuy_bookmarks_${user?.id}`, JSON.stringify(newBookmarks));
+    localStorage.setItem(`insbuy_folders_${user?.id}`, JSON.stringify(newFolders));
+    if (user && user.id) {
+        // 加上 as any 讓 TypeScript 放行我們新增的欄位
+        try { await API.updateUser({ id: user.id, bookmarks: newBookmarks, folders: newFolders } as any); } 
+        catch (e) { console.error("同步至伺服器失敗", e); }
+    }
+  };
 
   useEffect(() => {
     if (user && user.id && isOpen) {
-      try { setBookmarks(JSON.parse(localStorage.getItem(`insbuy_bookmarks_${user.id}`) || '[]')); } catch { setBookmarks([]); }
-      try { setFolders(JSON.parse(localStorage.getItem(`insbuy_folders_${user.id}`) || '[]')); } catch { setFolders([]); }
+      // 優先讀取資料庫的資料，沒有才讀取本機快取
+      if (user.bookmarks && user.bookmarks.length > 0) setBookmarks(user.bookmarks);
+      else { try { setBookmarks(JSON.parse(localStorage.getItem(`insbuy_bookmarks_${user.id}`) || '[]')); } catch { setBookmarks([]); } }
+
+      if (user.folders && user.folders.length > 0) setFolders(user.folders);
+      else { try { setFolders(JSON.parse(localStorage.getItem(`insbuy_folders_${user.id}`) || '[]')); } catch { setFolders([]); } }
     }
   }, [user, isOpen]);
 
-  useEffect(() => { if (user && user.id) localStorage.setItem(`insbuy_bookmarks_${user.id}`, JSON.stringify(bookmarks)); }, [bookmarks, user]);
-  useEffect(() => { if (user && user.id) localStorage.setItem(`insbuy_folders_${user.id}`, JSON.stringify(folders)); }, [folders, user]);
+  const handleSaveLink = () => {
+    if (!tempUrl || !tempTitle) return alert('請輸入網址與標題');
+    const newItems = [{ id: Date.now().toString(), title: tempTitle, url: tempUrl, folderId: currentFolder, createdAt: Date.now() }, ...bookmarks];
+    syncData(newItems, folders);
+    setFavMode('LIST'); setTempUrl(''); setTempTitle('');
+  };
 
+  const handleSaveFolder = () => {
+    if (!tempTitle) return alert('請輸入資料夾名稱');
+    const newItems = [{ id: Date.now().toString(), name: tempTitle, createdAt: Date.now() }, ...folders];
+    syncData(bookmarks, newItems);
+    setFavMode('LIST'); setTempTitle('');
+  };
+
+  const handleDeleteBookmark = (id: string) => { 
+    if (confirm('確定要刪除此收藏？')) syncData(bookmarks.filter(b => b.id !== id), folders); 
+  };
+  
+  const handleDeleteFolder = (id: string) => {
+    if (confirm('確定要刪除此資料夾？內含的書籤也會一併刪除。')) {
+      syncData(bookmarks.filter(b => b.folderId !== id), folders.filter(f => f.id !== id));
+    }
+  };
+
+  // 全新跨平台拖曳完成事件
+  const handleDropComplete = (dragItem: {id: string, type: string}, dropTarget: {id: string, type: string}) => {
+    // 網頁拖入資料夾 (包含拖回上一層)
+    if (dragItem.type === 'BOOKMARK' && dropTarget.type === 'FOLDER') {
+      const items = [...bookmarks];
+      const idx = items.findIndex(i => i.id === dragItem.id);
+      if (idx !== -1) {
+        // ★ 如果目標是 ROOT，代表要移出資料夾
+        items[idx].folderId = dropTarget.id === 'ROOT' ? null : dropTarget.id;
+        syncData(items, folders);
+      }
+      return;
+    }
+
+    if (dragItem.type !== dropTarget.type) return;
+
+    if (dropTarget.type === 'FOLDER') {
+      const items = [...folders];
+      const dragIdx = items.findIndex(i => i.id === dragItem.id);
+      const dropIdx = items.findIndex(i => i.id === dropTarget.id);
+      if (dragIdx === -1 || dropIdx === -1) return;
+      const [removed] = items.splice(dragIdx, 1);
+      items.splice(dropIdx, 0, removed);
+      syncData(bookmarks, items);
+    } else {
+      const items = [...bookmarks];
+      const dragIdx = items.findIndex(i => i.id === dragItem.id);
+      const dropIdx = items.findIndex(i => i.id === dropTarget.id);
+      if (dragIdx === -1 || dropIdx === -1) return;
+      const [removed] = items.splice(dragIdx, 1);
+      items.splice(dropIdx, 0, removed);
+      syncData(items, folders);
+    }
+  };
+
+  // 自動抓取網頁標題
   useEffect(() => {
     if (!tempUrl || !tempUrl.startsWith('http')) return;
     const fetchTitle = async () => {
@@ -45,74 +117,6 @@ const FavoritesModal: React.FC<FavoritesModalProps> = ({ isOpen, onClose, user }
     const timer = setTimeout(() => { fetchTitle(); }, 500);
     return () => clearTimeout(timer);
   }, [tempUrl]);
-
-  const handleSaveLink = () => {
-    if (!tempUrl || !tempTitle) return alert('請輸入網址與標題');
-    setBookmarks([{ id: Date.now().toString(), title: tempTitle, url: tempUrl, folderId: currentFolder, createdAt: Date.now() }, ...bookmarks]);
-    setFavMode('LIST'); setTempUrl(''); setTempTitle('');
-  };
-
-  const handleSaveFolder = () => {
-    if (!tempTitle) return alert('請輸入資料夾名稱');
-    setFolders([{ id: Date.now().toString(), name: tempTitle, createdAt: Date.now() }, ...folders]);
-    setFavMode('LIST'); setTempTitle('');
-  };
-
-  const handleDeleteBookmark = (id: string) => { if (confirm('確定要刪除此收藏？')) setBookmarks(bookmarks.filter(b => b.id !== id)); };
-  const handleDeleteFolder = (id: string) => {
-    if (confirm('確定要刪除此資料夾？內含的書籤也會一併刪除。')) {
-      setFolders(folders.filter(f => f.id !== id));
-      setBookmarks(bookmarks.filter(b => b.folderId !== id));
-    }
-  };
-
-  // 拖曳事件處理
-  const onDragStart = (e: React.DragEvent, type: 'FOLDER' | 'BOOKMARK', id: string) => {
-    setDraggedItem({ id, type });
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const onDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
-
-  const onDrop = (e: React.DragEvent, targetType: 'FOLDER' | 'BOOKMARK', targetId: string) => {
-    e.preventDefault();
-    if (!draggedItem) return; 
-
-    // ★ 新增修復：如果是將「網頁(BOOKMARK)」拖曳到「資料夾(FOLDER)」上方放開
-    if (draggedItem.type === 'BOOKMARK' && targetType === 'FOLDER') {
-      const items = [...bookmarks];
-      const idx = items.findIndex(i => i.id === draggedItem.id);
-      if (idx !== -1) {
-        items[idx].folderId = targetId; // 將該網頁的所屬資料夾改為目標資料夾
-        setBookmarks(items);
-      }
-      setDraggedItem(null);
-      return;
-    }
-
-    // 避免除了上述情況外的錯誤跨類型排序
-    if (draggedItem.type !== targetType) return;
-
-    if (targetType === 'FOLDER') {
-      const items = [...folders];
-      const dragIdx = items.findIndex(i => i.id === draggedItem.id);
-      const dropIdx = items.findIndex(i => i.id === targetId);
-      const [removed] = items.splice(dragIdx, 1);
-      items.splice(dropIdx, 0, removed);
-      setFolders(items);
-    } else {
-      const items = [...bookmarks];
-      const dragIdx = items.findIndex(i => i.id === draggedItem.id);
-      const dropIdx = items.findIndex(i => i.id === targetId);
-      const [removed] = items.splice(dragIdx, 1);
-      items.splice(dropIdx, 0, removed);
-      setBookmarks(items);
-    }
-    setDraggedItem(null);
-  };
 
   if (!isOpen) return null;
 
@@ -144,14 +148,31 @@ const FavoritesModal: React.FC<FavoritesModalProps> = ({ isOpen, onClose, user }
           {favMode === 'LIST' && (
             <>
               <div className="grid grid-cols-3 md:grid-cols-4 gap-4 md:gap-8">
+                
+                {/* ★ 渲染返回上一層 (當在資料夾內時顯示，並作為可拖曳進入的目標) */}
+                {currentFolder !== null && (
+                  <DraggableFavItem 
+                    id="ROOT"
+                    type="FOLDER"
+                    onDropComplete={handleDropComplete}
+                    onClick={() => setCurrentFolder(null)} 
+                    className="flex flex-col items-center gap-2 cursor-pointer group relative hover:-translate-y-1 transition-transform"
+                  >
+                    <div className="w-20 h-20 md:w-24 md:h-24 rounded-3xl bg-slate-50 shadow-sm flex flex-col items-center justify-center overflow-hidden border-2 border-dashed border-slate-300 group-hover:shadow-md group-hover:border-[#EE4D2D] transition-all relative">
+                      <i className="fa-solid fa-reply text-3xl md:text-4xl text-slate-400 group-hover:text-[#EE4D2D] transition-colors drop-shadow-sm mb-1"></i>
+                      <span className="text-[10px] font-bold text-slate-400 group-hover:text-[#EE4D2D]">移出資料夾</span>
+                    </div>
+                    <span className="text-xs md:text-sm font-bold text-slate-600 text-center line-clamp-2 px-1 leading-snug">回上一層</span>
+                  </DraggableFavItem>
+                )}
+
                 {/* 渲染資料夾 */}
                 {currentFolder === null && folders.map(f => (
-                  <div 
+                  <DraggableFavItem 
                     key={f.id} 
-                    draggable 
-                    onDragStart={(e) => onDragStart(e, 'FOLDER', f.id)}
-                    onDragOver={onDragOver}
-                    onDrop={(e) => onDrop(e, 'FOLDER', f.id)}
+                    id={f.id}
+                    type="FOLDER"
+                    onDropComplete={handleDropComplete}
                     onClick={() => setCurrentFolder(f.id)} 
                     className="flex flex-col items-center gap-2 cursor-pointer group relative hover:-translate-y-1 transition-transform"
                   >
@@ -163,25 +184,25 @@ const FavoritesModal: React.FC<FavoritesModalProps> = ({ isOpen, onClose, user }
                     </div>
                     <span className="text-xs md:text-sm font-bold text-slate-700 text-center line-clamp-2 px-1 leading-snug">{f.name}</span>
                     <button onClick={(e) => { e.stopPropagation(); handleDeleteFolder(f.id); }} className="absolute -top-2 -right-2 text-slate-300 hover:text-white hover:bg-red-500 bg-white shadow-sm rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition z-10"><i className="fa-solid fa-xmark text-xs"></i></button>
-                  </div>
+                  </DraggableFavItem>
                 ))}
                 
                 {/* 渲染書籤 */}
                 {bookmarks.filter(b => b.folderId === currentFolder).map(b => (
-                  <div 
+                  <DraggableFavItem 
                     key={b.id} 
-                    draggable 
-                    onDragStart={(e) => onDragStart(e, 'BOOKMARK', b.id)}
-                    onDragOver={onDragOver}
-                    onDrop={(e) => onDrop(e, 'BOOKMARK', b.id)}
+                    id={b.id}
+                    type="BOOKMARK"
+                    onDropComplete={handleDropComplete}
+                    onClick={() => window.open(b.url, '_blank')}
                     className="flex flex-col items-center gap-2 cursor-pointer group relative hover:-translate-y-1 transition-transform"
                   >
-                    <a href={b.url} target="_blank" rel="noreferrer" className="w-20 h-20 md:w-24 md:h-24 rounded-3xl bg-white shadow-sm flex items-center justify-center overflow-hidden border border-slate-100 group-hover:shadow-md group-hover:border-orange-200 transition-all p-3">
+                    <div className="w-20 h-20 md:w-24 md:h-24 rounded-3xl bg-white shadow-sm flex items-center justify-center overflow-hidden border border-slate-100 group-hover:shadow-md group-hover:border-orange-200 transition-all p-3 pointer-events-none">
                       <img src={`https://www.google.com/s2/favicons?domain=${b.url}&sz=128`} className="w-full h-full object-contain filter drop-shadow-sm" alt="icon" onError={(e) => (e.target as any).style.display='none'} />
-                    </a>
-                    <span className="text-xs md:text-sm font-bold text-slate-700 text-center line-clamp-2 px-1 leading-snug">{b.title}</span>
-                    <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteBookmark(b.id); }} className="absolute -top-2 -right-2 text-slate-300 hover:text-white hover:bg-red-500 bg-white shadow-sm rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition z-10"><i className="fa-solid fa-xmark text-xs"></i></button>
-                  </div>
+                    </div>
+                    <span className="text-xs md:text-sm font-bold text-slate-700 text-center line-clamp-2 px-1 leading-snug pointer-events-none">{b.title}</span>
+                    <button onClick={(e) => { e.stopPropagation(); handleDeleteBookmark(b.id); }} className="absolute -top-2 -right-2 text-slate-300 hover:text-white hover:bg-red-500 bg-white shadow-sm rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition z-10"><i className="fa-solid fa-xmark text-xs"></i></button>
+                  </DraggableFavItem>
                 ))}
               </div>
 

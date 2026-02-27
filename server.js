@@ -110,7 +110,11 @@ const userSchema = new mongoose.Schema({
     averageRating: Number
   },
   following: [String],
+  bookmarks: { type: Array, default: [] }, // ★ 新增：我的最愛網頁
+  folders: { type: Array, default: [] },   // ★ 新增：我的最愛資料夾
   is_suspended: { type: Boolean, default: false },
+  bookmarks: Array, // ★ 新增：我的最愛網頁
+  folders: Array,   // ★ 新增：我的最愛資料夾
   google_map_url: String,
   line_url: String,
   facebook_url: String,

@@ -554,19 +554,20 @@ const Shop: React.FC<ShopProps> = ({
                   </div>
                 </div>
 
-                <div className="flex gap-2 shrink-0 w-full md:w-auto mt-4 md:mt-0 flex-nowrap overflow-x-auto pb-1 md:pb-0 no-scrollbar">
-                  <button onClick={() => onFollowShop(currentShop.shop_id || currentShop.id)} className={`flex-1 md:flex-none px-4 py-2 rounded-lg font-bold border transition whitespace-nowrap ${isFollowing ? 'border-slate-200 text-slate-400 bg-slate-100' : 'border-[#EE4D2D] text-[#EE4D2D] hover:bg-[#EE4D2D] hover:text-white'}`}>{isFollowing ? '已關注' : '+ 關注'}</button>
-                  <button onClick={() => onNavigate && onNavigate(View.CHAT, undefined, currentShop.shop_id || currentShop.id)} className="flex-1 md:flex-none px-4 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700 transition whitespace-nowrap"><i className="fa-regular fa-comments mr-2"></i>愛聊</button>
-                  {canRateSeller && (<button onClick={() => setShowRateModal(true)} className="flex-1 md:flex-none px-4 py-2 bg-yellow-400 text-white rounded-lg font-bold hover:bg-yellow-500 transition shadow-sm flex items-center justify-center gap-2 whitespace-nowrap"><i className="fa-solid fa-star"></i> 評分</button>)}
-                  <button onClick={handleShareShop} className="flex-1 md:flex-none px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2 whitespace-nowrap"><i className="fa-solid fa-share-nodes"></i> 分享</button>
-                  <button onClick={() => openReport('SHOP', currentShop.id, currentShop.shop_name || currentShop.name)} className="px-3 py-2 bg-white border border-red-200 text-red-500 rounded-lg font-bold hover:bg-red-50 transition text-xs flex-1 md:flex-none whitespace-nowrap"><i className="fa-solid fa-triangle-exclamation"></i> 檢舉</button>
+                {/* ★ 修正 2：改為 flex-wrap 自動換行，並調整手機版按鈕內距，完美貼合各種手機尺寸 */}
+                <div className="flex gap-2 shrink-0 w-full md:w-auto mt-4 md:mt-0 flex-wrap pb-1 md:pb-0">
+                  <button onClick={() => onFollowShop(currentShop.shop_id || currentShop.id)} className={`flex-auto md:flex-none px-3 py-2 text-xs md:text-sm rounded-lg font-bold border transition whitespace-nowrap ${isFollowing ? 'border-slate-200 text-slate-400 bg-slate-100' : 'border-[#EE4D2D] text-[#EE4D2D] hover:bg-[#EE4D2D] hover:text-white'}`}>{isFollowing ? '已關注' : '+ 關注'}</button>
+                  <button onClick={() => onNavigate && onNavigate(View.CHAT, undefined, currentShop.shop_id || currentShop.id)} className="flex-auto md:flex-none px-3 py-2 text-xs md:text-sm bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700 transition flex items-center justify-center whitespace-nowrap"><i className="fa-regular fa-comments mr-1.5"></i>愛聊</button>
+                  {canRateSeller && (<button onClick={() => setShowRateModal(true)} className="flex-auto md:flex-none px-3 py-2 text-xs md:text-sm bg-yellow-400 text-white rounded-lg font-bold hover:bg-yellow-500 transition shadow-sm flex items-center justify-center gap-1.5 whitespace-nowrap"><i className="fa-solid fa-star"></i> 評分</button>)}
+                  <button onClick={handleShareShop} className="flex-auto md:flex-none px-3 py-2 text-xs md:text-sm bg-white border border-slate-200 text-slate-600 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-1.5 whitespace-nowrap"><i className="fa-solid fa-share-nodes"></i> 分享</button>
+                  <button onClick={() => openReport('SHOP', currentShop.id, currentShop.shop_name || currentShop.name)} className="flex-auto md:flex-none px-3 py-2 bg-white border border-red-200 text-red-500 rounded-lg font-bold hover:bg-red-50 transition text-xs flex items-center justify-center gap-1.5 whitespace-nowrap"><i className="fa-solid fa-triangle-exclamation"></i> 檢舉</button>
                 </div>
               </div>
             </div>
 
             {/* ★ 修改 1: 商家頁面專用 - 分類下拉式選單 (已移除熱銷推薦) */}
-            <div className="md:hidden px-4 mb-4 relative z-30 sticky top-16 mt-4">
-                <button 
+            <div className="md:hidden px-4 mb-4 z-30 sticky top-16 mt-4">
+                <button
                     onClick={toggleCategoryDropdown}
                     className="w-full bg-white border border-slate-200 rounded-xl p-3 flex justify-between items-center shadow-sm"
                 >
@@ -654,7 +655,8 @@ const Shop: React.FC<ShopProps> = ({
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row gap-6 items-start">
+      {/* ★ 修正手機版破版：加入 w-full, max-w-full 與 overflow-hidden 防護 */}
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-start w-full max-w-full overflow-hidden px-1 md:px-0">
         {/* 左側邊欄：手機版隱藏 (因為上方已有篩選列)，電腦版顯示 */}
         <aside className="hidden md:block w-full md:w-60 shrink-0 space-y-4">
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4">
@@ -795,7 +797,9 @@ const Shop: React.FC<ShopProps> = ({
           </div>
         </aside>
 
-        <div className="flex-1 w-full">
+        {/* ★ 修正 1：加上 min-w-0 確保寬度不會被子元素撐破，徹底解決右邊空白的問題 */}
+        {/* ★ 加上 min-w-0 與 max-w-full，避免被內部的網格元素強制撐開 */}
+        <div className="flex-1 w-full min-w-0 max-w-full">
           {/* 電腦版排序功能列 (手機版隱藏) */}
           <div className="hidden md:flex bg-slate-100 p-2 rounded-xl flex-col md:flex-row md:items-center gap-2 mb-6">
             <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">

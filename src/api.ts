@@ -18,6 +18,9 @@ api.interceptors.response.use(
 );
 
 export const API = {
+  // ★ 新增：提交商家評價 API
+  addShopReview: (shopId: string, reviewData: any) => api.post(`/users/${shopId}/reviews`, reviewData).then(res => res.data),
+
   // 支援傳遞搜尋關鍵字 q
   getProducts: (shopId?: string, query?: string) => {
     let url = '/products';
