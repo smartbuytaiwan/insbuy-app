@@ -21,6 +21,14 @@ export const API = {
   // ★ 新增：提交商家評價 API
   addShopReview: (shopId: string, reviewData: any) => api.post(`/users/${shopId}/reviews`, reviewData).then(res => res.data),
 
+  // ★ 新增：綁定 Google 日曆 (取得永久 Token)
+  bindGoogleCalendar: (userId: string, code: string) => api.post('/google/auth', { userId, code }).then(res => res.data),
+
+ // ★ 新增：讓日曆元件能抓取/新增 Google 行程的 API
+  getGoogleEvents: (userId: string) => api.get(`/google/events?userId=${userId}`).then(res => res.data),
+  addGoogleEvent: (eventData: any) => api.post('/google/events', eventData).then(res => res.data),
+
+  
   // 支援傳遞搜尋關鍵字 q
   getProducts: (shopId?: string, query?: string) => {
     let url = '/products';

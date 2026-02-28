@@ -8,37 +8,43 @@ const SCOPES = 'https://www.googleapis.com/auth/calendar';
 let tokenClient: any;
 
 // 動態載入 Google 官方安全登入套件
-export const initGoogleCalendar = (onTokenSuccess: (token: string) => void) => {
-  if (document.getElementById('google-gsi-client')) return; // 避免重複載入
+export const initGoogleCalendar = (onCodeSuccess: (code: string) => void) => {
+  const initClient = () => {
+    if ((window as any).google?.accounts?.oauth2) {
+        tokenClient = (window as any).google.accounts.oauth2.initCodeClient({
+          client_id: CLIENT_ID,
+          scope: SCOPES,
+          ux_mode: 'popup',
+          callback: (response: any) => {
+            if (response.error !== undefined) {
+              console.error('Google 授權失敗:', response);
+              return;
+            }
+            onCodeSuccess(response.code); // ★ 核心差異：現在拿的是 Code，不是 1 小時就過期的 Token
+          },
+        });
+    }
+  };
+
+  if (document.getElementById('google-gsi-client')) {
+    initClient(); 
+    return;
+  }
 
   const script = document.createElement('script');
   script.id = 'google-gsi-client';
   script.src = 'https://accounts.google.com/gsi/client';
   script.async = true;
   script.defer = true;
-  script.onload = () => {
-    // 初始化授權視窗
-    tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: SCOPES,
-      callback: (tokenResponse: any) => {
-        if (tokenResponse.error !== undefined) {
-          console.error('Google 授權失敗:', tokenResponse);
-          return;
-        }
-        onTokenSuccess(tokenResponse.access_token);
-      },
-    });
-  };
+  script.onload = initClient;
   document.body.appendChild(script);
 };
 
-// 觸發彈出 Google 帳號選擇視窗
 export const authorizeGoogle = () => {
   if (tokenClient) {
-    tokenClient.requestAccessToken({ prompt: 'consent' });
+    tokenClient.requestCode(); // ★ 請求離線授權碼
   } else {
-    alert('Google 服務載入中，請稍等一秒後再試。');
+    alert('Google 登入模組載入中，請稍後再試。');
   }
 };
 

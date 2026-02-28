@@ -10,6 +10,8 @@ export interface ShippingRule {
   free_threshold: number;
   limit_qty?: number; 
   pickup_address?: string;
+  sync_calendar?: boolean; // ★ 新增：是否同步至 Google 行事曆
+  reminder_minutes?: number; // ★ 新增：提前幾分鐘提醒
 }
 
 export interface BankInfo {
@@ -84,6 +86,7 @@ export interface Order {
   id: string;
   items: CartItem[];
   total_amount: number;
+  pickup_datetime?: string; // ★ 新增：紀錄買家面交/自取時間
   shipping_fee: number;
   payment_method: string;
   status: 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED';
@@ -113,6 +116,8 @@ export interface User {
   id: string;
   blacklisted_by?: string[]; // ★ 新增：被哪些賣家加入黑名單
   name: string;
+  google_calendar_token?: string; // ★ 新增：Google 行事曆授權 Token
+  google_calendar_email?: string; // ★ 新增：Google 行事曆綁定信箱
   welcome_message?: string;
   phone: string;
   email?: string;

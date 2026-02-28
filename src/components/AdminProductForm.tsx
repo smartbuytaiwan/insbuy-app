@@ -311,16 +311,16 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                             <label className="text-xs font-bold text-slate-500 mb-2 block">商品描述</label>
                             <textarea className="w-full h-40 border border-slate-200 rounded-2xl p-5 text-sm outline-none focus:border-[#EE4D2D] resize-none" value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="詳細介紹您的商品特色、尺寸、材質等資訊..."></textarea>
                             
-                            <div className="mt-3 flex flex-col md:flex-row items-start md:items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                               <button onClick={handleSaveDraft} className="w-full md:w-auto text-xs bg-slate-800 text-white px-4 py-2.5 rounded-lg hover:bg-slate-700 transition font-bold shadow-sm whitespace-nowrap shrink-0"><i className="fa-solid fa-save mr-1"></i>存為草稿</button>
-                               <div className="w-full md:flex-1 flex gap-2">
-                                   <select className="flex-1 border border-slate-200 rounded-lg p-2 text-xs outline-none focus:border-[#EE4D2D] bg-white cursor-pointer min-w-0 font-bold text-slate-600" value={selectedDraftId} onChange={e => setSelectedDraftId(e.target.value)}>
-                                       <option value="" disabled hidden>-- 選擇已儲存的草稿 --</option>
-                                       {drafts.length === 0 && <option value="none" disabled>尚未建立草稿</option>}
-                                       {drafts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                            <div className="mt-3 flex flex-col md:flex-row items-start md:items-center gap-3 bg-slate-50 p-3 md:p-4 rounded-xl border border-slate-100">
+                               <button onClick={handleSaveDraft} className="w-full md:w-auto text-sm bg-slate-800 text-white h-12 px-4 rounded-xl hover:bg-slate-700 transition font-bold shadow-sm whitespace-nowrap shrink-0"><i className="fa-solid fa-save mr-1"></i>存為草稿</button>
+                               <div className="w-full md:flex-1 flex gap-2 items-center">
+                                   <select className="flex-1 h-12 px-4 border border-slate-200 rounded-xl text-base outline-none focus:border-[#EE4D2D] bg-white cursor-pointer min-w-0 font-bold text-slate-700" value={selectedDraftId} onChange={e => setSelectedDraftId(e.target.value)}>
+                                       <option value="" disabled hidden className="text-base">-- 選擇已儲存的草稿 --</option>
+                                       {drafts.length === 0 && <option value="none" disabled className="text-base">尚未建立草稿</option>}
+                                       {drafts.map(d => <option key={d.id} value={d.id} className="text-base">{d.name}</option>)}
                                    </select>
-                                   <button onClick={() => { if(selectedDraftId) applyDraft(selectedDraftId); else alert('請先選擇草稿'); }} className="text-xs bg-blue-50 text-blue-600 px-4 py-2.5 rounded-lg font-bold hover:bg-blue-100 transition shrink-0 border border-blue-100 shadow-sm">帶入</button>
-                                   <button onClick={() => { if(selectedDraftId) { deleteDraft(selectedDraftId); setSelectedDraftId(''); } else alert('請先選擇草稿'); }} className="text-xs bg-red-50 text-red-500 px-4 py-2.5 rounded-lg font-bold hover:bg-red-100 transition shrink-0 border border-red-100 shadow-sm">刪除</button>
+                                   <button onClick={() => { if(selectedDraftId) applyDraft(selectedDraftId); else alert('請先選擇草稿'); }} className="text-sm bg-blue-50 text-blue-600 h-12 px-4 rounded-xl font-bold hover:bg-blue-100 transition shrink-0 border border-blue-100 shadow-sm">帶入</button>
+                                   <button onClick={() => { if(selectedDraftId) { deleteDraft(selectedDraftId); setSelectedDraftId(''); } else alert('請先選擇草稿'); }} className="text-sm bg-red-50 text-red-500 h-12 px-4 rounded-xl font-bold hover:bg-red-100 transition shrink-0 border border-red-100 shadow-sm">刪除</button>
                                </div>
                             </div>
                         </div>
@@ -370,35 +370,35 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-200">
                             <div className="space-y-3">
                                 <label className="text-xs font-bold text-slate-600"><i className="fa-solid fa-sitemap mr-1"></i> 加入全站共同分類</label>
-                                <div className="flex flex-col gap-2">
-                                    <select className="w-full border border-slate-200 rounded-lg p-2 text-sm outline-none" value={selectedMainCat} onChange={e => { setSelectedMainCat(e.target.value); setSelectedSubCat(''); }}>
-                                        <option value="">選擇主分類...</option>
-                                        {systemCategories?.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                <div className="flex flex-col gap-3">
+                                    <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={selectedMainCat} onChange={e => { setSelectedMainCat(e.target.value); setSelectedSubCat(''); }}>
+                                        <option value="" className="text-base">選擇主分類...</option>
+                                        {systemCategories?.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id} className="text-base">{c.name}</option>)}
                                     </select>
                                     {selectedMainCat && (
-                                        <select className="w-full border border-slate-200 rounded-lg p-2 text-sm outline-none" value={selectedSubCat} onChange={e => setSelectedSubCat(e.target.value)}>
-                                            <option value="">選擇子分類 (選填)...</option>
-                                            {systemCategories?.filter(c => c.parent_id === selectedMainCat).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={selectedSubCat} onChange={e => setSelectedSubCat(e.target.value)}>
+                                            <option value="" className="text-base">選擇子分類 (選填)...</option>
+                                            {systemCategories?.filter(c => c.parent_id === selectedMainCat).map(c => <option key={c.id} value={c.id} className="text-base">{c.name}</option>)}
                                         </select>
                                     )}
-                                    <button onClick={() => handleAddCategoryTag('SYSTEM')} disabled={!selectedMainCat} className="w-full bg-slate-800 text-white rounded-lg py-2 text-xs font-bold disabled:opacity-50">新增系統分類標籤</button>
+                                    <button onClick={() => handleAddCategoryTag('SYSTEM')} disabled={!selectedMainCat} className="w-full h-12 bg-slate-800 text-white rounded-xl text-sm font-bold disabled:opacity-50 hover:bg-slate-700 transition">新增系統分類標籤</button>
                                 </div>
                             </div>
                             
                             <div className="space-y-3">
                                 <label className="text-xs font-bold text-slate-600"><i className="fa-solid fa-store mr-1"></i> 加入本店自訂分類</label>
-                                <div className="flex flex-col gap-2">
-                                    <select className="w-full border border-slate-200 rounded-lg p-2 text-sm outline-none" value={selectedShopMainCat} onChange={e => { setSelectedShopMainCat(e.target.value); setSelectedShopSubCat(''); }}>
-                                        <option value="">選擇主分類...</option>
-                                        {categories?.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                <div className="flex flex-col gap-3">
+                                    <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={selectedShopMainCat} onChange={e => { setSelectedShopMainCat(e.target.value); setSelectedShopSubCat(''); }}>
+                                        <option value="" className="text-base">選擇主分類...</option>
+                                        {categories?.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id} className="text-base">{c.name}</option>)}
                                     </select>
                                     {selectedShopMainCat && (
-                                        <select className="w-full border border-slate-200 rounded-lg p-2 text-sm outline-none" value={selectedShopSubCat} onChange={e => setSelectedShopSubCat(e.target.value)}>
-                                            <option value="">選擇子分類 (選填)...</option>
-                                            {categories?.filter(c => c.parent_id === selectedShopMainCat).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={selectedShopSubCat} onChange={e => setSelectedShopSubCat(e.target.value)}>
+                                            <option value="" className="text-base">選擇子分類 (選填)...</option>
+                                            {categories?.filter(c => c.parent_id === selectedShopMainCat).map(c => <option key={c.id} value={c.id} className="text-base">{c.name}</option>)}
                                         </select>
                                     )}
-                                    <button onClick={() => handleAddCategoryTag('SHOP')} disabled={!selectedShopMainCat} className="w-full bg-slate-800 text-white rounded-lg py-2 text-xs font-bold disabled:opacity-50">新增商店分類標籤</button>
+                                    <button onClick={() => handleAddCategoryTag('SHOP')} disabled={!selectedShopMainCat} className="w-full h-12 bg-slate-800 text-white rounded-xl text-sm font-bold disabled:opacity-50 hover:bg-slate-700 transition">新增商店分類標籤</button>
                                 </div>
                             </div>
                         </div>
@@ -414,10 +414,18 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                     <div className="space-y-3">
                         {form.variants?.map((v, i) => (
                             <div key={i} className="flex flex-col md:flex-row gap-4 items-end bg-slate-50 p-4 md:p-5 rounded-2xl border border-slate-200 relative">
-                                <div className="w-full md:flex-1"><label className="text-xs font-bold text-slate-500 mb-1 block">規格名稱 (如: 紅色 M)</label><input type="text" className="w-full border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-[#EE4D2D]" value={v.name} onChange={e => updateVariant(i, 'name', e.target.value)} /></div>
-                                <div className="w-full md:flex-1"><label className="text-xs font-bold text-slate-500 mb-1 block">附加價格 (+NT$)</label><input type="number" className="w-full border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-[#EE4D2D]" value={v.price} onChange={e => updateVariant(i, 'price', parseInt(e.target.value)||0)} /></div>
-                                <div className="w-full md:flex-1"><label className="text-xs font-bold text-slate-500 mb-1 block">庫存數量</label><input type="number" className="w-full border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-[#EE4D2D]" value={v.stock} onChange={e => updateVariant(i, 'stock', parseInt(e.target.value)||0)} /></div>
-                                {form.variants && form.variants.length > 1 && <button onClick={() => removeVariant(i)} className="absolute top-2 right-2 md:static md:w-auto p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"><i className="fa-solid fa-trash-can"></i></button>}
+                                <div className="w-full md:flex-1"><label className="text-xs font-bold text-slate-500 mb-1 block">規格名稱 (如: 紅色 M)</label><input type="text" className="w-full border border-slate-200 rounded-lg p-3 text-sm md:text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.name} onChange={e => updateVariant(i, 'name', e.target.value)} /></div>
+                                <div className="w-full md:flex-1">
+                                    <label className="text-xs font-bold text-slate-500 mb-1 block">附加價格 (+NT$)</label>
+                                    {/* ★ 核心修復：使用 string 型別並過濾首位 0 */}
+                                    <input type="number" className="w-full border border-slate-200 rounded-lg p-3 text-sm md:text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.price.toString() === '0' && v.price !== 0 ? '' : v.price.toString().replace(/^0+/, '') || '0'} onChange={e => updateVariant(i, 'price', e.target.value === '' ? 0 : parseInt(e.target.value, 10))} onFocus={e => e.target.select()} />
+                                </div>
+                                <div className="w-full md:flex-1">
+                                    <label className="text-xs font-bold text-slate-500 mb-1 block">庫存數量</label>
+                                    {/* ★ 核心修復：使用 string 型別並過濾首位 0 */}
+                                    <input type="number" className="w-full border border-slate-200 rounded-lg p-3 text-sm md:text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.stock.toString() === '0' && v.stock !== 0 ? '' : v.stock.toString().replace(/^0+/, '') || '0'} onChange={e => updateVariant(i, 'stock', e.target.value === '' ? 0 : parseInt(e.target.value, 10))} onFocus={e => e.target.select()} />
+                                </div>
+                                {form.variants && form.variants.length > 1 && <button onClick={() => removeVariant(i)} className="absolute top-2 right-2 md:static md:w-auto p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"><i className="fa-solid fa-trash-can text-lg"></i></button>}
                             </div>
                         ))}
                     </div>
@@ -445,6 +453,27 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                                             <div><label className="text-[10px] text-slate-500 font-bold mb-1 block">每滿幾件加收一次運費</label><input type="number" className="w-full border border-slate-200 rounded-lg p-2 text-sm" value={rule.limit_qty === 0 ? '' : rule.limit_qty} onChange={e => updateShippingRule(i, 'limit_qty', e.target.value === '' ? 0 : parseInt(e.target.value))} placeholder="例: 4 (留空=不限)" /></div>
                                             <div><label className="text-[10px] text-slate-500 font-bold mb-1 block">滿多少金額免運</label><div className="flex items-center gap-2"><span className="text-xs text-slate-500 font-bold">$</span><input type="number" className="flex-1 border border-slate-200 rounded-lg p-2 text-sm" value={rule.free_threshold === 0 ? '' : rule.free_threshold} onChange={e => updateShippingRule(i, 'free_threshold', e.target.value === '' ? 0 : parseInt(e.target.value))} placeholder="例: 1000 (留空=無)" /></div></div>
                                         </div>
+                                        {/* ★ 新增：面交/自取的 Google 日曆連動設定 */}
+                                        {(rule.name.includes('面交') || rule.name.includes('自取')) && (
+                                            <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col md:flex-row gap-4 items-center bg-white p-3 rounded-lg shadow-sm">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input type="checkbox" className="w-4 h-4 accent-[#EE4D2D]" checked={rule.sync_calendar || false} onChange={e => updateShippingRule(i, 'sync_calendar', e.target.checked)} />
+                                                    <span className="text-xs font-bold text-slate-700"><i className="fa-regular fa-calendar-plus text-blue-500 mr-1"></i>買家下單時須選擇時間 (同步至我的日曆)</span>
+                                                </label>
+                                                {rule.sync_calendar && (
+                                                    <div className="flex items-center gap-2 w-full md:w-auto">
+                                                        <span className="text-sm font-bold text-slate-600">面交前</span>
+                                                        <select className="h-10 px-3 border border-slate-200 rounded-lg text-base outline-none font-bold text-slate-700 bg-white cursor-pointer" value={rule.reminder_minutes || 60} onChange={e => updateShippingRule(i, 'reminder_minutes', parseInt(e.target.value))}>
+                                                            <option value={30} className="text-base">30 分鐘</option>
+                                                            <option value={60} className="text-base">1 小時</option>
+                                                            <option value={120} className="text-base">2 小時</option>
+                                                            <option value={1440} className="text-base">1 天前</option>
+                                                        </select>
+                                                        <span className="text-sm font-bold text-slate-600">提醒我</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                                 {(!form.shipping_rules || form.shipping_rules.length === 0) && <div className="text-xs text-red-500 font-bold p-3 bg-red-50 rounded-lg">請至少新增一種運送方式！</div>}
@@ -473,24 +502,24 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                                         <div>
                                             <label className="text-xs font-bold text-slate-600 block mb-1">收款銀行</label>
                                             {isCustomBank ? (
-                                                <div className="flex gap-2">
-                                                    <input type="text" className="w-16 border rounded p-2 text-sm" placeholder="代碼" value={form.bank_info?.bank_code} onChange={e => setForm({...form, bank_info: {...form.bank_info!, bank_code: e.target.value}})} />
-                                                    <input type="text" className="flex-1 border rounded p-2 text-sm" placeholder="自訂銀行名稱" value={form.bank_info?.bank_name} onChange={e => setForm({...form, bank_info: {...form.bank_info!, bank_name: e.target.value}})} />
-                                                    <button onClick={() => setIsCustomBank(false)} className="text-xs text-blue-500 underline">選單</button>
+                                                <div className="flex gap-2 items-center">
+                                                    <input type="text" className="w-20 h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" placeholder="代碼" value={form.bank_info?.bank_code} onChange={e => setForm({...form, bank_info: {...form.bank_info!, bank_code: e.target.value}})} />
+                                                    <input type="text" className="flex-1 h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" placeholder="自訂銀行名稱" value={form.bank_info?.bank_name} onChange={e => setForm({...form, bank_info: {...form.bank_info!, bank_name: e.target.value}})} />
+                                                    <button onClick={() => setIsCustomBank(false)} className="text-sm font-bold text-blue-500 hover:underline shrink-0 p-2">返回選單</button>
                                                 </div>
                                             ) : (
-                                                <select className="w-full border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-[#EE4D2D]" value={form.bank_info?.bank_code} onChange={e => {
+                                                <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={form.bank_info?.bank_code} onChange={e => {
                                                     if(e.target.value === 'custom') { setIsCustomBank(true); return; }
                                                     const bank = TAIWAN_BANKS.find(b => b.code === e.target.value);
                                                     if(bank) setForm({...form, bank_info: {...form.bank_info!, bank_code: bank.code, bank_name: bank.name}});
                                                 }}>
-                                                    {TAIWAN_BANKS.map(b => <option key={b.code} value={b.code}>{b.code} - {b.name}</option>)}
-                                                    <option value="custom">+ 其他銀行 (手動輸入)</option>
+                                                    {TAIWAN_BANKS.map(b => <option key={b.code} value={b.code} className="text-base">{b.code} - {b.name}</option>)}
+                                                    <option value="custom" className="text-base">+ 其他銀行 (手動輸入)</option>
                                                 </select>
                                             )}
                                         </div>
-                                        <div><label className="text-xs font-bold text-slate-600 block mb-1">戶名</label><input type="text" className="w-full border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-[#EE4D2D]" value={form.bank_info?.account_name} onChange={e => setForm({...form, bank_info: {...form.bank_info!, account_name: e.target.value}})} placeholder="請輸入戶名" /></div>
-                                        <div className="md:col-span-2"><label className="text-xs font-bold text-slate-600 block mb-1">匯款帳號</label><input type="text" className="w-full border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-[#EE4D2D] font-mono" value={form.bank_info?.account_number} onChange={e => setForm({...form, bank_info: {...form.bank_info!, account_number: e.target.value}})} placeholder="請輸入純數字帳號" /></div>
+                                        <div><label className="text-xs font-bold text-slate-600 block mb-1">戶名</label><input type="text" className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={form.bank_info?.account_name} onChange={e => setForm({...form, bank_info: {...form.bank_info!, account_name: e.target.value}})} placeholder="請輸入戶名" /></div>
+                                        <div className="md:col-span-2"><label className="text-xs font-bold text-slate-600 block mb-1">匯款帳號</label><input type="text" className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] font-mono tracking-widest" value={form.bank_info?.account_number} onChange={e => setForm({...form, bank_info: {...form.bank_info!, account_number: e.target.value.replace(/\D/g, '')}})} placeholder="請輸入純數字帳號" /></div>
                                     </div>
                                     <label className="flex items-center gap-2 mt-2 cursor-pointer w-fit"><input type="checkbox" checked={saveBank} onChange={e => setSaveBank(e.target.checked)} className="w-4 h-4 accent-[#EE4D2D]" /><span className="text-xs font-bold text-slate-600">記住此帳號作為未來預設收款帳戶</span></label>
                                 </div>
@@ -522,25 +551,25 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-slate-200 pt-6">
                             <div>
                                 <label className="text-xs font-bold text-slate-600 block mb-2">商品製造產地</label>
-                                <select className="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white" value={form.origin || '台灣'} onChange={e => setForm({...form, origin: e.target.value})}>
-                                    {COMMON_ORIGINS.map(o => <option key={o} value={o}>{o}</option>)}
+                                <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={form.origin || '台灣'} onChange={e => setForm({...form, origin: e.target.value})}>
+                                    {COMMON_ORIGINS.map(o => <option key={o} value={o} className="text-base">{o}</option>)}
                                 </select>
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-slate-600 block mb-2">商品出貨地</label>
-                                <div className="flex gap-2">
-                                    <select className="w-1/2 border border-slate-200 rounded-lg p-2 text-sm bg-white" value={originSelect} onChange={e => { setOriginSelect(e.target.value); setOriginDistrictSelect(''); }}>
-                                        {Object.keys(TAIWAN_DISTRICTS).map(city => <option key={city} value={city}>{city}</option>)}
-                                        <option value="海外">🌍 海外出貨</option><option value="手動填寫">✏️ 手動填寫</option>
+                                <div className="flex gap-2 items-center">
+                                    <select className="w-1/2 h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={originSelect} onChange={e => { setOriginSelect(e.target.value); setOriginDistrictSelect(''); }}>
+                                        {Object.keys(TAIWAN_DISTRICTS).map(city => <option key={city} value={city} className="text-base">{city}</option>)}
+                                        <option value="海外" className="text-base">🌍 海外出貨</option><option value="手動填寫" className="text-base">✏️ 手動填寫</option>
                                     </select>
                                     {originSelect !== '手動填寫' && originSelect !== '海外' && (
-                                        <select className="w-1/2 border border-slate-200 rounded-lg p-2 text-sm bg-white" value={originDistrictSelect} onChange={e => setOriginDistrictSelect(e.target.value)}>
-                                            <option value="">選擇行政區</option>
-                                            {TAIWAN_DISTRICTS[originSelect]?.map(dist => <option key={dist} value={dist}>{dist}</option>)}
+                                        <select className="w-1/2 h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={originDistrictSelect} onChange={e => setOriginDistrictSelect(e.target.value)}>
+                                            <option value="" className="text-base">選擇行政區</option>
+                                            {TAIWAN_DISTRICTS[originSelect]?.map(dist => <option key={dist} value={dist} className="text-base">{dist}</option>)}
                                         </select>
                                     )}
                                     {(originSelect === '手動填寫' || originSelect === '海外') && (
-                                        <input type="text" className="w-1/2 border border-slate-200 rounded-lg p-2 text-sm" value={originManual} onChange={e => setOriginManual(e.target.value)} placeholder="填寫出貨地" />
+                                        <input type="text" className="w-1/2 h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white" value={originManual} onChange={e => setOriginManual(e.target.value)} placeholder="填寫出貨地" />
                                     )}
                                 </div>
                             </div>

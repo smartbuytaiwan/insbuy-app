@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { initGoogleCalendar, authorizeGoogle, addEventToGoogleCalendar, getGoogleCalendars } from '../utils/googleCalendar'; 
+import { initGoogleCalendar, authorizeGoogle } from '../utils/googleCalendar'; 
+import API from '../api'; // ★ 新增：連線後端的工具
 
 interface CalendarModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export default function CalendarModal({ isOpen, onClose, user }: CalendarModalPr
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [googleEvents, setGoogleEvents] = useState<CalendarEvent[]>([]); // ★ 儲存真實 Google 行程
   
   const [isGoogleConnected, setIsGoogleConnected] = useState(false);
   const [googleToken, setGoogleToken] = useState<string | null>(null); 
@@ -47,7 +49,7 @@ export default function CalendarModal({ isOpen, onClose, user }: CalendarModalPr
   const [isEndDateEdited, setIsEndDateEdited] = useState(false);
   const [isEndTimeEdited, setIsEndTimeEdited] = useState(false);
 
-  // 初始化與讀取資料
+  // ★ 初始化與資料讀取
   useEffect(() => {
     if (isOpen && user?.id) {
       const today = new Date();
@@ -56,32 +58,35 @@ export default function CalendarModal({ isOpen, onClose, user }: CalendarModalPr
       try {
         const savedEvents = localStorage.getItem(`insbuy_calendar_${user.id}`);
         if (savedEvents) setEvents(JSON.parse(savedEvents));
-        
-        const gToken = localStorage.getItem(`insbuy_gcal_token_${user.id}`);
-        if (gToken) {
-          setIsGoogleConnected(true);
-          setGoogleToken(gToken);
-        }
       } catch (e) { console.error(e); }
 
-      initGoogleCalendar(async (token) => {
+      // ★ 核心修復：讀取資料庫的永久憑證，跟賣家後台完全同步
+      if (user.google_calendar_token || user.google_calendar_refresh_token) {
          setIsGoogleConnected(true);
-         setGoogleToken(token);
-         localStorage.setItem(`insbuy_gcal_token_${user.id}`, token);
+         setGoogleToken(user.google_calendar_email || '已綁定帳戶');
+         // 抓取真實 Google 行程 (包含買家的面交訂單)
+         API.getGoogleEvents(user.id).then(gEvents => setGoogleEvents(gEvents)).catch(e => console.error(e));
+      } else {
+         setIsGoogleConnected(false);
+         setGoogleToken(null);
+      }
+
+      // 初次點擊綁定時的 Callback
+      initGoogleCalendar(async (code) => {
          try {
-           const calData = await getGoogleCalendars(token);
-           if (calData.items) setCalendarLists(calData.items);
-         } catch (e) { console.error("獲取日曆清單失敗", e); }
-         alert('🎉 成功串接 Google 日曆！後續新增的行程將自動同步。');
+             const result = await API.bindGoogleCalendar(user.id, code);
+             setIsGoogleConnected(true);
+             setGoogleToken(result.user.google_calendar_email);
+             alert(`🎉 Google 日曆永久綁定成功！\n已綁定信箱：${result.user.google_calendar_email}`);
+             window.location.reload(); 
+         } catch(e) {
+             alert('綁定失敗，請重試。');
+         }
       });
     }
   }, [isOpen, user]);
 
-  useEffect(() => {
-    if (user?.id && events.length > 0) {
-      localStorage.setItem(`insbuy_calendar_${user.id}`, JSON.stringify(events));
-    }
-  }, [events, user]);
+  const allEvents = [...events, ...googleEvents]; // 合併本地與 Google 行程
 
   if (!isOpen) return null;
 
@@ -164,43 +169,46 @@ export default function CalendarModal({ isOpen, onClose, user }: CalendarModalPr
     
     if (editingEventId) {
        setEvents(events.map(e => e.id === editingEventId ? newEvent : e));
+       setShowAddForm(false);
     } else {
        setEvents([...events, newEvent]);
+       
+       // ★ 核心修復：如果已綁定 Google 日曆，同步打 API 送給後端寫入
+       if (isGoogleConnected && googleToken) {
+         try {
+            const attendeeList = attendeesStr ? attendeesStr.split(',').map(s => s.trim()).filter(s => s) : [];
+            await API.addGoogleEvent({
+                userId: user.id,
+                title: newEventTitle,
+                date: selectedDate,
+                time: isAllDay ? '' : newEventTime,
+                endDate: newEventEndDate || selectedDate,
+                endTime: isAllDay ? '' : newEventEndTime,
+                isAllDay: isAllDay,
+                location: newEventLocation,
+                description: newEventDescription,
+                calendarId: selectedCalendarId,
+                reminders: reminderMinutes > 0 ? [reminderMinutes] : [],
+                attendees: attendeeList,
+                addMeetLink: addMeetLink
+            });
+            console.log('Google 日曆同步成功！');
+            // 寫入成功後，重新抓取一次最新的 Google 行程
+            const updatedGoogleEvents = await API.getGoogleEvents(user.id);
+            setGoogleEvents(updatedGoogleEvents);
+         } catch (error) {
+            console.error('Google 同步失敗', error);
+            alert('⚠️ 系統已儲存於本機，但同步至 Google 日曆失敗，請確認網路連線。');
+         }
+       }
+       setShowAddForm(false);
     }
     
-    setShowAddForm(false);
     setEditingEventId(null);
     setNewEventTitle('');
     setNewEventLocation('');
     setNewEventDescription('');
     setIsAllDay(false);
-    
-    if (isGoogleConnected && googleToken && !editingEventId) { 
-      try {
-         const attendeeList = attendeesStr ? attendeesStr.split(',').map(s => s.trim()).filter(s => s) : [];
-         await addEventToGoogleCalendar(googleToken, {
-            title: newEventTitle,
-            date: selectedDate,
-            time: newEventTime,
-            endDate: newEventEndDate || selectedDate,
-            endTime: newEventEndTime,
-            isAllDay: isAllDay,
-            location: newEventLocation,
-            description: newEventDescription,
-            calendarId: selectedCalendarId,
-            reminders: reminderMinutes > 0 ? [reminderMinutes] : [],
-            attendees: attendeeList,
-            addMeetLink: addMeetLink
-         });
-         console.log('Google 日曆同步成功！');
-      } catch (error) {
-         console.error('Google 同步失敗', error);
-         alert('⚠️ 同步至 Google 日曆失敗。登入狀態可能已過期，請重新串接。');
-         setIsGoogleConnected(false);
-         setGoogleToken(null);
-         localStorage.removeItem(`insbuy_gcal_token_${user?.id}`);
-      }
-    }
   };
 
   const handleDeleteEvent = (id: string) => {
@@ -214,16 +222,21 @@ export default function CalendarModal({ isOpen, onClose, user }: CalendarModalPr
 
   const toggleGoogleConnect = () => {
     if (isGoogleConnected) {
-      if(confirm('確定要解除綁定 Google 日曆嗎？')) {
+      if(confirm('確定要解除綁定 Google 日曆嗎？ (包含您的賣場後台也會一併解除同步)')) {
         setIsGoogleConnected(false);
         setGoogleToken(null);
-        localStorage.removeItem(`insbuy_gcal_token_${user?.id}`);
+        setGoogleEvents([]);
+        // 呼叫 API 將後端資料庫的紀錄一併清空
+        // @ts-ignore
+        API.updateUser({ id: user.id, google_calendar_token: '', google_calendar_refresh_token: '', google_calendar_email: '' }).then(() => {
+            alert('已成功解除綁定！');
+            window.location.reload();
+        });
       }
     } else {
       authorizeGoogle();
     }
   };
-
   return (
     <div className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
       <div className="bg-slate-50 rounded-3xl w-full max-w-4xl h-[90vh] md:h-[80vh] flex flex-col shadow-2xl overflow-hidden relative">
@@ -249,7 +262,7 @@ export default function CalendarModal({ isOpen, onClose, user }: CalendarModalPr
                  className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition shadow-sm border ${isGoogleConnected ? 'bg-white border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-500' : 'bg-blue-50 border-blue-100 text-blue-600 hover:bg-blue-600 hover:text-white'}`}
                >
                  <i className="fa-brands fa-google"></i>
-                 {isGoogleConnected ? '已綁定 Google 日曆 (點擊解除)' : '串接 Google 日曆'}
+                 {isGoogleConnected ? `已綁定：${googleToken} (點擊解除)` : '串接 Google 日曆'}
                </button>
             </div>
 
@@ -270,7 +283,7 @@ export default function CalendarModal({ isOpen, onClose, user }: CalendarModalPr
               {daysArray.map(day => {
                 const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                 const isSelected = selectedDate === dateStr;
-                const hasEvent = events.some(e => e.date === dateStr);
+                const hasEvent = allEvents.some(e => e.date === dateStr);
                 const isToday = new Date().toDateString() === new Date(year, month, day).toDateString();
 
                 return (
@@ -298,24 +311,32 @@ export default function CalendarModal({ isOpen, onClose, user }: CalendarModalPr
             </h3>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3">
-              {events.filter(e => e.date === selectedDate).length === 0 ? (
+              {allEvents.filter(e => e.date === selectedDate).length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10">
                    <i className="fa-regular fa-calendar-xmark text-4xl mb-3 text-slate-300"></i>
                    <p className="font-bold text-sm">本日尚無任何行程</p>
                 </div>
               ) : (
-                events.filter(e => e.date === selectedDate).sort((a,b) => a.time.localeCompare(b.time)).map(e => (
-                  <div key={e.id} className="bg-white p-3 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center group hover:border-orange-200 transition">
+                allEvents.filter(e => e.date === selectedDate).sort((a,b) => (a.time || '').localeCompare(b.time || '')).map(e => {
+                  // @ts-ignore
+                  const isGoogle = e.isGoogle;
+                  return (
+                  <div key={e.id} className={`bg-white p-3 rounded-xl shadow-sm border flex justify-between items-center group transition ${isGoogle ? 'border-blue-100 hover:border-blue-300' : 'border-slate-100 hover:border-orange-200'}`}>
                      <div className="flex items-center gap-3">
-                        <div className="bg-orange-50 text-[#EE4D2D] text-xs font-black px-2 py-1 rounded-lg">{e.time}</div>
-                        <span className="text-sm font-bold text-slate-700">{e.title}</span>
+                        <div className={`${isGoogle ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-[#EE4D2D]'} text-xs font-black px-2 py-1 rounded-lg`}>{e.time || '全天'}</div>
+                        <div className="flex flex-col">
+                           <span className="text-sm font-bold text-slate-700">{e.title}</span>
+                           {isGoogle && <span className="text-[10px] text-blue-500 font-bold mt-0.5"><i className="fa-brands fa-google mr-1"></i>來自 Google 日曆</span>}
+                        </div>
                      </div>
-                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition">
-                       <button onClick={() => handleEditEvent(e)} className="text-slate-300 hover:text-blue-500 transition p-1" title="編輯行程"><i className="fa-solid fa-pen"></i></button>
-                       <button onClick={() => handleDeleteEvent(e.id)} className="text-slate-300 hover:text-red-500 transition p-1" title="刪除行程"><i className="fa-solid fa-trash-can"></i></button>
-                     </div>
+                     {!isGoogle && (
+                         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition">
+                           <button onClick={() => handleEditEvent(e)} className="text-slate-300 hover:text-blue-500 transition p-1" title="編輯行程"><i className="fa-solid fa-pen"></i></button>
+                           <button onClick={() => handleDeleteEvent(e.id)} className="text-slate-300 hover:text-red-500 transition p-1" title="刪除行程"><i className="fa-solid fa-trash-can"></i></button>
+                         </div>
+                     )}
                   </div>
-                ))
+                )})
               )}
             </div>
 
@@ -343,24 +364,75 @@ export default function CalendarModal({ isOpen, onClose, user }: CalendarModalPr
                       全天行程
                    </label>
 
-                   <div className="bg-slate-50 p-2 md:p-3 rounded-xl space-y-3 border border-slate-100">
+                   <div className="bg-slate-50 p-3 rounded-xl space-y-3 border border-slate-100">
                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 md:gap-3 text-sm">
                         <span className="w-8 text-slate-400 font-bold text-right shrink-0">開始</span>
-                        <input type="date" value={selectedDate} onChange={e => handleStartDateChange(e.target.value)} className="flex-1 min-w-[120px] border border-slate-200 rounded-lg p-1.5 outline-none focus:border-orange-300 text-slate-700 bg-white" />
+                        {/* 讓日期輸入框保有彈性，但不壓縮右側時間 */}
+                        <input type="date" value={selectedDate} onChange={e => handleStartDateChange(e.target.value)} className="flex-1 min-w-[120px] border border-slate-200 rounded-lg p-2 outline-none focus:border-orange-300 text-slate-700 bg-white font-bold" />
+                        
                         {!isAllDay && (
-                          <div className="flex items-center gap-1 shrink-0">
-                            <input type="time" id="start-time-input" value={newEventTime} onChange={e => { handleStartTimeChange(e.target.value); document.getElementById('start-time-input')?.blur(); }} className="w-24 border border-slate-200 rounded-lg p-1.5 outline-none focus:border-orange-300 text-slate-700 bg-white" />
-                            <button type="button" onClick={() => document.getElementById('start-time-input')?.blur()} className="text-xs bg-slate-200 text-slate-600 px-2 py-1.5 rounded-lg hover:bg-slate-300 font-bold active:scale-95 transition whitespace-nowrap hidden md:block">確定</button>
+                          <div className="flex items-center gap-2 shrink-0">
+                             {/* 給定固定寬度 75px，保證文字不被裁切 */}
+                             <div className="relative w-[75px]">
+                               <select 
+                                 className="w-full border border-slate-200 rounded-lg py-2 pl-2 pr-6 outline-none focus:border-orange-300 text-slate-700 bg-white appearance-none cursor-pointer font-bold text-sm"
+                                 value={newEventTime.split(':')[0] || '12'}
+                                 onChange={e => handleStartTimeChange(`${e.target.value}:${newEventTime.split(':')[1] || '00'}`)}
+                               >
+                                  {Array.from({length: 24}).map((_, h) => {
+                                     const hStr = h.toString().padStart(2, '0');
+                                     return <option key={`start-h-${hStr}`} value={hStr}>{hStr} 時</option>
+                                  })}
+                               </select>
+                               <i className="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] pointer-events-none"></i>
+                             </div>
+                             <div className="relative w-[75px]">
+                               <select 
+                                 className="w-full border border-slate-200 rounded-lg py-2 pl-2 pr-6 outline-none focus:border-orange-300 text-slate-700 bg-white appearance-none cursor-pointer font-bold text-sm"
+                                 value={newEventTime.split(':')[1] || '00'}
+                                 onChange={e => handleStartTimeChange(`${newEventTime.split(':')[0] || '12'}:${e.target.value}`)}
+                               >
+                                  {['00', '15', '30', '45'].map(m => (
+                                     <option key={`start-m-${m}`} value={m}>{m} 分</option>
+                                  ))}
+                               </select>
+                               <i className="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] pointer-events-none"></i>
+                             </div>
                           </div>
                         )}
                      </div>
+
                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 md:gap-3 text-sm">
                         <span className="w-8 text-slate-400 font-bold text-right shrink-0">結束</span>
-                        <input type="date" value={newEventEndDate} onChange={e => { setNewEventEndDate(e.target.value); setIsEndDateEdited(true); }} className="flex-1 min-w-[120px] border border-slate-200 rounded-lg p-1.5 outline-none focus:border-orange-300 text-slate-700 bg-white" min={selectedDate} />
+                        <input type="date" value={newEventEndDate} onChange={e => { setNewEventEndDate(e.target.value); setIsEndDateEdited(true); }} className="flex-1 min-w-[120px] border border-slate-200 rounded-lg p-2 outline-none focus:border-orange-300 text-slate-700 bg-white font-bold" min={selectedDate} />
+                        
                         {!isAllDay && (
-                          <div className="flex items-center gap-1 shrink-0">
-                            <input type="time" id="end-time-input" value={newEventEndTime} onChange={e => { setNewEventEndTime(e.target.value); setIsEndTimeEdited(true); document.getElementById('end-time-input')?.blur(); }} className="w-24 border border-slate-200 rounded-lg p-1.5 outline-none focus:border-orange-300 text-slate-700 bg-white" />
-                            <button type="button" onClick={() => document.getElementById('end-time-input')?.blur()} className="text-xs bg-slate-200 text-slate-600 px-2 py-1.5 rounded-lg hover:bg-slate-300 font-bold active:scale-95 transition whitespace-nowrap hidden md:block">確定</button>
+                          <div className="flex items-center gap-2 shrink-0">
+                             <div className="relative w-[75px]">
+                               <select 
+                                 className="w-full border border-slate-200 rounded-lg py-2 pl-2 pr-6 outline-none focus:border-orange-300 text-slate-700 bg-white appearance-none cursor-pointer font-bold text-sm"
+                                 value={newEventEndTime.split(':')[0] || '13'}
+                                 onChange={e => { setNewEventEndTime(`${e.target.value}:${newEventEndTime.split(':')[1] || '00'}`); setIsEndTimeEdited(true); }}
+                               >
+                                  {Array.from({length: 24}).map((_, h) => {
+                                     const hStr = h.toString().padStart(2, '0');
+                                     return <option key={`end-h-${hStr}`} value={hStr}>{hStr} 時</option>
+                                  })}
+                               </select>
+                               <i className="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] pointer-events-none"></i>
+                             </div>
+                             <div className="relative w-[75px]">
+                               <select 
+                                 className="w-full border border-slate-200 rounded-lg py-2 pl-2 pr-6 outline-none focus:border-orange-300 text-slate-700 bg-white appearance-none cursor-pointer font-bold text-sm"
+                                 value={newEventEndTime.split(':')[1] || '00'}
+                                 onChange={e => { setNewEventEndTime(`${newEventEndTime.split(':')[0] || '13'}:${e.target.value}`); setIsEndTimeEdited(true); }}
+                               >
+                                  {['00', '15', '30', '45'].map(m => (
+                                     <option key={`end-m-${m}`} value={m}>{m} 分</option>
+                                  ))}
+                               </select>
+                               <i className="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] pointer-events-none"></i>
+                             </div>
                           </div>
                         )}
                      </div>

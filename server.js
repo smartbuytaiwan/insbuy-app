@@ -121,6 +121,9 @@ const userSchema = new mongoose.Schema({
   instagram_url: String,
   threads_url: String,
   welcome_message: String, // ★ 新增：賣家歡迎訊息
+  google_calendar_token: String, 
+  google_calendar_refresh_token: String, // ★ 新增：永久更新憑證
+  google_calendar_email: String,
   shop_reviews: [{ id: String, userId: String, userName: String, rating: Number, comment: String, createdAt: String }]
 });
 
@@ -166,6 +169,7 @@ const orderSchema = new mongoose.Schema({
   total_amount: Number,
   shipping_fee: Number,
   payment_method: String,
+  pickup_datetime: String, // ★ 核心修復：讓資料庫允許儲存面交時間
   status: String,
   cancellation_reason: String,
   seller_note: String,
@@ -653,11 +657,14 @@ app.get('/api/users', async (req, res) => {
   try {
     const users = await User.find({}).lean();
     
-    // ★ 功能4新增：全域檢查並更新過期的會員等級
-    const today = new Date().toISOString().split('T')[0];
+    // ★ 核心修復：強制使用 Asia/Taipei 台灣時區，確保 00:00 一到立刻降級
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    
     for (let u of users) {
       if (u.level_expire_at && u.level_expire_at < today) {
-          await User.updateOne({ _id: u._id }, { $set: { level: 1 }, $unset: { level_expire_at: "" } });
+          // 強制將 level_expire_at 設為 null，確保前台讀到「無期限」
+          await User.updateOne({ _id: u._id }, { $set: { level: 1, level_expire_at: null } });
           u.level = 1;
           u.level_expire_at = null;
       }
@@ -731,12 +738,14 @@ app.post('/api/auth/login', async (req, res) => {
     if (user.is_suspended) return res.status(403).json({ message: 'Suspended' });
     if (!await bcrypt.compare(password, user.password)) return res.status(401).json({ message: 'Invalid' });
 
-    // ★ 功能4新增：檢查會員等級是否過期，若過期則自動降為 1 級
-    const today = new Date().toISOString().split('T')[0];
+    // ★ 核心修復：登入時也使用台灣時區嚴格檢查到期日
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    
     if (user.level_expire_at && user.level_expire_at < today) {
         user.level = 1;
         user.level_expire_at = null; 
-        await User.updateOne({ _id: user._id }, { $set: { level: 1 }, $unset: { level_expire_at: "" } });
+        await User.updateOne({ _id: user._id }, { $set: { level: 1, level_expire_at: null } });
     }
     if (role === 'SELLER' && !['SELLER', 'ADMIN', 'PERMISSION_EDITOR'].includes(user.role)) return res.status(403).json({ message: 'Denied' });
     res.json(user);
@@ -783,7 +792,368 @@ app.get('/api/orders', async (req, res) => {
 app.post('/api/orders', async (req, res) => {
   const order = new Order(req.body);
   await order.save();
+
+  // ★ 新增：自動寫入 Google 日曆邏輯 (完全由後端背景執行，不怕 Token 過期)
+  if (order.pickup_datetime && (order.ship_method.includes('面交') || order.ship_method.includes('自取') || order.ship_method.includes('取貨'))) {
+      setTimeout(async () => { 
+          try {
+              const seller = await User.findOne({ $or: [{ shop_id: order.shop_id }, { id: order.shop_id }] });
+              if (seller && seller.google_calendar_refresh_token) {
+                  const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+                  const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET; // ⚠️ 請自行替換為您的 Secret
+
+                  // 1. 用 Refresh Token 換取最新的一小時 Access Token
+                  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                      body: new URLSearchParams({
+                          client_id: CLIENT_ID,
+                          client_secret: CLIENT_SECRET,
+                          refresh_token: seller.google_calendar_refresh_token,
+                          grant_type: 'refresh_token'
+                      })
+                  });
+                  const tokenData = await tokenRes.json();
+                  const accessToken = tokenData.access_token || seller.google_calendar_token;
+
+                  // 2. 準備日曆資料 (修正台灣時區 Bug)
+                  const itemsList = order.items.map(c => `• ${c.name} ${c.selectedVariant ? `(${c.selectedVariant})` : ''} x${c.qty}`).join('\n');
+                  const startIso = `${order.pickup_datetime}:00+08:00`; // 強制鎖定台灣時間
+                  const dateObj = new Date(startIso);
+                  const endDateObj = new Date(dateObj.getTime() + 30 * 60000); // 面交保留 30 分鐘
+                  
+                  const eventDetails = {
+                      summary: `${order.receiver_name}面交取貨`,
+                      location: order.store_name || '未指定地點',
+                      description: `這張訂單購買的商品內容與數量：\n${itemsList}\n\n買家聯絡電話：${order.receiver_phone}\n車牌/特徵：${order.store_name || '無'}`,
+                      start: { dateTime: startIso, timeZone: 'Asia/Taipei' },
+                      end: { dateTime: endDateObj.toISOString(), timeZone: 'Asia/Taipei' }
+                  };
+
+                  // 3. 呼叫 Google Calendar API 寫入行程
+                  await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+                      method: 'POST',
+                      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                      body: JSON.stringify(eventDetails)
+                  });
+                  console.log(`✅ 訂單 ${order.id} 日曆行程已成功建立！`);
+              }
+          } catch (err) {
+              console.error('❌ 自動建立日曆失敗:', err);
+          }
+      }, 100); // 延遲 0.1 秒背景執行，確保不卡住買家結帳畫面
+  }
+
   res.json(order);
+});
+
+// ★ 新增：抓取 Google 日曆行程的後端 API (能讀取最新面交訂單)
+app.get('/api/google/events', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    const user = await User.findOne({ id: userId });
+    if (!user || !user.google_calendar_refresh_token) {
+       return res.json([]); // 沒綁定就回傳空陣列
+    }
+
+    const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+    const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET; // 您的專屬密碼
+
+    // 1. 用 Refresh Token 換取最新 Access Token
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        refresh_token: user.google_calendar_refresh_token,
+        grant_type: 'refresh_token'
+      })
+    });
+    const tokenData = await tokenRes.json();
+    const accessToken = tokenData.access_token;
+    if (!accessToken) return res.json([]);
+
+    // 2. 抓取前後兩個月的行程
+    const timeMin = new Date(); timeMin.setMonth(timeMin.getMonth() - 1);
+    const timeMax = new Date(); timeMax.setMonth(timeMax.getMonth() + 2);
+
+    const eventsRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin.toISOString()}&timeMax=${timeMax.toISOString()}&singleEvents=true&orderBy=startTime`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    const eventsData = await eventsRes.json();
+
+    if (eventsData.items) {
+       const formattedEvents = eventsData.items.map(item => {
+           const start = item.start.dateTime || item.start.date;
+           const end = item.end.dateTime || item.end.date;
+           const isAllDay = !item.start.dateTime;
+           const startDate = new Date(start);
+           const endDate = new Date(end);
+
+           return {
+              id: item.id,
+              title: item.summary || '無標題行程',
+              date: `${startDate.getFullYear()}-${String(startDate.getMonth()+1).padStart(2,'0')}-${String(startDate.getDate()).padStart(2,'0')}`,
+              time: isAllDay ? '' : `${String(startDate.getHours()).padStart(2,'0')}:${String(startDate.getMinutes()).padStart(2,'0')}`,
+              endDate: `${endDate.getFullYear()}-${String(endDate.getMonth()+1).padStart(2,'0')}-${String(endDate.getDate()).padStart(2,'0')}`,
+              endTime: isAllDay ? '' : `${String(endDate.getHours()).padStart(2,'0')}:${String(endDate.getMinutes()).padStart(2,'0')}`,
+              isAllDay,
+              location: item.location || '',
+              description: item.description || '',
+              isGoogle: true // 標記這是一筆來自 Google 的行程
+           };
+       });
+       res.json(formattedEvents);
+    } else {
+       res.json([]);
+    }
+  } catch (err) {
+    console.error('Fetch Google Events Error:', err);
+    res.status(500).json({ error: 'Failed to fetch events' });
+  }
+});
+
+// ★ 新增：取得真實 Google 行程 API (讓前台日曆同步顯示)
+app.get('/api/google/events', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    const user = await User.findOne({ id: userId });
+    if (!user || !user.google_calendar_refresh_token) return res.json([]);
+
+    const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+    const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET; // ⚠️ 請填入您的密碼
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
+        refresh_token: user.google_calendar_refresh_token, grant_type: 'refresh_token'
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) return res.json([]);
+
+    const timeMin = new Date(); timeMin.setMonth(timeMin.getMonth() - 1);
+    const timeMax = new Date(); timeMax.setMonth(timeMax.getMonth() + 2);
+
+    const eventsRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin.toISOString()}&timeMax=${timeMax.toISOString()}&singleEvents=true&orderBy=startTime`, {
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+    });
+    const eventsData = await eventsRes.json();
+
+    if (eventsData.items) {
+       const formattedEvents = eventsData.items.map(item => {
+           const start = item.start.dateTime || item.start.date;
+           const end = item.end.dateTime || item.end.date;
+           const isAllDay = !item.start.dateTime;
+           const startDate = new Date(start);
+           return {
+              id: item.id,
+              title: item.summary || '無標題行程',
+              date: `${startDate.getFullYear()}-${String(startDate.getMonth()+1).padStart(2,'0')}-${String(startDate.getDate()).padStart(2,'0')}`,
+              time: isAllDay ? '' : `${String(startDate.getHours()).padStart(2,'0')}:${String(startDate.getMinutes()).padStart(2,'0')}`,
+              isGoogle: true
+           };
+       });
+       res.json(formattedEvents);
+    } else {
+       res.json([]);
+    }
+  } catch (err) { res.status(500).json({ error: 'Failed' }); }
+});
+
+// ★ 新增：前台手動新增行程至 Google 的 API
+app.post('/api/google/events', async (req, res) => {
+  try {
+    const { userId, title, date, time, endDate, endTime, isAllDay, location, description, calendarId, reminders, attendees, addMeetLink } = req.body;
+    const user = await User.findOne({ id: userId });
+    if (!user || !user.google_calendar_refresh_token) return res.status(400).json({ error: 'No token' });
+
+    const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+    const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET; // ⚠️ 請填入您的密碼
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
+        refresh_token: user.google_calendar_refresh_token, grant_type: 'refresh_token'
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) return res.status(401).json({ error: 'Refresh failed' });
+
+    let start, end;
+    if (isAllDay) {
+      start = { date };
+      const endD = new Date(endDate || date);
+      endD.setDate(endD.getDate() + 1); 
+      end = { date: `${endD.getFullYear()}-${String(endD.getMonth()+1).padStart(2,'0')}-${String(endD.getDate()).padStart(2,'0')}` };
+    } else {
+      start = { dateTime: `${date}T${time}:00+08:00`, timeZone: 'Asia/Taipei' };
+      end = { dateTime: `${endDate || date}T${endTime}:00+08:00`, timeZone: 'Asia/Taipei' };
+    }
+
+    const event = { summary: title, location, description, start, end };
+    if (reminders && reminders.length > 0) event.reminders = { useDefault: false, overrides: reminders.map(m => ({ method: 'popup', minutes: m })) };
+    if (addMeetLink) event.conferenceData = { createRequest: { requestId: `meet-${Date.now()}`, conferenceSolutionKey: { type: 'hangoutsMeet' } } };
+
+    const calId = encodeURIComponent(calendarId || 'primary');
+    const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calId}/events?conferenceDataVersion=1`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(event)
+    });
+    const data = await response.json();
+    res.json({ success: true, event: data });
+  } catch (err) { res.status(500).json({ error: 'Failed' }); }
+});
+
+// ★ 新增：取得真實 Google 行程 API (讓前台日曆同步顯示)
+app.get('/api/google/events', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    const user = await User.findOne({ id: userId });
+    if (!user || !user.google_calendar_refresh_token) return res.json([]);
+
+    const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+    const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET; // ⚠️ 您專屬的密碼
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
+        refresh_token: user.google_calendar_refresh_token, grant_type: 'refresh_token'
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) return res.json([]);
+
+    const timeMin = new Date(); timeMin.setMonth(timeMin.getMonth() - 1);
+    const timeMax = new Date(); timeMax.setMonth(timeMax.getMonth() + 2);
+
+    const eventsRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin.toISOString()}&timeMax=${timeMax.toISOString()}&singleEvents=true&orderBy=startTime`, {
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+    });
+    const eventsData = await eventsRes.json();
+
+    if (eventsData.items) {
+       const formattedEvents = eventsData.items.map(item => {
+           const start = item.start.dateTime || item.start.date;
+           const end = item.end.dateTime || item.end.date;
+           const isAllDay = !item.start.dateTime;
+           const startDate = new Date(start);
+           const endDate = new Date(end);
+           return {
+              id: item.id,
+              title: item.summary || '無標題行程',
+              date: `${startDate.getFullYear()}-${String(startDate.getMonth()+1).padStart(2,'0')}-${String(startDate.getDate()).padStart(2,'0')}`,
+              time: isAllDay ? '' : `${String(startDate.getHours()).padStart(2,'0')}:${String(startDate.getMinutes()).padStart(2,'0')}`,
+              endDate: `${endDate.getFullYear()}-${String(endDate.getMonth()+1).padStart(2,'0')}-${String(endDate.getDate()).padStart(2,'0')}`,
+              endTime: isAllDay ? '' : `${String(endDate.getHours()).padStart(2,'0')}:${String(endDate.getMinutes()).padStart(2,'0')}`,
+              isAllDay,
+              location: item.location || '',
+              description: item.description || '',
+              isGoogle: true
+           };
+       });
+       res.json(formattedEvents);
+    } else {
+       res.json([]);
+    }
+  } catch (err) { res.status(500).json({ error: 'Failed' }); }
+});
+
+// ★ 新增：前台手動新增行程至 Google 的 API
+app.post('/api/google/events', async (req, res) => {
+  try {
+    const { userId, title, date, time, endDate, endTime, isAllDay, location, description, calendarId, reminders, attendees, addMeetLink } = req.body;
+    const user = await User.findOne({ id: userId });
+    if (!user || !user.google_calendar_refresh_token) return res.status(400).json({ error: 'No token' });
+
+    const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+    const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET; // ⚠️ 您專屬的密碼
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
+        refresh_token: user.google_calendar_refresh_token, grant_type: 'refresh_token'
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) return res.status(401).json({ error: 'Refresh failed' });
+
+    let start, end;
+    if (isAllDay) {
+      start = { date };
+      const endD = new Date(endDate || date);
+      endD.setDate(endD.getDate() + 1); 
+      end = { date: `${endD.getFullYear()}-${String(endD.getMonth()+1).padStart(2,'0')}-${String(endD.getDate()).padStart(2,'0')}` };
+    } else {
+      start = { dateTime: `${date}T${time}:00+08:00`, timeZone: 'Asia/Taipei' };
+      end = { dateTime: `${endDate || date}T${endTime}:00+08:00`, timeZone: 'Asia/Taipei' };
+    }
+
+    const event = { summary: title, location, description, start, end };
+    if (reminders && reminders.length > 0) event.reminders = { useDefault: false, overrides: reminders.map(m => ({ method: 'popup', minutes: m })) };
+    if (addMeetLink) event.conferenceData = { createRequest: { requestId: `meet-${Date.now()}`, conferenceSolutionKey: { type: 'hangoutsMeet' } } };
+
+    const calId = encodeURIComponent(calendarId || 'primary');
+    const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calId}/events?conferenceDataVersion=1`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(event)
+    });
+    const data = await response.json();
+    res.json({ success: true, event: data });
+  } catch (err) { res.status(500).json({ error: 'Failed' }); }
+});
+
+// ★ 新增：Google 授權換取永久 Token 的後端 API
+app.post('/api/google/auth', async (req, res) => {
+
+  try {
+    const { userId, code } = req.body;
+    const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+    const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET; // ⚠️ 同上，請自行替換為您的 Secret
+
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        redirect_uri: 'postmessage', // 使用 GSI 套件時必須填這個
+        grant_type: 'authorization_code'
+      })
+    });
+
+    const tokenData = await tokenResponse.json();
+    if (tokenData.error) return res.status(400).json({ error: tokenData.error });
+
+    // 取得使用者 Email
+    const infoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
+    const infoData = await infoResponse.json();
+
+    // 更新資料庫 (如果重綁，保留舊的 Refresh Token 除非有拿到新的)
+    const updateData = { google_calendar_token: tokenData.access_token, google_calendar_email: infoData.email };
+    if (tokenData.refresh_token) {
+        updateData.google_calendar_refresh_token = tokenData.refresh_token;
+    }
+
+    const user = await User.findOneAndUpdate({ id: userId }, updateData, { new: true });
+    res.json({ success: true, user });
+  } catch (error) {
+    res.status(500).json({ error: 'Google Auth Failed' });
+  }
 });
 
 app.patch('/api/orders/:id/status', async (req, res) => {

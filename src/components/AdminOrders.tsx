@@ -163,6 +163,12 @@ const AdminOrders: React.FC<AdminOrdersProps> = ({
                        <td className="p-3">
                           <div className="font-mono text-slate-600 font-bold">#{o.id.slice(-6)}</div>
                           <div className="text-[10px] text-slate-400">{new Date(o.created_at).toLocaleString('zh-TW')}</div>
+                          {/* ★ 新增：列表模式的面交時間顯示 */}
+                          {o.pickup_datetime && (
+                              <div className="mt-1 inline-block text-[#EE4D2D] bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100 text-[10px] font-bold">
+                                  <i className="fa-solid fa-handshake mr-1"></i>面交: {new Date(o.pickup_datetime).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                          )}
                        </td>
                        <td className="p-3">
                           <div className="font-bold text-slate-800">{o.receiver_name}</div>
@@ -220,7 +226,14 @@ const AdminOrders: React.FC<AdminOrdersProps> = ({
                     <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded text-slate-500 shrink-0">#{o.id.slice(-6)}</span>
                     <span className="font-bold text-slate-800">{o.receiver_name}</span>
                     
-                    <span className="text-[10px] text-slate-400 font-mono ml-1">
+                    {/* ★ 新增：若有面交時間則醒目顯示 */}
+                    {o.pickup_datetime && (
+                       <span className="text-[#EE4D2D] bg-orange-50 px-2 py-0.5 rounded border border-orange-100 shadow-sm text-[10px] font-bold ml-2 flex items-center gap-1">
+                          <i className="fa-solid fa-handshake"></i>面交：{new Date(o.pickup_datetime).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                       </span>
+                    )}
+                    
+                    <span className="text-[10px] text-slate-400 font-mono ml-2 flex items-center">
                       <i className="fa-regular fa-clock mr-1"></i>{new Date(o.created_at).toLocaleString('zh-TW')}
                     </span>
                     

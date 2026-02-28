@@ -48,12 +48,14 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
     method: isDigitalOrder ? '電子傳輸' : availableRules[0]?.name || '',
     store: isDigitalOrder ? '線上' : '',
     payment_method: getDefaultPaymentMethod() as 'TRANSFER' | 'COD' | 'CASH', 
-    payment_note: ''
+    payment_note: '',
+    pickup_datetime: '' // ★ 新增：買家選擇的面交時間
   });
 
   // ★ 新增：備註與問卷回答狀態
   const [remarks, setRemarks] = useState('');
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false); // ★ 新增：防止連點雙重送出的狀態
 // ==========================================
   // 分潤系統：計算邏輯
   // ==========================================
@@ -144,16 +146,24 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
     account_number: '901540123456'
   };
 
-  const handleSubmit = () => {
-    if (!form.name || !form.phone || (!isDigitalOrder && !form.store)) return alert('請填寫完整資訊');
+  // ★ 修改為 async 以便支援行事曆 API 寫入
+  const handleSubmit = async () => {
+    if (isSubmitting) return; // 鎖定防連點
+    setIsSubmitting(true);
+
+    const isPickupMethod = form.method.includes('面交') || form.method.includes('自取') || form.method.includes('取貨');
+
+    if (!form.name || !form.phone || (!isDigitalOrder && !form.store)) { setIsSubmitting(false); return alert('請填寫完整資訊'); }
+    // ★ 核心修復 2-2：驗證時改用運送方式判斷 (確認日期、小時、分鐘都有填寫)
+    if (isPickupMethod && (!form.pickup_datetime || !form.pickup_datetime.includes('T') || form.pickup_datetime.split('T')[1].length < 5)) { setIsSubmitting(false); return alert('請完整預約面交/取貨的「日期」、「小時」與「分鐘」！'); }
     if (form.payment_method === 'TRANSFER' && form.payment_note.length < 5) {
-      return alert('請填寫匯款帳號末五碼以便對帳');
+      setIsSubmitting(false); return alert('請填寫匯款帳號末五碼以便對帳');
     }
 
     // ★ 檢查必填問卷
     for (const q of questions) {
       if (q.required && (!answers[q.title] || !answers[q.title].trim())) {
-        return alert(`請回答必填問題：${q.title}`);
+        setIsSubmitting(false); return alert(`請回答必填問題：${q.title}`);
       }
     }
 
@@ -161,28 +171,29 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
     for (const item of cart) {
         const liveProduct = products.find(p => p.id === item.id);
         if (!liveProduct) {
-            return alert(`商品 [${item.name}] 已下架或不存在，無法購買。`);
+            setIsSubmitting(false); return alert(`商品 [${item.name}] 已下架或不存在，無法購買。`);
         }
         if (liveProduct.status !== 'OPEN') {
-            return alert(`商品 [${item.name}] 目前未上架，無法購買。`);
+            setIsSubmitting(false); return alert(`商品 [${item.name}] 目前未上架，無法購買。`);
         }
 
         if (item.selectedVariant) {
             // 檢查規格庫存
             const variant = liveProduct.variants.find(v => v.name === item.selectedVariant);
             if (!variant) {
-                return alert(`商品 [${item.name}] 的規格 [${item.selectedVariant}] 已不存在。`);
+                setIsSubmitting(false); return alert(`商品 [${item.name}] 的規格 [${item.selectedVariant}] 已不存在。`);
             }
             if (variant.stock < item.qty) {
-                return alert(`商品 [${item.name}] - [${item.selectedVariant}] 庫存不足 (剩餘: ${variant.stock})，請調整購買數量。`);
+                setIsSubmitting(false); return alert(`商品 [${item.name}] - [${item.selectedVariant}] 庫存不足 (剩餘: ${variant.stock})，請調整購買數量。`);
             }
         } else {
             // 檢查總庫存 (若無規格)
             if (liveProduct.total_stock < item.qty) {
-                return alert(`商品 [${item.name}] 庫存不足 (剩餘: ${liveProduct.total_stock})，請調整購買數量。`);
+                setIsSubmitting(false); return alert(`商品 [${item.name}] 庫存不足 (剩餘: ${liveProduct.total_stock})，請調整購買數量。`);
             }
         }
     }
+
 // ★ 分潤金額計算與「歷史快照算式」寫入 (送出前最後確認)
     let affiliateInfo = null;
     if (affiliateData) {
@@ -239,12 +250,16 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
       ship_method: form.method,
       store_name: form.store,
       payment_note: form.payment_note,
-      remarks: remarks, // ★ 傳送備註
-      answers: formattedAnswers, // ★ 傳送問卷回答
+      remarks: remarks, 
+      answers: formattedAnswers, 
       shop_id: cart[0].shop_id,
-      // @ts-ignore (忽略型別檢查，因為後端已經支援但前端 types.ts 可能還沒更新)
-      affiliate_info: affiliateInfo
+      pickup_datetime: form.pickup_datetime, // ★ 傳送面交時間
+      // @ts-ignore
+      affiliate_info: affiliateInfo,
     };
+
+  
+
     onSubmit(newOrder);
   };
 
@@ -309,9 +324,75 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
                   <i className="fa-solid fa-location-dot"></i> 取貨地點：{currentRule.pickup_address}
                 </div>
               )}
+
+              {/* ★ 核心修復：徹底拆分成 日期 / 小時 / 分鐘，保證分鐘選單只有 4 個數字 */}
+              {(form.method.includes('面交') || form.method.includes('自取') || form.method.includes('取貨')) ? (
+                 <div className="mb-3 animate-fade-in">
+                    <label className="text-[10px] font-black text-[#EE4D2D] uppercase tracking-widest ml-1 mb-1 block">
+                       <i className="fa-regular fa-calendar-check mr-1"></i>預約面交/取貨日期與時間 (必填)
+                    </label>
+                    <div className="flex gap-2">
+                        {/* 1. 日期選擇器 */}
+                        <input 
+                          type="date" 
+                          className="w-[45%] h-12 border-2 border-orange-100 rounded-xl px-2 md:px-4 outline-none focus:border-[#EE4D2D] text-[13px] shadow-sm bg-orange-50/30 text-slate-700 font-bold"
+                          value={form.pickup_datetime.split('T')[0] || ''}
+                          onChange={e => {
+                              const newDate = e.target.value;
+                              const currentHour = form.pickup_datetime.split('T')[1]?.split(':')[0] || '12';
+                              const currentMin = form.pickup_datetime.split('T')[1]?.split(':')[1] || '00';
+                              setForm({...form, pickup_datetime: `${newDate}T${currentHour}:${currentMin}`});
+                          }}
+                          required
+                        />
+                        {/* 2. 小時選擇器 */}
+                        <div className="relative w-[27.5%]">
+                          <select 
+                            className="w-full h-12 border-2 border-orange-100 rounded-xl px-2 outline-none focus:border-[#EE4D2D] text-[13px] shadow-sm bg-orange-50/30 text-slate-700 font-bold appearance-none bg-white cursor-pointer"
+                            value={form.pickup_datetime.split('T')[1]?.split(':')[0] || ''}
+                            onChange={e => {
+                                const newDate = form.pickup_datetime.split('T')[0] || new Date().toISOString().split('T')[0];
+                                const currentMin = form.pickup_datetime.split('T')[1]?.split(':')[1] || '00';
+                                const newHour = e.target.value;
+                                setForm({...form, pickup_datetime: `${newDate}T${newHour}:${currentMin}`});
+                            }}
+                            required
+                          >
+                            <option value="" disabled>時</option>
+                            {Array.from({length: 24}).map((_, h) => {
+                                const hStr = h.toString().padStart(2, '0');
+                                return <option key={hStr} value={hStr}>{hStr} 時</option>
+                            })}
+                          </select>
+                          <i className="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-[#EE4D2D] pointer-events-none text-[10px]"></i>
+                        </div>
+                        {/* 3. 分鐘選擇器 (絕對只顯示 4 個選項) */}
+                        <div className="relative w-[27.5%]">
+                          <select 
+                            className="w-full h-12 border-2 border-orange-100 rounded-xl px-2 outline-none focus:border-[#EE4D2D] text-[13px] shadow-sm bg-orange-50/30 text-slate-700 font-bold appearance-none bg-white cursor-pointer"
+                            value={form.pickup_datetime.split('T')[1]?.split(':')[1] || ''}
+                            onChange={e => {
+                                const newDate = form.pickup_datetime.split('T')[0] || new Date().toISOString().split('T')[0];
+                                const currentHour = form.pickup_datetime.split('T')[1]?.split(':')[0] || '12';
+                                const newMin = e.target.value;
+                                setForm({...form, pickup_datetime: `${newDate}T${currentHour}:${newMin}`});
+                            }}
+                            required
+                          >
+                            <option value="" disabled>分</option>
+                            {['00', '15', '30', '45'].map(m => (
+                                <option key={m} value={m}>{m} 分</option>
+                            ))}
+                          </select>
+                          <i className="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-[#EE4D2D] pointer-events-none text-[10px]"></i>
+                        </div>
+                    </div>
+                 </div>
+              ) : null}
+
               <input 
                 type="text" 
-                placeholder={form.method.includes('自取') || form.method.includes('面交') ? "輸入您的自取聯絡資訊 (時間/備註)" : "配送門市名稱或詳細宅配地址"} 
+                placeholder={form.method.includes('自取') || form.method.includes('面交') ? "輸入您的自取聯絡資訊 (車牌/外觀特徵)" : "配送門市名稱或詳細宅配地址"} 
                 className="w-full h-12 border rounded-2xl px-5 outline-none focus:border-[#EE4D2D] text-sm shadow-sm" 
                 value={form.store} 
                 onChange={e => setForm({...form, store: e.target.value})} 
@@ -440,10 +521,14 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
             
             <button 
                 onClick={handleSubmit} 
-                className="flex-1 h-16 primary-gradient text-white rounded-[1.5rem] font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex flex-col items-center justify-center"
+                disabled={isSubmitting}
+                className={`flex-1 h-16 primary-gradient text-white rounded-[1.5rem] font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex flex-col items-center justify-center ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
-                <div className="flex items-center gap-2 text-lg md:text-xl"><i className="fa-solid fa-check-to-slot"></i> 提交訂單</div>
-                <div className="text-[10px] md:text-xs opacity-90 font-normal mt-0.5">總計 ${(cartTotal + shippingFee).toLocaleString()} {shippingFee > 0 && `(含運費 $${shippingFee})`}</div>
+                <div className="flex items-center gap-2 text-lg md:text-xl">
+                   {isSubmitting ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check-to-slot"></i>} 
+                   {isSubmitting ? '處理中...' : '提交訂單'}
+                </div>
+                {!isSubmitting && <div className="text-[10px] md:text-xs opacity-90 font-normal mt-0.5">總計 ${(cartTotal + shippingFee).toLocaleString()} {shippingFee > 0 && `(含運費 $${shippingFee})`}</div>}
             </button>
         </div>
       </div>

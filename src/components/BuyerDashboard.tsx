@@ -293,9 +293,17 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
                        <div key={order.id} className="border border-slate-100 rounded-2xl overflow-hidden hover:shadow-md transition bg-white">
                           
                           {/* ★ 新增：訂單編號與時間 Header (置頂顯示) */}
-                          <div className="bg-slate-100/80 px-4 py-2 flex justify-between items-center text-[10px] md:text-xs text-slate-500 font-bold border-b border-slate-200/50">
+                          <div className="bg-slate-100/80 px-4 py-2 flex justify-between items-center text-[10px] md:text-xs text-slate-500 font-bold border-b border-slate-200/50 flex-wrap gap-2">
                               <span className="font-mono">訂單編號：{order.id}</span>
-                              <span className="flex items-center gap-1"><i className="fa-regular fa-clock"></i> {new Date(order.created_at).toLocaleString('zh-TW')}</span>
+                              <div className="flex items-center gap-3 flex-wrap justify-end">
+                                  {/* ★ 新增：若有面交時間則醒目顯示 */}
+                                  {order.pickup_datetime && (
+                                      <span className="flex items-center gap-1 text-[#EE4D2D] bg-orange-50 px-2 py-0.5 rounded border border-orange-100 shadow-sm">
+                                          <i className="fa-solid fa-handshake"></i> 面交：{new Date(order.pickup_datetime).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                  )}
+                                  <span className="flex items-center gap-1"><i className="fa-regular fa-clock"></i> {new Date(order.created_at).toLocaleString('zh-TW')}</span>
+                              </div>
                           </div>
 
                           {/* ★ 新增：視覺化包裹配送進度條 */}

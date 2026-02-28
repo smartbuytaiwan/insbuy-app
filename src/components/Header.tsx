@@ -207,7 +207,8 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
                          <div className="text-xs text-slate-400 mt-0.5">Lv.{user.level} {user.role === 'SELLER' ? '商家' : '會員'}</div>
                       </div>
 
-                      <button onClick={() => { setIsUserMenuOpen(false); onNavigate(user.role === 'BUYER' ? View.BUYER_DASHBOARD : View.ADMIN_HOME); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-gauge w-4 text-center"></i> 後台管理</button>
+                      {/* ★ 修正：強制點擊後台管理跳轉至主頁，並在網址寫入商家 ID，透過 reload 確保介面重置至概況頁 */}
+                      <button onClick={() => { setIsUserMenuOpen(false); window.location.hash = `#/${user.role === 'BUYER' ? View.BUYER_DASHBOARD : View.ADMIN_HOME}/${user.shop_id || user.id}`; window.location.reload(); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-gauge w-4 text-center"></i> 後台管理</button>
 
                       <button onClick={() => { setIsUserMenuOpen(false); setIsFavOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-star w-4 text-center"></i> 我的最愛</button>
 

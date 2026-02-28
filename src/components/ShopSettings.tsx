@@ -3,6 +3,7 @@ import { User } from '../types';
 import API from '../api';
 // ★ 新增：引入 Supabase 上傳工具
 import { uploadImageToSupabase } from '../supabaseClient';
+import { initGoogleCalendar, authorizeGoogle, getGoogleCalendars } from '../utils/googleCalendar'; // ★ 新增：引入 Google 日曆工具
 
 interface ShopSettingsProps {
   user: User;
@@ -194,8 +195,33 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, permissions = [], onU
   // 是否可以操作 Logo: 如果還沒設定過可以上傳(第一次)；如果已經設定過，必須要有權限才能修改
   const isLogoEditable = !user.logo || canEditLogo;
 
+  // ★ 使用 useRef 確保在非同步的 callback 中永遠拿到最新、最完整的 user 資料，避免覆蓋舊資料
+  const userRef = useRef(user);
+  useEffect(() => {
+      userRef.current = user;
+  }, [user]);
+
+  // ★ 新增：初始化 Google 日曆 (改用永久授權機制)
+  useEffect(() => {
+    initGoogleCalendar(async (code) => {
+      try {
+        // 將 code 送給後端換取永久 Token
+        const result = await API.bindGoogleCalendar(userRef.current.id, code);
+        const updatedUser = result.user;
+        
+        onUpdateUser(updatedUser);
+        setFormData(prev => ({ ...prev, google_calendar_token: updatedUser.google_calendar_token, google_calendar_email: updatedUser.google_calendar_email }));
+        alert(`Google 日曆永久綁定成功！\n已綁定信箱：${updatedUser.google_calendar_email || '未知'}\n系統將在買家下單時自動為您排入行程。`);
+      } catch (e) {
+        alert('綁定失敗，請檢查網路連線或重試。');
+      }
+    });
+  }, [onUpdateUser]);
+
   const [formData, setFormData] = useState<Partial<User>>({
     shop_name: user.shop_name || user.name,
+    google_calendar_token: user.google_calendar_token || '', // ★ 新增：綁定日曆 Token
+    google_calendar_email: user.google_calendar_email || '', // ★ 新增：綁定日曆信箱
     shop_description: user.shop_description || '',
     logo: user.logo || '',
     banner: user.banner || '',
@@ -223,6 +249,8 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, permissions = [], onU
     setFormData(prev => ({
       ...prev,
       shop_name: user.shop_name || user.name,
+      google_calendar_token: user.google_calendar_token || '',
+      google_calendar_email: user.google_calendar_email || '',
       shop_description: user.shop_description || '',
       logo: user.logo || '',
       banner: user.banner || '',
@@ -544,9 +572,29 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, permissions = [], onU
            </div>
         </div>
 
+        {/* ★ 新增：Google 日曆串接區塊 */}
+        <div className="pt-6 border-t border-slate-100 space-y-4">
+           <h3 className="text-lg font-bold text-slate-800">進階系統串接</h3>
+           <div className="p-5 border border-slate-200 rounded-2xl bg-white flex flex-col md:flex-row items-center justify-between gap-4">
+              <div>
+                 <div className="font-bold text-slate-700 mb-1 flex items-center gap-2"><i className="fa-regular fa-calendar-check text-blue-500"></i> Google 行事曆連動</div>
+                 <div className="text-xs text-slate-500">授權後，買家若選擇面交並設定時間，系統將自動為您加入行事曆行程與提醒。</div>
+              </div>
+              <button 
+                 onClick={authorizeGoogle}
+                 className={`shrink-0 px-6 py-2.5 rounded-xl font-bold text-sm transition-colors border shadow-sm flex items-center gap-2 ${formData.google_calendar_token ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+              >
+                 <i className="fa-brands fa-google"></i>
+                 {formData.google_calendar_token 
+                    ? (formData.google_calendar_email ? `已綁定 (${formData.google_calendar_email})` : '已成功綁定') 
+                    : '點擊綁定 Google 帳號'}
+              </button>
+           </div>
+        </div>
+
         <div className="pt-6 border-t border-slate-100">
            <button 
-             onClick={handleSave} 
+             onClick={handleSave}
              disabled={loading}
              className="w-full md:w-auto px-8 py-3 bg-[#EE4D2D] text-white rounded-xl font-bold shadow-lg hover:bg-[#d73211] disabled:opacity-50 transition"
            >
