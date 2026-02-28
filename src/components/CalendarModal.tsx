@@ -303,6 +303,15 @@ export default function CalendarModal({ isOpen, onClose, user }: CalendarModalPr
                 );
               })}
             </div>
+
+            {/* ★ 修改：將新增按鈕移到日曆正下方，且點開表單時自動隱藏按鈕 */}
+            {!showAddForm && (
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                <button onClick={openAddForm} className="w-full py-3.5 bg-orange-50 text-[#EE4D2D] font-black text-sm rounded-xl border border-orange-100 hover:bg-[#EE4D2D] hover:text-white transition flex items-center justify-center gap-2 shadow-sm group">
+                  <i className="fa-solid fa-plus group-hover:rotate-90 transition-transform"></i> 新增 {selectedDate.replace(/-/g, '/')} 行程
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex-1 bg-[#F8FAFC] p-4 md:p-6 flex flex-col">
@@ -330,9 +339,9 @@ export default function CalendarModal({ isOpen, onClose, user }: CalendarModalPr
                         </div>
                      </div>
                      {!isGoogle && (
-                         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition">
-                           <button onClick={() => handleEditEvent(e)} className="text-slate-300 hover:text-blue-500 transition p-1" title="編輯行程"><i className="fa-solid fa-pen"></i></button>
-                           <button onClick={() => handleDeleteEvent(e.id)} className="text-slate-300 hover:text-red-500 transition p-1" title="刪除行程"><i className="fa-solid fa-trash-can"></i></button>
+                         <div className="flex items-center gap-3 transition">
+                           <button onClick={() => handleEditEvent(e)} className="text-slate-400 hover:text-blue-500 transition p-2 bg-slate-50 hover:bg-blue-50 rounded-lg" title="編輯行程"><i className="fa-solid fa-pen"></i></button>
+                           <button onClick={() => handleDeleteEvent(e.id)} className="text-slate-400 hover:text-red-500 transition p-2 bg-slate-50 hover:bg-red-50 rounded-lg" title="刪除行程"><i className="fa-solid fa-trash-can"></i></button>
                          </div>
                      )}
                   </div>
@@ -341,7 +350,7 @@ export default function CalendarModal({ isOpen, onClose, user }: CalendarModalPr
             </div>
 
             <div className="mt-4 pt-4 border-t border-slate-200 shrink-0">
-              {showAddForm ? (
+              {showAddForm && (
                 <div className="bg-white p-4 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] border border-slate-200 animate-fade-in-up space-y-4 max-h-[350px] overflow-y-auto custom-scrollbar">
                    
                    <div className="space-y-2">
@@ -495,12 +504,9 @@ export default function CalendarModal({ isOpen, onClose, user }: CalendarModalPr
                       <button onClick={() => { setShowAddForm(false); setEditingEventId(null); }} className="flex-1 bg-slate-100 text-slate-600 text-sm font-black py-3 rounded-xl hover:bg-slate-200 transition active:scale-95">取消</button>
                    </div>
                 </div>
-              ) : (
-                <button onClick={openAddForm} className="w-full py-3.5 bg-orange-50 text-[#EE4D2D] font-black text-sm rounded-xl border border-orange-100 hover:bg-[#EE4D2D] hover:text-white transition flex items-center justify-center gap-2 shadow-sm group">
-                  <i className="fa-solid fa-plus group-hover:rotate-90 transition-transform"></i> 新增 {selectedDate.replace(/-/g, '/')} 行程
-                </button>
               )}
             </div>
+
           </div>
 
         </div>

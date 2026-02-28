@@ -46,6 +46,26 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
     useEffect(() => {
         if (!editingId) {
             setSeoInputValue('');
+            // 恢復未儲存的表單草稿 (Issue 2: 解決跳走後按上一頁資料遺失)
+            const autoDraft = sessionStorage.getItem('insbuy_new_product_draft');
+            if (autoDraft) {
+                try {
+                    const parsedDraft = JSON.parse(autoDraft);
+                    if (Object.keys(parsedDraft).length > 0) {
+                        setForm(prev => ({ ...prev, ...parsedDraft }));
+                        if (parsedDraft.keywords) setSeoInputValue(parsedDraft.keywords.join(', '));
+                        if (parsedDraft.shipping_origin) {
+                            if (parsedDraft.shipping_origin.includes('市') || parsedDraft.shipping_origin.includes('縣')) {
+                                setOriginSelect(parsedDraft.shipping_origin.substring(0, 3));
+                                setOriginDistrictSelect(parsedDraft.shipping_origin.substring(3));
+                            } else {
+                                setOriginSelect('手動填寫');
+                                setOriginManual(parsedDraft.shipping_origin);
+                            }
+                        }
+                    }
+                } catch (e) { console.error('Draft parsing error', e); }
+            }
             setOriginSelect('台北市');
             setOriginDistrictSelect('');
             setOriginManual('');
@@ -57,7 +77,15 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
         }
     }, [editingId, products]);
 
+    // 自動儲存草稿 (Issue 2: 解決跳走後按上一頁資料遺失)
+    useEffect(() => {
+        if (!editingId && form && Object.keys(form).length > 0) {
+            sessionStorage.setItem('insbuy_new_product_draft', JSON.stringify(form));
+        }
+    }, [form, editingId]);
+
     const resetForm = () => {
+        sessionStorage.removeItem('insbuy_new_product_draft'); // 取消或重置時清空草稿
         setForm(getInitialForm());
         setEditingId(null);
         setGlobalSearchId(''); 
@@ -261,6 +289,7 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                 await API.createProduct(productData);
                 onUpdateProducts([productData, ...products]);
             }
+            sessionStorage.removeItem('insbuy_new_product_draft'); // 成功發布後清除草稿
             resetForm();
             alert(editingId ? '商品修改成功！' : '商品已成功發布！');
         } catch (error) {
@@ -371,9 +400,10 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                             <div className="space-y-3">
                                 <label className="text-xs font-bold text-slate-600"><i className="fa-solid fa-sitemap mr-1"></i> 加入全站共同分類</label>
                                 <div className="flex flex-col gap-3">
-                                    <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={selectedMainCat} onChange={e => { setSelectedMainCat(e.target.value); setSelectedSubCat(''); }}>
-                                        <option value="" className="text-base">選擇主分類...</option>
-                                        {systemCategories?.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id} className="text-base">{c.name}</option>)}
+                                    <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer appearance-none" style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 1rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em', paddingRight: '2.5rem' }} value={selectedMainCat} onChange={e => { setSelectedMainCat(e.target.value); setSelectedSubCat(''); }}>
+                                        <option value="" className="text-base text-slate-500">選擇主分類...</option>
+                                        {systemCategories?.filter(c => !c.parent_id).length === 0 && <option value="" disabled className="text-base text-slate-400">目前尚無分類，請先建立</option>}
+                                        {systemCategories?.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id} className="text-base text-slate-700">{c.name}</option>)}
                                     </select>
                                     {selectedMainCat && (
                                         <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={selectedSubCat} onChange={e => setSelectedSubCat(e.target.value)}>
@@ -388,9 +418,10 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                             <div className="space-y-3">
                                 <label className="text-xs font-bold text-slate-600"><i className="fa-solid fa-store mr-1"></i> 加入本店自訂分類</label>
                                 <div className="flex flex-col gap-3">
-                                    <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={selectedShopMainCat} onChange={e => { setSelectedShopMainCat(e.target.value); setSelectedShopSubCat(''); }}>
-                                        <option value="" className="text-base">選擇主分類...</option>
-                                        {categories?.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id} className="text-base">{c.name}</option>)}
+                                    <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer appearance-none" style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 1rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em', paddingRight: '2.5rem' }} value={selectedShopMainCat} onChange={e => { setSelectedShopMainCat(e.target.value); setSelectedShopSubCat(''); }}>
+                                        <option value="" className="text-base text-slate-500">選擇主分類...</option>
+                                        {categories?.filter(c => !c.parent_id).length === 0 && <option value="" disabled className="text-base text-slate-400">目前尚無分類，請先建立</option>}
+                                        {categories?.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id} className="text-base text-slate-700">{c.name}</option>)}
                                     </select>
                                     {selectedShopMainCat && (
                                         <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={selectedShopSubCat} onChange={e => setSelectedShopSubCat(e.target.value)}>
@@ -599,7 +630,7 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                 </section>
 
                 {/* 底部按鈕區 */}
-                <div className="flex flex-col md:flex-row gap-4 pt-10 border-t border-slate-200">
+                <div className="flex flex-col md:flex-row gap-4 pt-10 border-t border-slate-200 pb-20"> {/* pb-20 防止手機版被右下角的懸浮按鈕遮擋 */}
                   <button onClick={resetForm} className="w-full md:flex-1 h-14 rounded-2xl font-bold text-slate-500 border-2 border-slate-200 hover:bg-slate-50 transition">取消返回</button>
                   <button onClick={handleSaveProduct} className="w-full md:flex-[2] h-14 primary-gradient text-white rounded-2xl font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all text-lg">
                       {editingId ? '確認儲存修改' : '確認發布並開始團購'}

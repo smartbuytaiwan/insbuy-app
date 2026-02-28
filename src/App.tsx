@@ -370,8 +370,14 @@ const App: React.FC = () => {
               allMsgs.forEach((m: any) => {
                  if (m.receiverId !== myId && m.receiverId !== user?.shop_id && m.receiverId !== user?.phone) return;
                  if (m.isRead) return;
+                 // ★ 排除自己發給自己的訊息
+                 if (m.senderId === myId || m.senderId === user?.shop_id || m.senderId === user?.phone) return;
                  
                  const senderObj = allUsers.find(u => u.id === m.senderId || u.shop_id === m.senderId || u.phone === m.senderId);
+                 
+                 // ★ 排除已經不存在的使用者 (幽靈訊息)，不再計入全域未讀數字
+                 if (!senderObj && m.senderId !== 'SYSTEM' && m.senderId !== 'ADMIN') return;
+
                  const senderIds = [m.senderId];
                  if (senderObj) {
                      if (senderObj.id) senderIds.push(senderObj.id);
@@ -533,13 +539,6 @@ const App: React.FC = () => {
     if (!u) return;
 
     try {
-      if ((u.phone === '1' || u.email === '1') && u.password === '1') {
-         setUser(SYSTEM_ADMIN_USER);
-         localStorage.setItem('insbuy_user', JSON.stringify(SYSTEM_ADMIN_USER));
-         showToast(`歡迎回來，${SYSTEM_ADMIN_USER.name}！(超級管理員模式)`);
-         navigateTo(View.ADMIN_HOME);
-         return;
-      }
       const loggedInUser = await API.login({
         phoneOrEmail: u.phone || u.email,
         password: u.password,

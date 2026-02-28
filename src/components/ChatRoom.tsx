@@ -55,6 +55,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
   const [chatMeta, setChatMeta] = useState<Record<string, ChatMetadata>>({});
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, contactId: string } | null>(null);
   const [editingNote, setEditingNote] = useState<{ contactId: string, note: string } | null>(null);
+  const [hideProductCard, setHideProductCard] = useState(false); // ★ 新增：控制商品卡片隱藏
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -143,6 +144,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
   // 同步 activeContactId 並執行已讀邏輯
   useEffect(() => {
     activeContactIdRef.current = activeContactId;
+    setHideProductCard(false); // ★ 切換聯絡人時，重新恢復顯示商品卡片
     if (activeContactId && !readOnly) {
         markAsRead(activeContactId);
     }
@@ -152,6 +154,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
   useEffect(() => {
     if (targetId) {
         const unifiedId = resolveTrueId(targetId);
+        if (activeContactIdRef.current !== unifiedId) {
+            setMessages([]); // ★ 核心修復：從外部切換聯絡人時，也立即清空舊對話
+        }
         setActiveContactId(unifiedId);
         activeContactIdRef.current = unifiedId;
     }
@@ -189,8 +194,15 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
 
                 // ★ 改良版左側未讀計算：支援多重身份 (買家/賣家/電話) 徹底消滅幽靈未讀
                 if (safeMsg.receiverId === myId || safeMsg.receiverId === currentUser?.shop_id || safeMsg.receiverId === currentUser?.phone) {
+                    // 1. 排除自己發給自己的訊息
+                    if (safeMsg.senderId === myId || safeMsg.senderId === currentUser?.shop_id || safeMsg.senderId === currentUser?.phone) return;
+
                     if (!safeMsg.isRead) {
                         const senderObj = allUsers.find(u => u.id === safeMsg.senderId || u.shop_id === safeMsg.senderId || u.phone === safeMsg.senderId);
+                        
+                        // 2. 排除已經被刪除或不存在的使用者 (幽靈訊息)
+                        if (!senderObj && safeMsg.senderId !== 'SYSTEM' && safeMsg.senderId !== 'ADMIN') return;
+
                         const sIds = [safeMsg.senderId];
                         if (senderObj) {
                             if (senderObj.id) sIds.push(senderObj.id);
@@ -316,6 +328,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
   };
 
   const handleContactClick = (contactId: string) => {
+    if (activeContactIdRef.current !== contactId) {
+        setMessages([]); // ★ 核心修復：點擊不同聯絡人時，先立即清空舊對話，避免殘留上一個人的訊息
+    }
     setActiveContactId(contactId);
     markAsRead(contactId);
   };
@@ -563,19 +578,19 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
             )}
 
             {/* 商品卡片 (若有) */}
-            {currentProduct && !readOnly && (
-                <div className="bg-white border-b border-slate-100 p-3 m-2 rounded-xl shadow-sm border flex items-center gap-3 animate-fade-in relative">
-                    <button onClick={() => setInput('')} className="absolute top-1 right-1 text-slate-300 hover:text-slate-500 px-2"><i className="fa-solid fa-xmark"></i></button>
+            {currentProduct && !readOnly && !hideProductCard && (
+                <div className="bg-white border-b border-slate-100 p-3 m-2 rounded-xl shadow-sm border flex items-center gap-3 animate-fade-in relative pr-8">
+                    <button onClick={() => setHideProductCard(true)} className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition z-10" title="關閉預覽"><i className="fa-solid fa-xmark text-xs"></i></button>
                     <div className="w-12 h-12 bg-slate-50 rounded-lg border border-slate-100 overflow-hidden shrink-0">
                         <img src={currentProduct.images[0] || 'https://placehold.co/100'} className="w-full h-full object-cover" />
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 pr-2">
                         <div className="text-xs font-bold text-slate-700 truncate">{currentProduct.name}</div>
                         <div className="text-xs text-[#EE4D2D] font-black">${currentProduct.price.toLocaleString()}</div>
                     </div>
                     <button 
                         onClick={handlePasteProductInfo}
-                        className="px-3 py-1.5 bg-[#EE4D2D] text-white rounded-lg text-xs font-bold shadow-sm hover:bg-[#d73211] transition"
+                        className="px-3 py-1.5 bg-[#EE4D2D] text-white rounded-lg text-xs font-bold shadow-sm hover:bg-[#d73211] transition whitespace-nowrap"
                     >
                         傳送連結
                     </button>

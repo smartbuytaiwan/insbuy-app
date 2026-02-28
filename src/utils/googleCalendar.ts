@@ -3,7 +3,7 @@
 // ★ 注意：這裡需要填入你自己申請的 Google Client ID 才能正式運作！
 const CLIENT_ID = '783138565820-sl1ug065ao86aatg70efst5o87up203p.apps.googleusercontent.com'; 
 // ★ 將權限改為完整的 calendar，以支援讀取日曆群組清單
-const SCOPES = 'https://www.googleapis.com/auth/calendar';
+const SCOPES = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/userinfo.email';
 
 let tokenClient: any;
 
