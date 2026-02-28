@@ -3,6 +3,13 @@ import { User, Order, View, SiteSettings } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import API from '../api';
 
+// ★ 新增：宣告全域 google 變數避免 TS 報錯
+declare global {
+  interface Window {
+    google: any;
+  }
+}
+
 interface BuyerDashboardProps {
   user: User;
   orders: Order[];
@@ -66,6 +73,36 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
         setShowMobileMenu(false);
     }
   }, [initialTab]);
+
+  // ★ 新增：Google 日曆綁定邏輯
+  const handleGoogleBind = () => {
+    if (!window.google) {
+      alert('Google SDK 尚未載入，請確認 index.html 是否有正確引入腳本。');
+      return;
+    }
+    const client = window.google.accounts.oauth2.initCodeClient({
+      // ⚠️ 請務必將下方的 client_id 替換成你在 Google Cloud Console 申請的真實 Client ID
+      client_id: '783138565820-sl1ug065ao86aatg70efst5o87up203p.apps.googleusercontent.com', 
+      scope: 'https://www.googleapis.com/auth/calendar.events',
+      ux_mode: 'popup',
+      callback: async (response: any) => {
+        if (response.code) {
+          try {
+            await API.bindGoogleCalendar(user.id, response.code);
+            alert('Google 日曆連結成功！');
+          } catch (error) {
+            console.error('綁定失敗:', error);
+            alert('伺服器綁定失敗，請檢查網路或稍後再試');
+          }
+        }
+      },
+      error_callback: (err: any) => {
+        console.error('Google 授權出錯:', err);
+        alert('Google 授權失敗或已取消');
+      }
+    });
+    client.requestCode();
+  };
 
   const myOrders = useMemo(() => {
     return orders
@@ -243,10 +280,33 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
                      <label className="text-xs font-bold text-slate-400 block mb-1">註冊時間</label>
                      <div className="font-bold text-slate-800 text-lg">{new Date(user.created_at || Date.now()).toLocaleDateString()}</div>
                   </div>
+                  
+                  {/* ★ 新增：Google 日曆綁定區塊 (維持網格排版) */}
+                  <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100 flex flex-col justify-center">
+                     <div className="flex justify-between items-center w-full">
+                         <div>
+                            <label className="text-[10px] font-bold text-orange-400 block mb-1">第三方服務</label>
+                            <div className="font-bold text-slate-800 text-base md:text-lg flex items-center gap-2">
+                               <i className="fa-brands fa-google text-[#EE4D2D]"></i>
+                               Google 日曆
+                            </div>
+                         </div>
+                         <button 
+                            onClick={handleGoogleBind}
+                            className="px-3 py-1.5 md:px-4 md:py-2 bg-white text-[#EE4D2D] border border-[#EE4D2D] rounded-xl font-bold text-xs hover:bg-[#EE4D2D] hover:text-white transition shadow-sm whitespace-nowrap"
+                         >
+                            立即連結
+                         </button>
+                     </div>
+                  </div>
+
                </div>
-               <button onClick={() => alert('修改功能開發中')} className="mt-6 px-6 py-2 bg-slate-800 text-white rounded-lg font-bold text-sm hover:bg-slate-700">
-                  編輯資料
-               </button>
+               
+               <div className="mt-6 border-t border-slate-100 pt-6">
+                  <button onClick={() => alert('修改功能開發中')} className="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold text-sm hover:bg-slate-700">
+                     編輯資料
+                  </button>
+               </div>
             </div>
          )}
 
