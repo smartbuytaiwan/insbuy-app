@@ -1049,10 +1049,10 @@ const App: React.FC = () => {
             )}
           </>
       </main>
-      <footer className="w-full text-center pb-24 pt-4 text-slate-400 text-xs">
-         <a href="#/privacy" className="hover:text-slate-600 mx-2 transition-colors">隱私權政策</a>
+      <footer className="w-full text-center pb-28 pt-4 text-slate-400 text-xs relative z-10"> {/* 加上 relative z-10 確保不被其他元素遮擋，並增加一點底部空間 pb-28 */}
+         <a href="#/privacy" className="hover:text-slate-600 mx-2 transition-colors p-2 inline-block">隱私權政策</a>
          <span>|</span>
-         <a href="#/terms" className="hover:text-slate-600 mx-2 transition-colors">服務條款</a>
+         <a href="#/terms" className="hover:text-slate-600 mx-2 transition-colors p-2 inline-block">服務條款</a>
       </footer>
       <div className="fixed bottom-8 right-8 z-[999] flex flex-col gap-4 items-end">
         {user && user.role === 'ADMIN' && <button onClick={() => navigateTo(View.USER_MANAGEMENT)} className="px-4 py-2 bg-slate-800 text-white rounded-full text-[10px] font-black shadow-xl hover:bg-slate-700 transition flex items-center gap-2 mb-2"><i className="fa-solid fa-users-gear"></i> 使用者管理 (ADMIN)</button>}
