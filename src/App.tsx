@@ -14,6 +14,8 @@ import ChatRoom from './components/ChatRoom';
 import UserManagement from './components/UserManagement';
 import API from './api';
 import InfluencerDashboard from './components/InfluencerDashboard';
+import PrivacyPolicy from './components/PrivacyPolicy';
+import TermsOfService from './components/TermsOfService';
 
 // ★ 新增：圖形驗證碼元件
 const CaptchaModal = ({ onVerify, onCancel }: { onVerify: () => void, onCancel: () => void }) => {
@@ -421,6 +423,15 @@ const App: React.FC = () => {
     const viewName = parts[0] as View;
     const id = parts[1];
 
+    if (parts[0] === 'privacy') {
+      setView('PRIVACY' as any);
+      return;
+    }
+    if (parts[0] === 'terms') {
+      setView('TERMS' as any);
+      return;
+    }
+
     if (Object.values(View).includes(viewName)) {
       setView(viewName);
       if (viewName === View.PRODUCT && id) {
@@ -798,7 +809,8 @@ const App: React.FC = () => {
 
       <main className="container mx-auto px-4 pt-2 pb-8 md:py-8 flex-1 max-w-7xl w-full overflow-hidden">
         {/* 取消了 isDataLoaded 的等待畫面，直接渲染內容 */}
-        <>
+        <>{view === 'PRIVACY' as any && <PrivacyPolicy siteSettings={siteSettings} />}
+            {view === 'TERMS' as any && <TermsOfService siteSettings={siteSettings} />}
             {view === View.SHOP && <Shop key={currentShopId || `home-${shopRefreshKey}`} products={filteredProducts} categories={categories.filter(c => currentShopId ? c.shop_id === currentShopId : true)} systemCategories={systemCategories} currentShop={currentShop || undefined} currentUser={user} orders={orders} allSellers={allUsers.filter(u => u.role === 'SELLER')} searchQuery={appliedSearch} onOpenProduct={(p) => navigateTo(View.PRODUCT, p)} onFollowShop={handleFollowShop} onNavigate={navigateTo} />}
             
             {view === View.PRODUCT && selectedProduct && (
