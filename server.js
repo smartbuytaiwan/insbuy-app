@@ -1120,7 +1120,15 @@ app.post('/api/google/auth', async (req, res) => {
   try {
     const { userId, code } = req.body;
     const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-    const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET; // ⚠️ 同上，請自行替換為您的 Secret
+    const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+
+    // ★ 檢查是否忘記設定環境變數
+    if (!CLIENT_ID || !CLIENT_SECRET) {
+      console.error('❌ [錯誤] 後端伺服器缺少 GOOGLE_CLIENT_ID 或 GOOGLE_CLIENT_SECRET 環境變數！');
+      return res.status(400).json({ error: '伺服器金鑰未設定' });
+    }
+
+    console.log(`🔗 收到授權碼，準備兌換 Token... (Client ID: ${CLIENT_ID.substring(0, 15)}...)`);
 
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -1135,7 +1143,12 @@ app.post('/api/google/auth', async (req, res) => {
     });
 
     const tokenData = await tokenResponse.json();
-    if (tokenData.error) return res.status(400).json({ error: tokenData.error });
+    
+    // ★ 印出 Google 拒絕的真正原因
+    if (tokenData.error) {
+       console.error('❌ Google 拒絕了 Token 兌換！詳細原因:', tokenData);
+       return res.status(400).json({ error: tokenData.error, description: tokenData.error_description });
+    }
 
     // 取得使用者 Email
     const infoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
