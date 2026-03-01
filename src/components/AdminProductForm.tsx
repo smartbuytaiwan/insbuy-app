@@ -402,8 +402,8 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                                 <div className="flex flex-col gap-3">
                                     <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer appearance-none" style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 1rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em', paddingRight: '2.5rem' }} value={selectedMainCat} onChange={e => { setSelectedMainCat(e.target.value); setSelectedSubCat(''); }}>
                                         <option value="" className="text-base text-slate-500">選擇主分類...</option>
-                                        {systemCategories?.filter(c => !c.parent_id).length === 0 && <option value="" disabled className="text-base text-slate-400">目前尚無分類，請先建立</option>}
-                                        {systemCategories?.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id} className="text-base text-slate-700">{c.name}</option>)}
+                                        {(!systemCategories || systemCategories.filter(c => !c.parent_id).length === 0) && <option value="empty" disabled className="text-base text-slate-400">目前尚無分類，請先建立</option>}
+                                        {systemCategories && systemCategories.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id} className="text-base text-slate-700">{c.name}</option>)}
                                     </select>
                                     {selectedMainCat && (
                                         <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={selectedSubCat} onChange={e => setSelectedSubCat(e.target.value)}>
@@ -420,8 +420,8 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                                 <div className="flex flex-col gap-3">
                                     <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer appearance-none" style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 1rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em', paddingRight: '2.5rem' }} value={selectedShopMainCat} onChange={e => { setSelectedShopMainCat(e.target.value); setSelectedShopSubCat(''); }}>
                                         <option value="" className="text-base text-slate-500">選擇主分類...</option>
-                                        {categories?.filter(c => !c.parent_id).length === 0 && <option value="" disabled className="text-base text-slate-400">目前尚無分類，請先建立</option>}
-                                        {categories?.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id} className="text-base text-slate-700">{c.name}</option>)}
+                                        {(!categories || categories.filter(c => !c.parent_id).length === 0) && <option value="empty" disabled className="text-base text-slate-400">目前尚無分類，請先建立</option>}
+                                        {categories && categories.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id} className="text-base text-slate-700">{c.name}</option>)}
                                     </select>
                                     {selectedShopMainCat && (
                                         <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={selectedShopSubCat} onChange={e => setSelectedShopSubCat(e.target.value)}>

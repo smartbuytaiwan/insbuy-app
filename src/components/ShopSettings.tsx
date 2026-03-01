@@ -19,7 +19,8 @@ const ImageCropper = ({ src, type, onComplete, onCancel }: { src: string, type: 
   const startRef = useRef({ x: 0, y: 0 });
   const imgRef = useRef<HTMLImageElement>(null);
 
-  const aspectRatio = type === 'logo' ? 1 : 4; 
+  // ★ 修改：調整 Banner 比例為 3:1 更適合手機與電腦，並修正裁切視窗超出邊界的問題
+  const aspectRatio = type === 'logo' ? 1 : 3; 
   const [containerSize, setContainerSize] = useState({ w: 300, h: 300 });
 
   useEffect(() => {
@@ -27,7 +28,8 @@ const ImageCropper = ({ src, type, onComplete, onCancel }: { src: string, type: 
     setOffset({ x: 0, y: 0 });
     
     const handleResize = () => {
-       const maxWidth = Math.min(window.innerWidth - 80, 500);
+       // max-w-lg 容器最大寬度約 512px，扣除 padding 後安全寬度設為 440px 防止跑版
+       const maxWidth = Math.min(window.innerWidth - 80, 440);
        
        const newW = maxWidth;
        const newH = newW / aspectRatio;
@@ -439,8 +441,8 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, permissions = [], onU
            <label className="block text-sm font-bold text-slate-700 mb-2">商店封面 (Banner) <span className="text-[#EE4D2D]">(限制 1MB)</span></label>
            
            <div 
-              className={`w-full aspect-[4/1] rounded-xl border-2 border-slate-100 overflow-hidden bg-slate-50 relative group ${canEditBanner ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'}`}
-              style={{ aspectRatio: '4/1' }} 
+              className={`w-full aspect-[3/1] rounded-xl border-2 border-slate-100 overflow-hidden bg-slate-50 relative group ${canEditBanner ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'}`}
+              style={{ aspectRatio: '3/1' }}
               onClick={() => {
                   if (!canEditBanner) return alert('您的會員等級目前無法使用/修改商店封面，請升級會員。');
                   if (!formData.banner) bannerInputRef.current?.click();
@@ -482,7 +484,7 @@ const ShopSettings: React.FC<ShopSettingsProps> = ({ user, permissions = [], onU
               
               <input type="file" ref={bannerInputRef} className="hidden" accept="image/*" onChange={e => e.target.files?.[0] && handleImageSelect(e.target.files[0], 'banner')} />
            </div>
-           <p className="text-xs text-slate-400 mt-2">建議尺寸: 1200x300px (4:1), 支援 JPG/PNG。點擊圖片可重新裁切或更換。</p>
+           <p className="text-xs text-slate-400 mt-2">建議尺寸: 1200x400px (3:1), 支援 JPG/PNG。點擊圖片可重新裁切或更換。</p>
         </div>
 
         <div className="space-y-4">

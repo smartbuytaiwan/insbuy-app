@@ -520,9 +520,8 @@ const Shop: React.FC<ShopProps> = ({
       {currentShop && (
         <>
             <div className="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-100 animate-fade-in group/banner">
-              {/* Banner 區域 */}
-              <div className="h-32 md:h-48 bg-slate-200 relative bg-cover bg-center transition-all" style={{ backgroundImage: `url(${localBanner || 'https://placehold.co/800x200/orange/white?text=Welcome+Shop'})` }}>
-                <div className="absolute inset-0 bg-black/30"></div>
+              {/* Banner 區域：改用與裁切相同的 3:1 比例 (aspect-[3/1]) 確保不裁切，並移除黑霧遮罩 */}
+              <div className="w-full aspect-[3/1] bg-slate-200 relative bg-cover bg-center transition-all" style={{ backgroundImage: `url(${localBanner || 'https://placehold.co/1200x400/orange/white?text=Welcome+Shop'})` }}>
               </div>
               
               <div className="px-4 md:px-6 pb-6 pt-2 relative flex flex-col md:flex-row items-start md:items-end gap-4 md:gap-6">

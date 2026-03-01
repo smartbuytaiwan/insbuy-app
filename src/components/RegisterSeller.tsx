@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User, SiteSettings } from '../types';
+import { verifyGmail } from '../utils/googleAuth'; // ★ 新增：引入低權限的 Gmail 驗證
 
 interface RegisterSellerProps {
   onComplete: (user: User) => void;
@@ -23,6 +24,7 @@ const RegisterSeller: React.FC<RegisterSellerProps> = ({ onComplete, onShowTerms
   });
 
   const [agreeTerms, setAgreeTerms] = useState(false);
+  const [isEmailVerified, setIsEmailVerified] = useState(false); // ★ 新增：追蹤 Gmail 驗證狀態
 
   // ★ 如果註冊功能關閉，直接返回阻擋畫面
   if (siteSettings?.registrationEnabled === false) {
@@ -48,6 +50,7 @@ const RegisterSeller: React.FC<RegisterSellerProps> = ({ onComplete, onShowTerms
     }
 
     if (form.password !== form.confirmPassword) return alert('兩次密碼輸入不一致');
+    if (!isEmailVerified || !form.email) return alert('請先點擊按鈕完成 Gmail 驗證');
     if (!agreeTerms) return alert('請閱讀並同意服務條款與平台免責聲明');
 
     // ★ 關鍵修復：手動組合符合規格的資料，並排除不需送往後端的 confirmPassword 
@@ -121,15 +124,32 @@ const RegisterSeller: React.FC<RegisterSellerProps> = ({ onComplete, onShowTerms
                       onChange={e => setForm({...form, phone: e.target.value})}
                     />
                  </div>
+                 {/* ★ 修改：獨立的 Gmail 驗證區塊 */}
                  <div className="md:col-span-2">
-                    <label className="text-xs font-bold text-slate-500 mb-1 block">電子信箱</label>
-                    <input 
-                      type="email" 
-                      className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-4 outline-none focus:border-[#EE4D2D] transition"
-                      placeholder="example@email.com"
-                      value={form.email}
-                      onChange={e => setForm({...form, email: e.target.value})}
-                    />
+                    <label className="text-xs font-bold text-slate-500 mb-1 block">電子信箱 (Gmail 驗證) <span className="text-red-500">*</span></label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="email" 
+                        className="flex-1 h-12 bg-slate-100 border border-slate-200 rounded-xl px-4 outline-none text-slate-500 cursor-not-allowed"
+                        placeholder="請點擊右側按鈕進行驗證"
+                        value={form.email}
+                        readOnly
+                      />
+                      <button 
+                        type="button"
+                        disabled={isEmailVerified}
+                        onClick={() => {
+                          verifyGmail(
+                            (email) => { setForm(prev => ({ ...prev, email })); setIsEmailVerified(true); },
+                            (err) => alert(err.message || 'Gmail 驗證失敗，請重試')
+                          );
+                        }}
+                        className={`px-6 rounded-xl font-bold text-sm transition-all shadow-sm flex items-center justify-center gap-2 ${isEmailVerified ? 'bg-green-50 text-green-600 border border-green-200 cursor-default' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        <i className={`fa-brands fa-google ${isEmailVerified ? 'text-green-500' : 'text-blue-500'}`}></i>
+                        {isEmailVerified ? '已驗證' : '驗證 Gmail'}
+                      </button>
+                    </div>
                  </div>
                  <div>
                     <label className="text-xs font-bold text-slate-500 mb-1 block">登入密碼 <span className="text-red-500">*</span></label>

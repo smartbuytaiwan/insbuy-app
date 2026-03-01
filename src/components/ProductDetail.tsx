@@ -237,6 +237,14 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
   const finalPrice = product.price + (selectedVariant?.price || 0);
   const isVideo = (src: string) => src?.startsWith('data:video') || src?.endsWith('.mp4');
 
+  // ★ 安全防護：過濾商品描述與評價中的 XSS 語法與競品導外連結
+  const filterText = (text?: string) => {
+    if (!text) return '';
+    let safeText = text.replace(/</g, '＜').replace(/>/g, '＞');
+    const blockPattern = /(https?:\/\/[^\s]*?(shopee|momoshop|ruten|pchome|taobao)[^\s]*|[a-zA-Z0-9.\-]*?(shopee\.tw|momoshop\.com\.tw|ruten\.com\.tw|pchome\.com\.tw|taobao\.com)[^\s]*)/gi;
+    return safeText.replace(blockPattern, '[系統已屏蔽外部連結]');
+  };
+
   // ★ Feature 1: AI SEO Schema Markup (JSON-LD)
   // 這段程式碼會生成 Google 搜尋引擎看得懂的結構化資料
   const schemaData = {
@@ -602,7 +610,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
         <div className="p-6 md:p-8 border-t border-slate-100">
            <h3 className="bg-slate-100 text-slate-700 py-3 px-6 rounded-t-xl font-bold inline-block">商品詳情</h3>
            <div className="p-6 border border-slate-100 rounded-b-xl rounded-tr-xl bg-white mb-8">
-              <p className="text-slate-600 leading-relaxed whitespace-pre-wrap">{product.description}</p>
+              <p className="text-slate-600 leading-relaxed whitespace-pre-wrap">{filterText(product.description)}</p>
            </div>
            
            <h3 className="bg-slate-100 text-slate-700 py-3 px-6 rounded-t-xl font-bold inline-block">買家評價 ({product.reviews?.length || 0})</h3>
@@ -625,7 +633,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
                               <i key={i} className={`fa-solid fa-star ${i < rev.rating ? '' : 'text-slate-200'}`}></i>
                             ))}
                          </div>
-                         <p className="text-sm text-slate-600 mt-2">{rev.comment}</p>
+                         <p className="text-sm text-slate-600 mt-2">{filterText(rev.comment)}</p>
                       </div>
                   </div>
                 ))

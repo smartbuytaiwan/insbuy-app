@@ -304,7 +304,17 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
     
     const myId = getMyId();
     const timestamp = new Date().toISOString();
-    const msgToSend = input;
+    
+    // ★ 安全防護：XSS 轉譯與競品導外連結過濾
+    const filterText = (text: string) => {
+      // 1. 防 XSS：將半形角括號轉為全形，徹底使惡意 HTML/Script 結構失效
+      let safeText = text.replace(/</g, '＜').replace(/>/g, '＞');
+      // 2. 防導外：遮蔽各大電商競品網址 (包含有 http 與無 http 的情況)
+      const blockPattern = /(https?:\/\/[^\s]*?(shopee|momoshop|ruten|pchome|taobao)[^\s]*|[a-zA-Z0-9.\-]*?(shopee\.tw|momoshop\.com\.tw|ruten\.com\.tw|pchome\.com\.tw|taobao\.com)[^\s]*)/gi;
+      return safeText.replace(blockPattern, '[系統已屏蔽外部連結]');
+    };
+    
+    const msgToSend = filterText(input);
     
     updateLastReadTime(activeContactId);
     setInput(''); // 提早清空輸入框，提升流暢度

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User, SiteSettings } from '../types';
+import { verifyGmail } from '../utils/googleAuth'; // ★ 新增：引入低權限的 Gmail 驗證
 
 interface RegisterBuyerProps {
   onComplete: (user: User) => void;
@@ -40,6 +41,7 @@ const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, 
   });
 
   const [agreed, setAgreed] = useState(false);
+  const [isEmailVerified, setIsEmailVerified] = useState(false); // ★ 新增：追蹤 Gmail 驗證狀態
 
   // ★ 如果註冊功能關閉，直接返回阻擋畫面
   if (siteSettings?.registrationEnabled === false) {
@@ -50,7 +52,7 @@ const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, 
          </div>
          <h2 className="text-2xl font-black text-slate-800 mb-2">註冊功能暫停</h2>
          <p className="text-slate-500 mb-8">目前系統已暫停開放新會員註冊，<br/>請稍後再試或聯繫客服人員。</p>
-         <a href="#/auth" className="inline-block px-8 py-3 bg-slate-800 text-white rounded-xl font-bold">返回登入</a>
+         <button onClick={() => { window.location.hash = '#/auth'; window.location.reload(); }} className="inline-block px-8 py-3 bg-slate-800 text-white rounded-xl font-bold">返回登入</button>
       </div>
     );
   }
@@ -72,6 +74,11 @@ const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, 
 
     if (formData.password !== formData.confirmPassword) {
       alert('兩次密碼輸入不一致');
+      return;
+    }
+
+    if (!isEmailVerified || !formData.email) {
+      alert('請先點擊右側按鈕完成 Gmail 驗證');
       return;
     }
 
@@ -113,7 +120,40 @@ const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           <InputField label="真實姓名" name="name" icon="fa-user" placeholder="請輸入中文姓名" value={formData.name} onChange={handleChange} />
           <InputField label="手機號碼 (登入帳號)" name="phone" icon="fa-mobile-screen" placeholder="0912-345-678" value={formData.phone} onChange={handleChange} />
-          <InputField label="電子信箱 (選填)" name="email" icon="fa-envelope" placeholder="yourname@example.com" type="email" required={false} value={formData.email} onChange={handleChange} />
+          
+          {/* ★ 修改：獨立的 Gmail 驗證區塊 */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">電子信箱 (Gmail 驗證) <span className="text-red-500">*</span></label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300">
+                  <i className="fa-solid fa-envelope"></i>
+                </div>
+                <input
+                  type="email"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-500 outline-none cursor-not-allowed"
+                  placeholder="請點擊右側按鈕驗證 Gmail"
+                  readOnly
+                  value={formData.email}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  verifyGmail(
+                    (email) => { setFormData(prev => ({ ...prev, email })); setIsEmailVerified(true); },
+                    (err) => alert(err.message || 'Gmail 驗證失敗，請重試')
+                  );
+                }}
+                className={`px-4 rounded-lg text-xs font-bold whitespace-nowrap transition-all shadow-sm flex items-center gap-2 ${isEmailVerified ? 'bg-green-50 text-green-600 border border-green-200 cursor-default' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                disabled={isEmailVerified}
+              >
+                <i className={`fa-brands fa-google ${isEmailVerified ? 'text-green-500' : 'text-blue-500'}`}></i>
+                {isEmailVerified ? '已驗證' : '驗證 Gmail'}
+              </button>
+            </div>
+          </div>
+
           <InputField label="設定密碼" name="password" icon="fa-lock" placeholder="8 位數以上英數字" type="password" value={formData.password} onChange={handleChange} />
           <InputField label="確認密碼" name="confirmPassword" icon="fa-check-double" placeholder="再次輸入密碼" type="password" value={formData.confirmPassword} onChange={handleChange} />
 

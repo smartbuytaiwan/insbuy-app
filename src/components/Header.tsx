@@ -217,15 +217,17 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
 
                       <button onClick={() => { setIsUserMenuOpen(false); onShowHelp(); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-regular fa-circle-question w-4 text-center"></i> 幫助中心</button>
 
-                      <div className="group relative">
-                          <button className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex justify-between items-center"><span className="flex items-center gap-3"><i className="fa-solid fa-globe w-4 text-center"></i> 選擇語言</span> <i className="fa-solid fa-caret-left text-xs text-slate-300 group-hover:text-[#EE4D2D]"></i></button>
+                      <div className="relative">
+                          <button onClick={(e) => { e.stopPropagation(); setIsLangOpen(!isLangOpen); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex justify-between items-center"><span className="flex items-center gap-3"><i className="fa-solid fa-globe w-4 text-center"></i> 選擇語言</span> <i className={`fa-solid fa-caret-${isLangOpen ? 'down' : 'left'} text-xs text-slate-300`}></i></button>
                           
-                          {/* 語言子選單：滑鼠移入或點擊時往左側彈出 */}
-                          <div className="hidden group-hover:block absolute top-0 right-full w-36 bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden mr-1">
-                             {LANGUAGES.map(lang => (
-                                <button key={lang.code} onClick={() => { setIsUserMenuOpen(false); handleLanguageChange(lang.code); }} className={`w-full text-left px-4 py-3 text-xs font-bold hover:bg-orange-50 ${currentLang === lang.code ? 'text-[#EE4D2D]' : 'text-slate-600'}`}>{lang.name}</button>
-                             ))}
-                          </div>
+                          {/* 語言子選單：改為點擊向下展開 (完美適應手機與電腦，不超出螢幕) */}
+                          {isLangOpen && (
+                              <div className="w-full bg-slate-50 border-y border-slate-100 overflow-hidden">
+                                 {LANGUAGES.map(lang => (
+                                    <button key={lang.code} onClick={() => { setIsLangOpen(false); setIsUserMenuOpen(false); handleLanguageChange(lang.code); }} className={`w-full text-left px-10 py-3 text-sm font-bold hover:bg-orange-100 transition ${currentLang === lang.code ? 'text-[#EE4D2D]' : 'text-slate-600'}`}>{lang.name}</button>
+                                 ))}
+                              </div>
+                          )}
                       </div>
 
                       <div className="border-t border-slate-100 mt-1 pt-1"></div>
