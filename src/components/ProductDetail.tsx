@@ -42,35 +42,33 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
   // ==========================================
   useEffect(() => {
     if (!product) return;
-    const hashParts = window.location.hash.split('?');
-    if (hashParts.length > 1) {
-      const urlParams = new URLSearchParams(hashParts[1]);
-      const refCode = urlParams.get('ref');
-      if (refCode) {
+    // ★ 修正：改用標準的 location.search 來解析乾淨網址後的查詢參數
+    const urlParams = new URLSearchParams(window.location.search);
+    const refCode = urlParams.get('ref');
+    if (refCode) {
         // 1. 存入瀏覽器，期限設為 30 天
         const expiry = new Date().getTime() + 30 * 24 * 60 * 60 * 1000;
         localStorage.setItem('insbuy_affiliate', JSON.stringify({ code: refCode, expiry }));
         // 2. 靜默呼叫 API 記錄點擊次數 (防呆不跳錯，不影響買家體驗)
         API.recordAffiliateClick({ code: refCode, shop_id: product.shop_id }).catch(() => {});
       }
-    }
   }, [product?.id, product?.shop_id]);
   
+  // ★ 新增：真正有效的動態 SEO 注入機制
   // ★ 新增：真正有效的動態 SEO 注入機制
   useEffect(() => {
     if (!product) return;
     
-    // 儲存原本的網頁標題與 meta，離開頁面時可以還原
     const originalTitle = document.title;
     const metaKeywords = document.querySelector('meta[name="keywords"]');
     const metaDescription = document.querySelector('meta[name="description"]');
     let originalKeywords = '';
     let originalDesc = '';
 
-    // 1. 動態更新網頁標題
-    document.title = `${product.name} | InsBuy 拍拍購`;
+    // 1. 動態更新網頁標題 (優先使用商家自訂的 seo_title)
+    document.title = product.seo_title ? product.seo_title : `${product.name} | InsBuy 拍拍購`;
 
-    // 2. 動態寫入 SEO 關鍵字 (給 Google 與 AI 機器人看)
+    // 2. 動態寫入 SEO 關鍵字
     if (product.keywords && product.keywords.length > 0) {
         if (metaKeywords) {
             originalKeywords = metaKeywords.getAttribute('content') || '';
@@ -83,9 +81,10 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
         }
     }
 
-    // 3. 動態寫入 SEO 描述
-    if (product.description) {
-        const cleanDesc = product.description.substring(0, 150).replace(/\n/g, ' ');
+    // 3. 動態寫入 SEO 描述 (優先使用商家自訂的 seo_description，沒有才用前 150 字 description)
+    const descToUse = product.seo_description || product.description || '';
+    if (descToUse) {
+        const cleanDesc = descToUse.substring(0, 150).replace(/\n/g, ' ');
         if (metaDescription) {
             originalDesc = metaDescription.getAttribute('content') || '';
             metaDescription.setAttribute('content', cleanDesc);
@@ -97,7 +96,6 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
         }
     }
 
-    // 當離開此商品頁時，將 SEO 還原，避免污染其他頁面
     return () => {
         document.title = originalTitle;
         if (metaKeywords && originalKeywords) metaKeywords.setAttribute('content', originalKeywords);
@@ -610,7 +608,15 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
         <div className="p-6 md:p-8 border-t border-slate-100">
            <h3 className="bg-slate-100 text-slate-700 py-3 px-6 rounded-t-xl font-bold inline-block">商品詳情</h3>
            <div className="p-6 border border-slate-100 rounded-b-xl rounded-tr-xl bg-white mb-8">
-              <p className="text-slate-600 leading-relaxed whitespace-pre-wrap">{filterText(product.description)}</p>
+              {/* ★ 判斷如果有自訂 HTML 則渲染 HTML，否則渲染一般文字 */}
+              {product.custom_html ? (
+                  <div 
+                      className="w-full overflow-hidden" 
+                      dangerouslySetInnerHTML={{ __html: product.custom_html }} 
+                  />
+              ) : (
+                  <p className="text-slate-600 leading-relaxed whitespace-pre-wrap">{filterText(product.description)}</p>
+              )}
            </div>
            
            <h3 className="bg-slate-100 text-slate-700 py-3 px-6 rounded-t-xl font-bold inline-block">買家評價 ({product.reviews?.length || 0})</h3>

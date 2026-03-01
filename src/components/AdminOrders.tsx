@@ -105,17 +105,21 @@ const AdminOrders: React.FC<AdminOrdersProps> = ({
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-         <div className="w-full md:flex-1">
+      {/* ★ 重新設計的 UI：過濾與搜尋控制列 */}
+      <div className="flex flex-col gap-4 mb-6">
+         
+         {/* 上半部：狀態過濾 (電腦版為橫排按鈕，手機版為下拉選單) */}
+         <div className="w-full">
             <div className="md:hidden relative">
-               <select value={orderStatusFilter} onChange={(e) => setOrderStatusFilter(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-[#EE4D2D] appearance-none">
-                 {SELLER_ORDER_STATUS_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+               <select value={orderStatusFilter} onChange={(e) => setOrderStatusFilter(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-[#EE4D2D] appearance-none cursor-pointer">
+                 {SELLER_ORDER_STATUS_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label} ({stats[opt.value] || 0})</option>)}
                </select>
                <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
             </div>
-            <div className="hidden md:flex overflow-x-auto pb-2 gap-2 scrollbar-hide">
+            
+            <div className="hidden md:flex flex-wrap gap-2">
               {SELLER_ORDER_STATUS_OPTIONS.map(opt => (
-                <button key={opt.value} onClick={() => setOrderStatusFilter(opt.value)} className={`relative px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition flex items-center gap-2 ${orderStatusFilter === opt.value ? 'bg-[#EE4D2D] text-white shadow-md' : 'text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200'}`}>
+                <button key={opt.value} onClick={() => setOrderStatusFilter(opt.value)} className={`relative px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition flex items-center gap-2 ${orderStatusFilter === opt.value ? 'bg-[#EE4D2D] text-white shadow-md' : 'text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200'}`}>
                   {opt.label}
                   <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${orderStatusFilter === opt.value ? 'bg-white text-[#EE4D2D]' : 'bg-slate-200 text-slate-500'}`}>
                     {stats[opt.value] || 0}
@@ -125,17 +129,35 @@ const AdminOrders: React.FC<AdminOrdersProps> = ({
             </div>
          </div>
          
-         <div className="flex gap-2 w-full md:w-auto">
-           <div className="relative flex-1 md:flex-none">
-              <i className="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-sm"></i>
-              <input type="text" placeholder="搜尋..." className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-[#EE4D2D] w-full md:w-48 lg:w-64" value={orderSearchTerm} onChange={e => setOrderSearchTerm(e.target.value)} />
+         {/* 下半部：搜尋框與工具列 */}
+         <div className="flex flex-col md:flex-row items-center gap-3 w-full bg-slate-50 p-2 md:p-3 rounded-xl border border-slate-100">
+           
+           {/* 搜尋框 (佔滿剩餘空間) */}
+           <div className="relative w-full flex-1">
+              <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+              <input 
+                  type="text" 
+                  placeholder="搜尋訂單編號、買家姓名或商品..." 
+                  className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-[#EE4D2D] bg-white transition-shadow focus:shadow-sm" 
+                  value={orderSearchTerm} 
+                  onChange={e => setOrderSearchTerm(e.target.value)} 
+              />
            </div>
-           <div className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-lg shrink-0 mr-2">
-               <button onClick={() => setOrderViewMode('CARD')} className={`p-1.5 rounded transition ${orderViewMode === 'CARD' ? 'bg-white shadow-sm text-[#EE4D2D]' : 'text-slate-400 hover:text-slate-600'}`} title="卡片顯示"><i className="fa-solid fa-border-all"></i></button>
-               <button onClick={() => setOrderViewMode('LIST')} className={`p-1.5 rounded transition ${orderViewMode === 'LIST' ? 'bg-white shadow-sm text-[#EE4D2D]' : 'text-slate-400 hover:text-slate-600'}`} title="列表顯示"><i className="fa-solid fa-list"></i></button>
+           
+           {/* 右側工具按鈕 */}
+           <div className="flex w-full md:w-auto items-center justify-end gap-2 shrink-0 border-t md:border-t-0 border-slate-200 pt-2 md:pt-0">
+               {/* 電腦版才顯示卡片/列表切換 */}
+               <div className="hidden md:flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-lg">
+                   <button onClick={() => setOrderViewMode('CARD')} className={`p-1.5 rounded transition ${orderViewMode === 'CARD' ? 'bg-slate-100 shadow-sm text-[#EE4D2D]' : 'text-slate-400 hover:text-slate-600'}`} title="卡片顯示"><i className="fa-solid fa-border-all"></i></button>
+                   <button onClick={() => setOrderViewMode('LIST')} className={`p-1.5 rounded transition ${orderViewMode === 'LIST' ? 'bg-slate-100 shadow-sm text-[#EE4D2D]' : 'text-slate-400 hover:text-slate-600'}`} title="列表顯示"><i className="fa-solid fa-list"></i></button>
+               </div>
+               
+               <button onClick={() => setShowExportModal(true)} className="flex-1 md:flex-none px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-sm shadow-sm flex items-center justify-center gap-2 whitespace-nowrap transition">
+                   <i className="fa-solid fa-file-excel"></i> 匯出報表
+               </button>
            </div>
-           <button onClick={() => setShowExportModal(true)} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-sm shadow-sm flex items-center gap-2 whitespace-nowrap"><i className="fa-solid fa-file-excel"></i> <span className="hidden md:inline">匯出</span></button>
          </div>
+
       </div>
 
       <div className={orderViewMode === 'LIST' ? "hidden md:block overflow-x-auto" : "space-y-4"}>

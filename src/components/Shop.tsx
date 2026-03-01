@@ -64,7 +64,7 @@ const Shop: React.FC<ShopProps> = ({
 
   // 從 URL 獲取初始頁碼
   const getInitialPage = () => {
-     const match = window.location.hash.match(/page=(\d+)/);
+     const match = window.location.search.match(/page=(\d+)/);
      return match ? parseInt(match[1]) : 1;
   };
 
@@ -88,14 +88,9 @@ const Shop: React.FC<ShopProps> = ({
        setCurrentPage(getInitialPage());
     };
     window.addEventListener('popstate', handlePopState);
-    const handleHashChange = () => {
-       setCurrentPage(getInitialPage());
-    };
-    window.addEventListener('hashchange', handleHashChange);
 
     return () => {
        window.removeEventListener('popstate', handlePopState);
-       window.removeEventListener('hashchange', handleHashChange);
     };
   }, []);
 
@@ -113,18 +108,19 @@ const Shop: React.FC<ShopProps> = ({
   }, [currentPage]);
 
   const updatePageUrl = (page: number) => {
-      const currentHash = window.location.hash;
-      let newHash = currentHash;
+      const currentPath = window.location.pathname;
+      const currentSearch = window.location.search;
+      let newUrl = currentPath + currentSearch;
       
-      if (currentHash.includes('page=')) {
-          newHash = currentHash.replace(/page=(\d+)/, `page=${page}`);
+      if (newUrl.includes('page=')) {
+          newUrl = newUrl.replace(/page=(\d+)/, `page=${page}`);
       } else {
-          const separator = currentHash.includes('?') ? '&' : '?';
-          newHash = `${currentHash}${separator}page=${page}`;
+          const separator = newUrl.includes('?') ? '&' : '?';
+          newUrl = `${newUrl}${separator}page=${page}`;
       }
       
       if (page !== getInitialPage()) {
-          window.history.pushState(null, '', newHash);
+          window.history.pushState(null, '', newUrl);
       }
   };
 
@@ -520,12 +516,18 @@ const Shop: React.FC<ShopProps> = ({
       {currentShop && (
         <>
             <div className="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-100 animate-fade-in group/banner">
-              {/* Banner 區域：改用與裁切相同的 3:1 比例 (aspect-[3/1]) 確保不裁切，並移除黑霧遮罩 */}
-              <div className="w-full aspect-[3/1] bg-slate-200 relative bg-cover bg-center transition-all" style={{ backgroundImage: `url(${localBanner || 'https://placehold.co/1200x400/orange/white?text=Welcome+Shop'})` }}>
+              {/* ★ 修改：Banner 區域改為使用 img 標籤自然撐開高度，移除固定高度與黑色遮罩 */}
+              <div className="w-full bg-slate-100 relative transition-all">
+                <img 
+                    src={localBanner || 'https://placehold.co/800x200/orange/white?text=Welcome+Shop'} 
+                    className="w-full h-auto object-contain block" 
+                    alt="Shop Banner" 
+                />
               </div>
               
               <div className="px-4 md:px-6 pb-6 pt-2 relative flex flex-col md:flex-row items-start md:items-end gap-4 md:gap-6">
-                <div className="relative -mt-12 md:-mt-20 shrink-0">
+                {/* 為了避免頭像在 Banner 比例不同時跑版，調整 margin-top 讓他稍微往上浮動即可 */}
+                <div className="relative -mt-10 md:-mt-16 shrink-0 z-10">
                   <div className="w-20 h-20 md:w-32 md:h-32 rounded-full border-4 border-white bg-white overflow-hidden shadow-md">
                     <img src={currentShop.logo || 'https://placehold.co/150?text=Logo'} className="w-full h-full object-cover" alt="Shop Logo" />
                   </div>

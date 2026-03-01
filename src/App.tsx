@@ -16,6 +16,7 @@ import API from './api';
 import InfluencerDashboard from './components/InfluencerDashboard';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import TermsOfService from './components/TermsOfService';
+import AnnouncementModal from './components/AnnouncementModal'; // ★ 新增：引入新版公告彈窗
 
 // ★ 新增：圖形驗證碼元件
 const CaptchaModal = ({ onVerify, onCancel }: { onVerify: () => void, onCancel: () => void }) => {
@@ -416,15 +417,16 @@ const App: React.FC = () => {
     };
   }, [user, chatTarget]);
 
-  const handleHashRouting = (currentProducts?: Product[]) => {
-    const hash = window.location.hash.replace('#/', '');
-    if (!hash) {
+  const handlePathRouting = (currentProducts?: Product[]) => {
+    // ★ 核心變更：改為抓取 pathname (乾淨網址)，不再看 hash
+    const path = window.location.pathname.replace(/^\//, ''); // 去除最前面的斜線
+    if (!path) {
       setView(View.SHOP);
       setCurrentShopId(null);
       return;
     }
     // ★ 修復：將網址的路徑與參數 (?ref=...) 分開，避免找錯商品 ID 導致白畫面
-    const pathString = hash.split('?')[0];
+    const pathString = path.split('?')[0];
     const parts = pathString.split('/');
     const viewName = parts[0] as View;
     const id = parts[1];
@@ -439,6 +441,38 @@ const App: React.FC = () => {
     }
 
     if (Object.values(View).includes(viewName)) {
+      // ★ 安全防護：路由守衛 (Route Guard)，防止越權存取
+      const activeUserStr = localStorage.getItem('insbuy_user');
+      const activeUser = activeUserStr ? JSON.parse(activeUserStr) : null;
+
+      // 檢查進入超級管理員後台的權限
+      if (viewName === View.USER_MANAGEMENT) {
+        if (!activeUser || activeUser.role !== 'ADMIN') {
+          alert('⛔ 拒絕存取：您沒有管理員權限！');
+          window.history.pushState({}, '', '/SHOP');
+          window.dispatchEvent(new PopStateEvent('popstate'));
+          return;
+        }
+      }
+      // 檢查進入商家後台的權限
+      if (viewName === View.ADMIN_HOME) {
+        if (!activeUser || (activeUser.role !== 'SELLER' && activeUser.role !== 'ADMIN')) {
+          alert('⛔ 拒絕存取：您沒有商家後台權限！');
+          window.history.pushState({}, '', '/SHOP');
+          window.dispatchEvent(new PopStateEvent('popstate'));
+          return;
+        }
+      }
+      // 檢查進入買家/網紅後台的權限
+      if (viewName === View.INFLUENCER_DASHBOARD || viewName === View.BUYER_DASHBOARD) {
+        if (!activeUser) {
+          alert('請先登入會員！');
+          window.history.pushState({}, '', '/AUTH');
+          window.dispatchEvent(new PopStateEvent('popstate'));
+          return;
+        }
+      }
+
       setView(viewName);
       if (viewName === View.PRODUCT && id) {
         const pool = currentProducts || products;
@@ -467,19 +501,19 @@ const App: React.FC = () => {
 
   useEffect(() => {
       if(products.length > 0) {
-        handleHashRouting(products);
+        handlePathRouting(products);
       }
-      const onHashChange = () => handleHashRouting(products);
-      window.addEventListener('hashchange', onHashChange);
-      return () => window.removeEventListener('hashchange', onHashChange);
+      const onPopState = () => handlePathRouting(products);
+      window.addEventListener('popstate', onPopState);
+      return () => window.removeEventListener('popstate', onPopState);
   }, [products]);
 
   const navigateTo = (newView: View, product?: Product, targetId?: string) => {
-    let hash = `#/${newView}`;
+    let path = `/${newView}`; // ★ 核心變更：移除井字號
     
     if (product) {
       setSelectedProduct(product);
-      if (newView === View.PRODUCT) hash += `/${product.id}`;
+      if (newView === View.PRODUCT) path += `/${product.id}`;
     }
 
     if (targetId) {
@@ -488,7 +522,7 @@ const App: React.FC = () => {
       else if (newView === View.BUYER_DASHBOARD) setDashboardTab(targetId);
       else if (newView === View.ADMIN_HOME) setAdminTab(targetId);
 
-      if (newView !== View.PRODUCT) hash += `/${targetId}`;
+      if (newView !== View.PRODUCT) path += `/${targetId}`;
     } else if (newView === View.SHOP) {
       setCurrentShopId(null);
       if (!targetId) {
@@ -497,7 +531,10 @@ const App: React.FC = () => {
       }
     }
     
-    window.location.hash = hash;
+    // ★ 核心變更：使用 HTML5 History API 推進乾淨網址
+    window.history.pushState({}, '', path);
+    // 手動觸發 popstate 事件，讓系統知道網址變了
+    window.dispatchEvent(new PopStateEvent('popstate'));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -714,20 +751,9 @@ const App: React.FC = () => {
          </div>
       )}
       
-      {showAnnouncement && (
-        <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
-          <div className="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl p-8">
-            <h3 className="text-2xl font-black mb-4">平台公告</h3>
-            {announcementImage && (
-               <div className="mb-4 rounded-xl overflow-hidden shadow-sm">
-                  <img src={announcementImage} alt="Announcement" className="w-full h-auto object-cover" />
-               </div>
-            )}
-            <div className="text-slate-600 mb-6 whitespace-pre-wrap">{announcementText}</div>
-            <button onClick={handleCloseAnnouncement} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold">我知道了</button>
-          </div>
-        </div>
-      )}
+      {/* ★ 替換為新版彈窗元件，內建自動判定邏輯 */}
+      <AnnouncementModal siteSettings={siteSettings} />
+
       {modalContent && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[85vh]">
@@ -979,7 +1005,9 @@ const App: React.FC = () => {
               <AdminDashboard 
                 user={user} 
                 permissions={permissions}
-                products={user.role === 'ADMIN' ? products : products.filter(p => p.shop_id === (user.shop_id || user.id))} 
+                siteSettings={siteSettings} // ★ 新增傳入 siteSettings
+                onUpdateSiteSettings={async (updatedSettings) => { await API.updateSettings(updatedSettings); setSiteSettings(updatedSettings); }} // ★ 新增傳入更新函式
+                products={user.role === 'ADMIN' ? products : products.filter(p => p.shop_id === (user.shop_id || user.id))}
                 orders={orders.filter(o => o.shop_id === (user.shop_id || user.id))} 
                 buyOrders={orders.filter(o => o.receiver_phone === user.phone)} 
                 categories={categories.filter(c => c.shop_id === (user.shop_id || user.id))} 
@@ -1041,7 +1069,8 @@ const App: React.FC = () => {
             
             {view === View.CHAT && <ChatRoom currentUser={user?.role === 'ADMIN' ? SYSTEM_ADMIN_USER : user} targetId={chatTarget} allUsers={allUsers} currentProduct={selectedProduct} siteSettings={siteSettings} />}
             
-            {view === View.USER_MANAGEMENT && <UserManagement currentUser={user} users={allUsers} orders={orders} permissions={permissions} siteSettings={siteSettings} onUpdateUsers={async (updatedUsers) => { setAllUsers([...updatedUsers, SYSTEM_ADMIN_USER]); }} onUpdatePermissions={async (updatedPermissions) => { await API.updatePermissions(updatedPermissions); setPermissions(updatedPermissions); }} onUpdateSiteSettings={async (updatedSettings) => { await API.updateSettings(updatedSettings); setSiteSettings(updatedSettings); }} onNavigate={navigateTo} onUpdateOrderStatus={handleUpdateOrderStatus} />}
+            {/* ★ 雙重防護：不僅判斷 view，還要嚴格判斷 user.role 必須是 ADMIN 才渲染 */}
+            {view === View.USER_MANAGEMENT && user && user.role === 'ADMIN' && <UserManagement currentUser={user} users={allUsers} orders={orders} permissions={permissions} siteSettings={siteSettings} onUpdateUsers={async (updatedUsers) => { setAllUsers([...updatedUsers, SYSTEM_ADMIN_USER]); }} onUpdatePermissions={async (updatedPermissions) => { await API.updatePermissions(updatedPermissions); setPermissions(updatedPermissions); }} onUpdateSiteSettings={async (updatedSettings) => { await API.updateSettings(updatedSettings); setSiteSettings(updatedSettings); }} onNavigate={navigateTo} onUpdateOrderStatus={handleUpdateOrderStatus} />}
             
             {/* ★ 網紅專屬後台渲染 */}
             {view === View.INFLUENCER_DASHBOARD && (
@@ -1049,10 +1078,11 @@ const App: React.FC = () => {
             )}
           </>
       </main>
-      <footer className="w-full text-center pb-28 pt-4 text-slate-400 text-xs relative z-10"> {/* 加上 relative z-10 確保不被其他元素遮擋，並增加一點底部空間 pb-28 */}
-         <a href="#/privacy" className="hover:text-slate-600 mx-2 transition-colors p-2 inline-block">隱私權政策</a>
-         <span>|</span>
-         <a href="#/terms" className="hover:text-slate-600 mx-2 transition-colors p-2 inline-block">服務條款</a>
+      {/* ★ 視覺升級：加上 bg-white (白底)、mt-auto (自動推到最下面)、border-t (頂部灰線)，完美呈現您想要的樣式且不犧牲效能 */}
+      <footer className="w-full text-center pb-28 pt-6 bg-white border-t border-slate-200 text-slate-400 text-xs relative z-10 mt-auto shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)]">
+         <a href="/privacy" onClick={(e) => { e.preventDefault(); window.history.pushState({}, '', '/privacy'); window.dispatchEvent(new PopStateEvent('popstate')); }} className="hover:text-slate-600 mx-2 transition-colors p-2 inline-block font-bold">隱私權政策</a>
+         <span className="text-slate-300 mx-1">|</span>
+         <a href="/terms" onClick={(e) => { e.preventDefault(); window.history.pushState({}, '', '/terms'); window.dispatchEvent(new PopStateEvent('popstate')); }} className="hover:text-slate-600 mx-2 transition-colors p-2 inline-block font-bold">服務條款</a>
       </footer>
       <div className="fixed bottom-8 right-8 z-[999] flex flex-col gap-4 items-end">
         {user && user.role === 'ADMIN' && <button onClick={() => navigateTo(View.USER_MANAGEMENT)} className="px-4 py-2 bg-slate-800 text-white rounded-full text-[10px] font-black shadow-xl hover:bg-slate-700 transition flex items-center gap-2 mb-2"><i className="fa-solid fa-users-gear"></i> 使用者管理 (ADMIN)</button>}

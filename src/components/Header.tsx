@@ -204,11 +204,15 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
                    <div className="absolute top-12 md:top-14 right-0 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-[201] py-2 animate-fade-in-down">
                       <div className="px-4 py-3 border-b border-slate-50 mb-1 bg-slate-50/50">
                          <div className="font-bold text-sm text-slate-800 truncate">{user.name}</div>
-                         <div className="text-xs text-slate-400 mt-0.5">Lv.{user.level} {user.role === 'SELLER' ? '商家' : '會員'}</div>
+                         <div className="flex items-center gap-1 mt-1">
+                             <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] border border-slate-200 shadow-sm font-bold flex items-center">
+                                <i className="fa-solid fa-crown mr-1 text-yellow-500"></i>Lv.{user.level} {user.role === 'SELLER' ? '商家' : '會員'}
+                             </span>
+                         </div>
                       </div>
 
-                      {/* ★ 修正：強制點擊後台管理跳轉至主頁，並在網址寫入商家 ID，透過 reload 確保介面重置至概況頁 */}
-                      <button onClick={() => { setIsUserMenuOpen(false); window.location.hash = `#/${user.role === 'BUYER' ? View.BUYER_DASHBOARD : View.ADMIN_HOME}/${user.shop_id || user.id}`; window.location.reload(); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-gauge w-4 text-center"></i> 後台管理</button>
+                      {/* ★ 修正：強制點擊後台管理跳轉至主頁，改為乾淨網址 href 跳轉，完美觸發重載 */}
+                      <button onClick={() => { setIsUserMenuOpen(false); window.location.href = `/${user.role === 'BUYER' ? View.BUYER_DASHBOARD : View.ADMIN_HOME}/${user.shop_id || user.id}`; }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-gauge w-4 text-center"></i> 後台管理</button>
 
                       <button onClick={() => { setIsUserMenuOpen(false); setIsFavOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-star w-4 text-center"></i> 我的最愛</button>
 

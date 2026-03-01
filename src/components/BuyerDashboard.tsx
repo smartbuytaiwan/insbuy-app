@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { User, Order, View, SiteSettings } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import API from '../api';
+import BuyerReport from './BuyerReport'; // ★ 引入全新的買家報表
 
 // ★ 新增：宣告全域 google 變數避免 TS 報錯
 declare global {
@@ -492,43 +493,9 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
             </div>
          )}
 
+         {/* ★ 替換為全新獨立的 BuyerReport 報表元件 */}
          {activeTab === 'REPORTS' && (
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8">
-               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                   <h2 className="text-xl font-black text-slate-800 border-l-4 border-[#EE4D2D] pl-4">消費趨勢分析</h2>
-                   
-                   <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
-                      <input 
-                        type="date" 
-                        value={reportStartDate} 
-                        onChange={e => setReportStartDate(e.target.value)}
-                        className="bg-transparent text-xs font-bold text-slate-600 outline-none px-2"
-                      />
-                      <span className="text-slate-400 text-xs">~</span>
-                      <input 
-                        type="date" 
-                        value={reportEndDate} 
-                        onChange={e => setReportEndDate(e.target.value)}
-                        className="bg-transparent text-xs font-bold text-slate-600 outline-none px-2"
-                      />
-                   </div>
-               </div>
-               
-               <div className="h-64 w-full bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
-                  <ResponsiveContainer width="100%" height="100%">
-                     <LineChart data={expenseChartData}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94a3b8'}} />
-                        <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94a3b8'}} />
-                        <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'}} />
-                        <Line type="monotone" dataKey="amount" stroke="#EE4D2D" strokeWidth={3} dot={{r: 4, fill: '#EE4D2D', strokeWidth: 2, stroke: '#fff'}} activeDot={{r: 6}} />
-                     </LineChart>
-                  </ResponsiveContainer>
-               </div>
-               <div className="mt-4 text-center text-xs text-slate-400">
-                  統計區間總消費: <span className="font-bold text-slate-700">${expenseChartData.reduce((a,b)=>a+b.amount,0).toLocaleString()}</span>
-               </div>
-            </div>
+            <BuyerReport orders={orders} />
          )}
 
          {activeTab === 'CREATE_SHOP' && user.role !== 'SELLER' && (

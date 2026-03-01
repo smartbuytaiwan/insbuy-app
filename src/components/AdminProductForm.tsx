@@ -31,6 +31,7 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
     });
     const [selectedDraftId, setSelectedDraftId] = useState<string>('');
     const [seoInputValue, setSeoInputValue] = useState('');
+    const [isHtmlMode, setIsHtmlMode] = useState(false); 
     const [saveBank, setSaveBank] = useState(!!localStorage.getItem('insbuy_saved_bank'));
     const [isCustomBank, setIsCustomBank] = useState(false);
     const [selectedMainCat, setSelectedMainCat] = useState<string>('');
@@ -46,7 +47,7 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
     useEffect(() => {
         if (!editingId) {
             setSeoInputValue('');
-            // 恢復未儲存的表單草稿 (Issue 2: 解決跳走後按上一頁資料遺失)
+            // 恢復未儲存的表單草稿
             const autoDraft = sessionStorage.getItem('insbuy_new_product_draft');
             if (autoDraft) {
                 try {
@@ -75,9 +76,9 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
             const p = products.find(i => i.id === editingId);
             if(p) setSeoInputValue(p.keywords?.join(', ') || '');
         }
-    }, [editingId, products]);
+    }, [editingId, products, setForm]);
 
-    // 自動儲存草稿 (Issue 2: 解決跳走後按上一頁資料遺失)
+    // 自動儲存草稿
     useEffect(() => {
         if (!editingId && form && Object.keys(form).length > 0) {
             sessionStorage.setItem('insbuy_new_product_draft', JSON.stringify(form));
@@ -85,7 +86,7 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
     }, [form, editingId]);
 
     const resetForm = () => {
-        sessionStorage.removeItem('insbuy_new_product_draft'); // 取消或重置時清空草稿
+        sessionStorage.removeItem('insbuy_new_product_draft');
         setForm(getInitialForm());
         setEditingId(null);
         setGlobalSearchId(''); 
@@ -247,6 +248,38 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
         setForm(prev => ({ ...prev, category_ids: prev.category_ids?.filter(id => id !== idToRemove) }));
     };
 
+    // ★ 新增：自動產生 HTML 範本
+    const generateHtmlTemplate = () => {
+        // 取第一張圖
+        const imgTag = form.images && form.images[0] ? `<img src="${form.images[0]}" alt="${form.name || '商品圖片'}" style="max-width:100%; border-radius:12px; margin-bottom:16px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);" />\n` : '';
+        const template = `<div style="font-family: sans-serif; color: #333; line-height: 1.8; max-width: 800px; margin: 0 auto; padding: 20px;">
+    ${imgTag}<h2 style="color: #EE4D2D; border-bottom: 2px solid #EE4D2D; padding-bottom: 10px; margin-bottom: 20px; font-weight: 900;">${form.name || '商品名稱'}</h2>
+    <div style="background-color: #fff3ed; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+        <span style="font-size: 1.1em; color: #d94022; font-weight: bold;">限時優惠價：NT$ ${form.price || 0}</span>
+    </div>
+    <div style="font-size: 1em;">
+        <p>這是一件非常棒的商品，擁有以下特色：</p>
+        <ul>
+            <li>特色一：詳細說明</li>
+            <li>特色二：詳細說明</li>
+        </ul>
+    </div>
+</div>`;
+        if (form.custom_html && !window.confirm('確定要產生預設範本嗎？這將會完全覆蓋您目前編寫的 HTML 內容！')) return;
+        setForm(prev => ({ ...prev, custom_html: template }));
+    };
+
+    // ★ 新增：自動擷取 SEO 簡介
+    const handleAutoSeoDesc = () => {
+        if (!form.description) {
+            return alert('請先填寫上方的一般「商品描述」，系統才能為您自動抓取喔！');
+        }
+        // 去除換行與多餘空白，並擷取前 150 字
+        const cleanText = form.description.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+        const snippet = cleanText.substring(0, 150);
+        setForm(prev => ({ ...prev, seo_description: snippet }));
+    };
+
     const handleSaveProduct = async () => {
         if (!form.name || !form.price) return alert('請填寫商品名稱與價格');
         if (form.product_type === 'PHYSICAL') {
@@ -309,7 +342,24 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="md:col-span-2">
                             <label className="text-xs font-bold text-slate-500 mb-2 block">商品名稱</label>
-                            <input type="text" className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm outline-none focus:border-[#EE4D2D]" value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="請輸入商品名稱" />
+                            <input 
+                                type="text" 
+                                className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm outline-none focus:border-[#EE4D2D]" 
+                                value={form.name || ''} 
+                                onChange={e => {
+                                    const newName = e.target.value;
+                                    setForm(prev => {
+                                        // ★ SEO標題連動：如果seo_title是空的，或目前剛好等於先前的name，就自動跟隨輸入變動
+                                        const shouldSyncSeoTitle = !prev.seo_title || prev.seo_title === prev.name;
+                                        return { 
+                                            ...prev, 
+                                            name: newName, 
+                                            ...(shouldSyncSeoTitle && { seo_title: newName }) 
+                                        };
+                                    });
+                                }} 
+                                placeholder="請輸入商品名稱" 
+                            />
                         </div>
                         <div className="w-full">
                             <label className="text-xs font-bold text-slate-500 mb-2 block">團購基礎價</label>
@@ -337,8 +387,25 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                         </div>
 
                         <div className="md:col-span-2">
-                            <label className="text-xs font-bold text-slate-500 mb-2 block">商品描述</label>
-                            <textarea className="w-full h-40 border border-slate-200 rounded-2xl p-5 text-sm outline-none focus:border-[#EE4D2D] resize-none" value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="詳細介紹您的商品特色、尺寸、材質等資訊..."></textarea>
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="text-xs font-bold text-slate-500 block">商品描述</label>
+                                <button type="button" onClick={() => setIsHtmlMode(!isHtmlMode)} className="text-xs text-blue-500 font-bold hover:underline flex items-center gap-1">
+                                    <i className="fa-solid fa-code"></i> {isHtmlMode ? '切換回一般文字模式' : '切換 HTML 原始碼模式'}
+                                </button>
+                            </div>
+                            
+                            {isHtmlMode ? (
+                                <div className="space-y-2 animate-fade-in">
+                                    <div className="flex justify-end">
+                                        <button type="button" onClick={generateHtmlTemplate} className="text-xs bg-slate-800 text-green-400 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-700 transition flex items-center gap-1">
+                                            <i className="fa-solid fa-wand-magic-sparkles"></i> 自動產生排版範本
+                                        </button>
+                                    </div>
+                                    <textarea className="w-full h-64 border border-slate-200 rounded-2xl p-5 text-sm outline-none focus:border-[#EE4D2D] resize-y font-mono bg-slate-800 text-green-400" value={form.custom_html || ''} onChange={e => setForm({...form, custom_html: e.target.value})} placeholder="請在此貼上或撰寫您的 HTML 程式碼..."></textarea>
+                                </div>
+                            ) : (
+                                <textarea className="w-full h-40 border border-slate-200 rounded-2xl p-5 text-sm outline-none focus:border-[#EE4D2D] resize-none" value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="詳細介紹您的商品特色、尺寸、材質等資訊..."></textarea>
+                            )}
                             
                             <div className="mt-3 flex flex-col md:flex-row items-start md:items-center gap-3 bg-slate-50 p-3 md:p-4 rounded-xl border border-slate-100">
                                <button onClick={handleSaveDraft} className="w-full md:w-auto text-sm bg-slate-800 text-white h-12 px-4 rounded-xl hover:bg-slate-700 transition font-bold shadow-sm whitespace-nowrap shrink-0"><i className="fa-solid fa-save mr-1"></i>存為草稿</button>
@@ -448,12 +515,10 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                                 <div className="w-full md:flex-1"><label className="text-xs font-bold text-slate-500 mb-1 block">規格名稱 (如: 紅色 M)</label><input type="text" className="w-full border border-slate-200 rounded-lg p-3 text-sm md:text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.name} onChange={e => updateVariant(i, 'name', e.target.value)} /></div>
                                 <div className="w-full md:flex-1">
                                     <label className="text-xs font-bold text-slate-500 mb-1 block">附加價格 (+NT$)</label>
-                                    {/* ★ 核心修復：使用 string 型別並過濾首位 0 */}
                                     <input type="number" className="w-full border border-slate-200 rounded-lg p-3 text-sm md:text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.price.toString() === '0' && v.price !== 0 ? '' : v.price.toString().replace(/^0+/, '') || '0'} onChange={e => updateVariant(i, 'price', e.target.value === '' ? 0 : parseInt(e.target.value, 10))} onFocus={e => e.target.select()} />
                                 </div>
                                 <div className="w-full md:flex-1">
                                     <label className="text-xs font-bold text-slate-500 mb-1 block">庫存數量</label>
-                                    {/* ★ 核心修復：使用 string 型別並過濾首位 0 */}
                                     <input type="number" className="w-full border border-slate-200 rounded-lg p-3 text-sm md:text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.stock.toString() === '0' && v.stock !== 0 ? '' : v.stock.toString().replace(/^0+/, '') || '0'} onChange={e => updateVariant(i, 'stock', e.target.value === '' ? 0 : parseInt(e.target.value, 10))} onFocus={e => e.target.select()} />
                                 </div>
                                 {form.variants && form.variants.length > 1 && <button onClick={() => removeVariant(i)} className="absolute top-2 right-2 md:static md:w-auto p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"><i className="fa-solid fa-trash-can text-lg"></i></button>}
@@ -484,7 +549,6 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                                             <div><label className="text-[10px] text-slate-500 font-bold mb-1 block">每滿幾件加收一次運費</label><input type="number" className="w-full border border-slate-200 rounded-lg p-2 text-sm" value={rule.limit_qty === 0 ? '' : rule.limit_qty} onChange={e => updateShippingRule(i, 'limit_qty', e.target.value === '' ? 0 : parseInt(e.target.value))} placeholder="例: 4 (留空=不限)" /></div>
                                             <div><label className="text-[10px] text-slate-500 font-bold mb-1 block">滿多少金額免運</label><div className="flex items-center gap-2"><span className="text-xs text-slate-500 font-bold">$</span><input type="number" className="flex-1 border border-slate-200 rounded-lg p-2 text-sm" value={rule.free_threshold === 0 ? '' : rule.free_threshold} onChange={e => updateShippingRule(i, 'free_threshold', e.target.value === '' ? 0 : parseInt(e.target.value))} placeholder="例: 1000 (留空=無)" /></div></div>
                                         </div>
-                                        {/* ★ 新增：面交/自取的 Google 日曆連動設定 */}
                                         {(rule.name.includes('面交') || rule.name.includes('自取')) && (
                                             <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col md:flex-row gap-4 items-center bg-white p-3 rounded-lg shadow-sm">
                                                 <label className="flex items-center gap-2 cursor-pointer">
@@ -626,11 +690,32 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                             <label className="text-xs font-bold text-slate-600 mb-2 flex justify-between"><span>SEO 搜尋關鍵字 (用逗號隔開)</span><span className="text-slate-400 font-normal">買家搜尋時更容易找到您的商品</span></label>
                             <input type="text" className="w-full border border-slate-200 rounded-lg p-3 text-sm outline-none focus:border-[#EE4D2D] bg-white" value={seoInputValue} onChange={e => { setSeoInputValue(e.target.value); setForm({...form, keywords: e.target.value.split(',').map(k => k.trim()).filter(k => k)}); }} placeholder="例如：洋裝, 夏季, 碎花" />
                         </div>
+
+                        {/* ★ 以下為新增的 SEO 進階欄位 */}
+                        <div className="border-t border-slate-200 pt-6 mt-6">
+                            <label className="text-xs font-bold text-slate-600 mb-2 flex justify-between">
+                                <span>自訂 SEO 網頁標題 (Title) <span className="text-slate-400 font-normal ml-1">預設與商品名稱同步</span></span>
+                                <span className={`font-normal ${form.seo_title?.length > 60 ? 'text-red-500' : 'text-slate-400'}`}>目前: {form.seo_title?.length || 0} 字 (建議 60 字內)</span>
+                            </label>
+                            <input type="text" className="w-full border border-slate-200 rounded-lg p-3 text-sm outline-none focus:border-[#EE4D2D] bg-white" value={form.seo_title || ''} onChange={e => setForm({...form, seo_title: e.target.value})} placeholder="例如：2026最新款 超美碎花洋裝 | InsBuy 拍拍購" />
+                        </div>
+                        <div className="pt-4">
+                            <div className="flex justify-between items-end mb-2">
+                                <label className="text-xs font-bold text-slate-600 block">
+                                    自訂 SEO 網頁描述 (Meta Description) 
+                                    <span className="text-slate-400 font-normal mt-1 block">留空將自動使用商品描述。目前: {form.seo_description?.length || 0} 字 (建議 100-150 字)</span>
+                                </label>
+                                <button type="button" onClick={handleAutoSeoDesc} className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-bold hover:bg-blue-100 transition border border-blue-100 flex items-center gap-1 shrink-0">
+                                    <i className="fa-solid fa-bolt"></i> 自動抓取簡介
+                                </button>
+                            </div>
+                            <textarea className="w-full h-24 border border-slate-200 rounded-lg p-3 text-sm outline-none focus:border-[#EE4D2D] bg-white resize-none" value={form.seo_description || ''} onChange={e => setForm({...form, seo_description: e.target.value})} placeholder="簡短描述您的商品，建議 100-150 字以內，這將顯示在 Google 搜尋結果的敘述中..." />
+                        </div>
                     </div>
                 </section>
 
                 {/* 底部按鈕區 */}
-                <div className="flex flex-col md:flex-row gap-4 pt-10 border-t border-slate-200 pb-20"> {/* pb-20 防止手機版被右下角的懸浮按鈕遮擋 */}
+                <div className="flex flex-col md:flex-row gap-4 pt-10 border-t border-slate-200 pb-20">
                   <button onClick={resetForm} className="w-full md:flex-1 h-14 rounded-2xl font-bold text-slate-500 border-2 border-slate-200 hover:bg-slate-50 transition">取消返回</button>
                   <button onClick={handleSaveProduct} className="w-full md:flex-[2] h-14 primary-gradient text-white rounded-2xl font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all text-lg">
                       {editingId ? '確認儲存修改' : '確認發布並開始團購'}

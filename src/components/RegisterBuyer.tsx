@@ -52,7 +52,7 @@ const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, 
          </div>
          <h2 className="text-2xl font-black text-slate-800 mb-2">註冊功能暫停</h2>
          <p className="text-slate-500 mb-8">目前系統已暫停開放新會員註冊，<br/>請稍後再試或聯繫客服人員。</p>
-         <button onClick={() => { window.location.hash = '#/auth'; window.location.reload(); }} className="inline-block px-8 py-3 bg-slate-800 text-white rounded-xl font-bold">返回登入</button>
+         <button onClick={() => { window.location.href = '/AUTH'; }} className="inline-block px-8 py-3 bg-slate-800 text-white rounded-xl font-bold">返回登入</button>
       </div>
     );
   }

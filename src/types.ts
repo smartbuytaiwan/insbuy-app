@@ -1,3 +1,13 @@
+// ★ 新增：庫存異動紀錄型別
+export interface StockLog {
+  id: string;
+  variant_name: string; // 記錄是對哪個規格進行操作
+  change_amount: number; // 正數代表增加，負數代表減少
+  reason: string;
+  created_at: string;
+  order_id?: string; // ★ 新增：用於關聯被取消的訂單
+}
+
 export interface ProductVariant {
   name: string;
   price: number;
@@ -73,7 +83,12 @@ export interface Product {
   is_preorder?: boolean; // ★ 修復預購欄位
   preorder_end_date?: string; // ★ 修復預購日期
   preorder_arrival_date?: string; // ★ 修復預計到貨日
+  custom_html?: string; // 自訂 HTML 程式碼
+  seo_title?: string; // 自訂 SEO 標題
+  seo_description?: string; // 自訂 SEO 網頁描述
+  stock_logs?: StockLog[]; // ★ 新增：庫存異動歷史紀錄
 }
+
 
 export interface OrderItem extends Product {
   qty: number;

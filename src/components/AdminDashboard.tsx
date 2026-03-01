@@ -14,11 +14,15 @@ import ProductImageCropper from './ProductImageCropper';
 import AdminOverview from './AdminOverview';
 import { SELLER_ORDER_STATUS_OPTIONS, BUYER_ORDER_STATUS_OPTIONS, COLORS } from '../constants';
 import AdminProductForm from './AdminProductForm';
+import BuyerReport from './BuyerReport'; // ★ 引入全新的買家報表
+import AdminAnnouncement from './AdminAnnouncement'; // ★ 新增：引入全站公告後台管理元件
 
 
 interface AdminDashboardProps {
-  user: User;
-  permissions?: any[]; // ★ 新增：接收來自系統的會員權限設定表
+  user: User;
+  permissions?: any[]; // ★ 新增：接收來自系統的會員權限設定表
+  siteSettings?: any; // ★ 新增：接收全站設定
+  onUpdateSiteSettings?: (settings: any) => void; // ★ 新增：更新全站設定的函式
   products: Product[];
   orders: Order[];
   buyOrders?: Order[];
@@ -98,12 +102,15 @@ const exportToExcelXML = (orders: Order[], selectedStatuses: string[], fileName:
   document.body.removeChild(link);
 };
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-  user, products, orders, buyOrders = [], categories, systemCategories = [], allUsers, onUpdateSystemCategories, 
-  onUpdateProducts, onUpdateOrderStatus, onUpdateCategories, onUpdateUser, onNavigate, initialTab,
-  viewedOrderIds = [], onMarkAsViewed, onLogout,
-  permissions = [] // ★ 接收權限設定
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
+  user, products, orders, buyOrders = [], categories, systemCategories = [], allUsers, onUpdateSystemCategories, 
+  onUpdateProducts, onUpdateOrderStatus, onUpdateCategories, onUpdateUser, onNavigate, initialTab,
+  viewedOrderIds = [], onMarkAsViewed, onLogout,
+  permissions = [], // ★ 接收權限設定
+  siteSettings, // ★ 新增
+  onUpdateSiteSettings // ★ 新增
 }) => {
+
   // ★ 修正：將 shopId 移到元件最上方，避免 Cannot access 'shopId' before initialization 的錯誤
   const shopId = user.shop_id || user.id;
 
@@ -142,7 +149,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       };
   }, [activePermissions, user.level]);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'products' | 'create' | 'categories' | 'settings' | 'affiliate' | 'customers' | 'system_cats' | 'buying_account' | 'buying_orders' | 'buying_reports' | 'reports'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'products' | 'create' | 'categories' | 'settings' | 'affiliate' | 'customers' | 'system_cats' | 'buying_account' | 'buying_orders' | 'buying_reports' | 'reports' | 'announcement'>('overview');
   const [showMobileMenu, setShowMobileMenu] = useState(true);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -478,92 +485,154 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const overviewData = useMemo(() => {
-    const salesTrend = [];
-    const statusCount: Record<string, number> = {};
-    let totalSales = 0;
-    let totalOrders = 0;
-
+    // 1. 基本設定與日期區間
     const startDate = new Date(overviewRange.start);
+    startDate.setHours(0, 0, 0, 0);
     const endDate = new Date(overviewRange.end);
+    endDate.setHours(23, 59, 59, 999);
     
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
-      const dailyOrders = localOrders.filter(o => o.created_at.startsWith(dateStr) && o.status !== 'CANCELLED');
-      const dailyTotal = dailyOrders.reduce((sum, o) => sum + o.total_amount, 0);
-      salesTrend.push({ name: dateStr.slice(5), sales: dailyTotal, fullDate: dateStr });
-      totalSales += dailyTotal;
-      totalOrders += dailyOrders.length;
-    }
+    const durationDays = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    
+    // 計算上一週期的日期 (例如選過去7天，就算上一個7天)
+    const prevEndDate = new Date(startDate.getTime() - 1);
+    const prevStartDate = new Date(prevEndDate.getTime() - (durationDays * 24 * 60 * 60 * 1000) + 1);
+    prevStartDate.setHours(0, 0, 0, 0);
 
-    localOrders.forEach(o => {
-      const oDate = o.created_at.split('T')[0];
-      if (oDate >= overviewRange.start && oDate <= overviewRange.end) {
-        statusCount[o.status] = (statusCount[o.status] || 0) + 1;
-      }
+    // 2. 獲取當前週期與上一週期的有效訂單
+    const currentOrders = localOrders.filter(o => {
+        const t = new Date(o.created_at).getTime();
+        return t >= startDate.getTime() && t <= endDate.getTime() && o.status !== 'CANCELLED';
     });
     
+    const prevOrders = localOrders.filter(o => {
+        const t = new Date(o.created_at).getTime();
+        return t >= prevStartDate.getTime() && t <= prevEndDate.getTime() && o.status !== 'CANCELLED';
+    });
+
+    // 3. 計算當前週期核心指標
+    const totalSales = currentOrders.reduce((sum, o) => sum + o.total_amount, 0);
+    const totalOrders = currentOrders.length;
+    const uniqueBuyers = new Set(currentOrders.map(o => o.receiver_phone)).size;
+    const aov = totalOrders > 0 ? Math.round(totalSales / totalOrders) : 0;
+    const arpu = uniqueBuyers > 0 ? Math.round(totalSales / uniqueBuyers) : 0;
+
+    // 計算上一週期核心指標 (用來算成長率)
+    const prevTotalSales = prevOrders.reduce((sum, o) => sum + o.total_amount, 0);
+    const prevTotalOrders = prevOrders.length;
+    const prevUniqueBuyers = new Set(prevOrders.map(o => o.receiver_phone)).size;
+    const prevAov = prevTotalOrders > 0 ? Math.round(prevTotalSales / prevTotalOrders) : 0;
+    const prevArpu = prevUniqueBuyers > 0 ? Math.round(prevTotalSales / prevUniqueBuyers) : 0;
+
+    // 安全的成長率計算公式
+    const calcGrowth = (current: number, prev: number) => {
+        if (prev === 0) return current > 0 ? 100 : 0;
+        return Number((((current - prev) / prev) * 100).toFixed(2));
+    };
+
+    const growth = {
+        sales: calcGrowth(totalSales, prevTotalSales),
+        orders: calcGrowth(totalOrders, prevTotalOrders),
+        buyers: calcGrowth(uniqueBuyers, prevUniqueBuyers),
+        aov: calcGrowth(aov, prevAov),
+        arpu: calcGrowth(arpu, prevArpu),
+        ctr: 0 // 下方計算瀏覽量後補上
+    };
+
+    // 4. 趨勢圖表資料 (多維度動態走勢)
+    const salesTrend = [];
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().split('T')[0];
+      const dailyOrders = currentOrders.filter(o => o.created_at.startsWith(dateStr));
+      const dailySales = dailyOrders.reduce((sum, o) => sum + o.total_amount, 0);
+      const dailyBuyers = new Set(dailyOrders.map(o => o.receiver_phone)).size;
+      
+      salesTrend.push({ 
+          name: dateStr.slice(5), 
+          fullDate: dateStr,
+          sales: dailySales,
+          orders: dailyOrders.length,
+          buyers: dailyBuyers,
+          aov: dailyOrders.length > 0 ? Math.round(dailySales / dailyOrders.length) : 0,
+          arpu: dailyBuyers > 0 ? Math.round(dailySales / dailyBuyers) : 0
+      });
+    }
+
+    // 5. 訂單狀態圓餅圖
+    const statusCount: Record<string, number> = {};
+    currentOrders.forEach(o => {
+        statusCount[o.status] = (statusCount[o.status] || 0) + 1;
+    });
     const pieData = Object.keys(statusCount).map(key => {
         const label = SELLER_ORDER_STATUS_OPTIONS.find(opt => opt.value === key)?.label || key;
         return { name: label, value: statusCount[key] };
     });
 
-    // ★ 新增與修改：計算商品瀏覽量 (區間與今日明細排行榜)
-    // ★ 修正：統一轉成絕對的 YYYY-MM-DD 格式，與後端完全匹配
-    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
-    const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    let intervalProductViews = 0;
+    // 6. 熱銷商品排行榜 (Top Products)
+    const productSalesMap: Record<string, {name: string, qty: number, revenue: number, image: string}> = {};
+    currentOrders.forEach(o => {
+        o.items.forEach(item => {
+            if(!productSalesMap[item.id]) {
+                productSalesMap[item.id] = { 
+                    name: item.name, 
+                    qty: 0, 
+                    revenue: 0, 
+                    image: item.images?.[0] || (item as any).image || 'https://placehold.co/100' 
+                };
+            }
+            productSalesMap[item.id].qty += item.qty;
+            productSalesMap[item.id].revenue += (item.finalPrice || item.price) * item.qty;
+        });
+    });
+    // 依據營業額排序取前 5 名
+    const topProducts = Object.values(productSalesMap).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+
+    // 7. 瀏覽量與轉換率計算
+    const dStr = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+    const todayStr = `${dStr.getFullYear()}-${String(dStr.getMonth() + 1).padStart(2, '0')}-${String(dStr.getDate()).padStart(2, '0')}`;
+    
+    let intervalProductViews = 0; let prevIntervalProductViews = 0;
     let todayProductViews = 0;
     let todayProductViewsList: { name: string, views: number, shopName?: string }[] = [];
-    
-    // 如果是管理員，就掃描全站商品；如果是賣家，只掃描自己的商品
+    let intervalPlatformViews = 0; let prevIntervalPlatformViews = 0;
+    let todayPlatformViews = 0;
+
     const productsToAnalyze = user.role === 'ADMIN' ? products : myShopProducts;
+    const prevStartStr = prevStartDate.toISOString().split('T')[0];
+    const prevEndStr = prevEndDate.toISOString().split('T')[0];
 
     productsToAnalyze.forEach(p => {
         if (p.views) {
             let pTodayViews = 0;
             Object.entries(p.views).forEach(([date, count]) => {
-                // 1. 計算選定「區間」內的總瀏覽
-                if (date >= overviewRange.start && date <= overviewRange.end) {
-                    intervalProductViews += Number(count);
-                }
-                // 2. 獨立計算「今日」的總瀏覽
-                if (date === todayStr) {
-                    todayProductViews += Number(count);
-                    pTodayViews += Number(count);
-                }
+                if (date >= overviewRange.start && date <= overviewRange.end) intervalProductViews += Number(count);
+                if (date >= prevStartStr && date <= prevEndStr) prevIntervalProductViews += Number(count);
+                if (date === todayStr) { todayProductViews += Number(count); pTodayViews += Number(count); }
             });
-            
-            // 將今日有瀏覽量的商品加入明細排行榜陣列
             if (pTodayViews > 0) {
                 const shopInfo = allUsers?.find(u => u.shop_id === p.shop_id || u.id === p.shop_id);
-                todayProductViewsList.push({
-                    name: p.name,
-                    views: pTodayViews,
-                    shopName: shopInfo ? (shopInfo.shop_name || shopInfo.name) : '未知商家'
-                });
+                todayProductViewsList.push({ name: p.name, views: pTodayViews, shopName: shopInfo ? (shopInfo.shop_name || shopInfo.name) : '未知商家' });
             }
         }
     });
-    
-    // 依照瀏覽量從大到小排序
     todayProductViewsList.sort((a, b) => b.views - a.views);
 
-    // ★ 新增與修改：計算平台瀏覽量 (區間)
-    let intervalPlatformViews = 0;
-    let todayPlatformViews = 0;
     if (user.role === 'ADMIN') {
         Object.entries(platformViews).forEach(([date, count]) => {
-            if (date >= overviewRange.start && date <= overviewRange.end) {
-                intervalPlatformViews += Number(count);
-            }
-            if (date === todayStr) {
-                todayPlatformViews += Number(count);
-            }
+            if (date >= overviewRange.start && date <= overviewRange.end) intervalPlatformViews += Number(count);
+            if (date >= prevStartStr && date <= prevEndStr) prevIntervalPlatformViews += Number(count);
+            if (date === todayStr) todayPlatformViews += Number(count);
         });
     }
 
+    const currentViews = user.role === 'ADMIN' ? intervalPlatformViews : intervalProductViews;
+    const prevViews = user.role === 'ADMIN' ? prevIntervalPlatformViews : prevIntervalProductViews;
+    
+    const ctr = currentViews > 0 ? Number(((totalOrders / currentViews) * 100).toFixed(2)) : 0;
+    const prevCtr = prevViews > 0 ? Number(((prevTotalOrders / prevViews) * 100).toFixed(2)) : 0;
+    growth.ctr = calcGrowth(ctr, prevCtr);
+
     return { 
-        salesTrend, pieData, totalSales, totalOrders, 
+        salesTrend, pieData, totalSales, totalOrders, uniqueBuyers, aov, arpu, ctr, growth, topProducts,
         intervalProductViews, todayProductViews, todayProductViewsList,
         intervalPlatformViews, todayPlatformViews 
     };
@@ -846,6 +915,51 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const input = prompt('請輸入取消原因：');
       if (input === null) return;
       cancellationReason = input;
+
+      // ★ 新增：訂單取消自動退回庫存並紀錄
+      const targetOrder = localOrders.find(o => o.id === orderId);
+      if (targetOrder && targetOrder.status !== 'CANCELLED') {
+          const newProducts = [...products];
+          let isProductsChanged = false;
+
+          targetOrder.items.forEach(item => {
+              const pIndex = newProducts.findIndex(p => p.id === item.id);
+              if (pIndex > -1) {
+                  const p = newProducts[pIndex];
+                  const vIndex = p.variants.findIndex(v => v.name === item.selectedVariant || (v.name==='單一規格' && !item.selectedVariant));
+                  if (vIndex > -1) {
+                      const updatedVariants = [...p.variants];
+                      updatedVariants[vIndex] = { ...updatedVariants[vIndex], stock: updatedVariants[vIndex].stock + item.qty };
+                      
+                      const newLog = {
+                          id: `log-${Date.now()}-${Math.random().toString(36).substr(2,5)}`,
+                          variant_name: updatedVariants[vIndex].name,
+                          change_amount: item.qty,
+                          reason: `買家取消訂單自動退回 (訂單編號: #${orderId.slice(-6)})`,
+                          created_at: new Date().toISOString(),
+                          order_id: orderId // ★ 綁定訂單ID，供歷史紀錄顯示卡片使用
+                      };
+
+                      newProducts[pIndex] = {
+                          ...p,
+                          variants: updatedVariants,
+                          total_stock: updatedVariants.reduce((sum, v) => sum + v.stock, 0),
+                          stock_logs: [newLog, ...(p.stock_logs || [])]
+                      };
+                      isProductsChanged = true;
+                      
+                      // 非同步更新資料庫
+                      if (API.updateProduct) {
+                          API.updateProduct(newProducts[pIndex]).catch(console.error);
+                      }
+                  }
+              }
+          });
+
+          if (isProductsChanged) {
+              onUpdateProducts(newProducts);
+          }
+      }
     }
     
     onUpdateOrderStatus(orderId, newStatus, cancellationReason);
@@ -963,15 +1077,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const navItems = [
-    { id: 'overview', icon: 'fa-chart-pie', label: '經營概況' },
-    { id: 'orders', icon: 'fa-receipt', label: '訂單管理' },
-    { id: 'products', icon: 'fa-box-open', label: '商品管理' },
-    { id: 'customers', icon: 'fa-users', label: '客戶管理' }, // ★ 改為常駐顯示
-    { id: 'categories', icon: 'fa-list-ul', label: user.role === 'ADMIN' ? '平台分類管理' : '分類管理' },
-    { id: 'settings', icon: 'fa-store', label: '商店設定' },
-    { id: 'affiliate', icon: 'fa-bullhorn', label: '網紅分潤設定' }, // ★ 新增分潤獨立頁面
-    { id: 'create', icon: 'fa-plus-circle', label: editingId ? '編輯商品' : '新增商品' },
-  ];
+    { id: 'overview', icon: 'fa-chart-pie', label: '經營概況' },
+    { id: 'orders', icon: 'fa-receipt', label: '訂單管理' },
+    { id: 'products', icon: 'fa-box-open', label: '商品管理' },
+    { id: 'customers', icon: 'fa-users', label: '客戶管理' }, // ★ 改為常駐顯示
+    { id: 'categories', icon: 'fa-list-ul', label: user.role === 'ADMIN' ? '平台分類管理' : '分類管理' },
+    { id: 'settings', icon: 'fa-store', label: '商店設定' },
+    { id: 'affiliate', icon: 'fa-bullhorn', label: '網紅分潤設定' }, // ★ 新增分潤獨立頁面
+    ...(user.role === 'ADMIN' ? [{ id: 'announcement', icon: 'fa-bell', label: '全站公告設定' }] : []), // ★ 新增：僅限管理員可見
+    { id: 'create', icon: 'fa-plus-circle', label: editingId ? '編輯商品' : '新增商品' },
+  ];
   
 
   const renderSidebar = () => (
@@ -1076,8 +1191,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   );
 
   return (
-    <div className="flex flex-col md:flex-row gap-6 items-start animate-fade-in pb-20 w-full overflow-x-hidden">
-      
+    <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-start animate-fade-in pb-20 w-full max-w-[100vw] overflow-x-hidden box-border px-1 md:px-0">
       {cropModal.isOpen && (
          <ProductImageCropper 
             src={cropModal.src} 
@@ -1091,7 +1205,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </aside>
 
       {/* ★ 修正 1：加上 w-full max-w-full 確保在手機版時寬度能完整填滿，解決商品列表畫面偏窄的問題 */}
-      <div className={`flex-1 w-full max-w-full space-y-6 min-w-0 ${showMobileMenu ? 'hidden md:block' : 'block'}`}>
+      {/* ★ 修正 2：在 flex-1 容器補上 overflow-x-hidden，防止內部任何大表格撐破整個手機畫面 */}
+      <div className={`flex-1 w-full max-w-full space-y-6 min-w-0 overflow-x-hidden ${showMobileMenu ? 'hidden md:block' : 'block'}`}>
         
         <div className="md:hidden mb-4">
            <button 
@@ -1132,6 +1247,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Categories, System Cats, Settings Tabs */}
         {activeTab === 'settings' && <ShopSettings user={user} permissions={permissions} onUpdateUser={onUpdateUser} />}
+        
+        {/* ★ 新增：全站公告設定畫面渲染 */}
+        {activeTab === 'announcement' && user.role === 'ADMIN' && (
+          <AdminAnnouncement siteSettings={siteSettings} onUpdateSiteSettings={onUpdateSiteSettings!} />
+        )}
        {/* ★ 專業版：獨立出來的網紅分潤設定 Tab */}
         {activeTab === 'affiliate' && (
            <AdminAffiliate 
@@ -1456,6 +1576,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* Products List Tab */}
         {activeTab === 'products' && (
            <AdminProducts 
+              allOrders={localOrders} // ★ 新增：傳入所有訂單以精準計算銷售量
               paginatedProducts={paginatedProducts}
               categories={categories}
               systemCategories={systemCategories}
@@ -1594,10 +1715,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
         
+        {/* ★ 替換為全新獨立的 BuyerReport 報表元件 (傳入 buyOrders 作為個人消費數據) */}
         {activeTab === 'buying_reports' && (
-           <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8"><h2 className="text-2xl font-black text-slate-800 mb-8 border-l-4 border-slate-800 pl-4">個人消費報表</h2>
-              <div className="py-10 text-center text-slate-400"><i className="fa-solid fa-chart-column text-4xl mb-4 opacity-50"></i><p>消費數據持續累積中...</p></div>
-           </div>
+           <BuyerReport orders={buyOrders} />
         )}
       </div>
 
