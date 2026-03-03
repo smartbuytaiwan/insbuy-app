@@ -16,9 +16,8 @@ interface AdminOverviewProps {
 const AdminOverview: React.FC<AdminOverviewProps> = ({
   user, allUsers, overviewRange, setOverviewRange, overviewData, setShowViewsModal
 }) => {
-  // ★ 核心圖表連動狀態
-  const [activeMetric, setActiveMetric] = useState<'sales' | 'orders' | 'aov' | 'buyers' | 'arpu'>('sales');
-
+  // ★ 核心圖表連動狀態 (加入 profit)
+  const [activeMetric, setActiveMetric] = useState<'sales' | 'profit' | 'orders' | 'aov' | 'buyers' | 'arpu'>('sales');
   // ★ 快捷時間設定器
   const setQuickRange = (days: number) => {
       const end = new Date();
@@ -41,6 +40,7 @@ const AdminOverview: React.FC<AdminOverviewProps> = ({
 
   const metricConfig: Record<string, { label: string, prefix: string, suffix: string, color: string }> = {
       sales: { label: '銷售額', prefix: '$', suffix: '', color: '#EE4D2D' },
+      profit: { label: '預估總毛利', prefix: '$', suffix: '', color: '#10B981' }, // ★ 新增毛利設定
       orders: { label: '訂單數', prefix: '', suffix: ' 筆', color: '#3B82F6' },
       aov: { label: '平均訂單金額', prefix: '$', suffix: '', color: '#10B981' },
       buyers: { label: '買家數', prefix: '', suffix: ' 人', color: '#F59E0B' },
@@ -70,10 +70,11 @@ const AdminOverview: React.FC<AdminOverviewProps> = ({
          </div>
       </div>
       
-      {/* 六大數據卡片陣列 */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
+      {/* 數據卡片陣列 (調整 grid 以容納新增的毛利卡片) */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
         {[
             { id: 'sales', title: '總銷售額', val: overviewData.totalSales, pre: '$', gro: overviewData.growth.sales },
+            { id: 'profit', title: '預估總毛利', val: overviewData.totalProfit, pre: '$', gro: overviewData.growth.profit }, // ★ 新增毛利卡片
             { id: 'orders', title: '訂單數', val: overviewData.totalOrders, gro: overviewData.growth.orders },
             { id: 'aov', title: '平均訂單金額', val: overviewData.aov, pre: '$', gro: overviewData.growth.aov },
             { id: 'buyers', title: '不重複買家數', val: overviewData.uniqueBuyers, gro: overviewData.growth.buyers },

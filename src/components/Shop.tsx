@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Product, Category, User, View, Order } from '../types';
 import API from '../api';
+import LazyImage from './LazyImage'; // ★ 新增：引入圖片懶加載與骨架屏元件
+import ReportModal from './ReportModal'; // ★ 新增：引入共用檢舉元件
 
 interface ShopProps {
   products: Product[];
@@ -70,11 +72,8 @@ const Shop: React.FC<ShopProps> = ({
 
   const [currentPage, setCurrentPage] = useState(getInitialPage());
 
-  // 檢舉相關 State
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [reportData, setReportData] = useState<{type: 'SHOP' | 'PRODUCT', targetId: string, targetName: string, subject: string, reason: string}>({
-     type: 'SHOP', targetId: '', targetName: '', subject: '', reason: ''
-  });
+  // ★ 檢舉賣場的狀態
+  const [isReportingShop, setIsReportingShop] = useState(false);
 
   // 評分相關 State
   const [showRateModal, setShowRateModal] = useState(false);
@@ -204,10 +203,10 @@ const Shop: React.FC<ShopProps> = ({
   const displayProducts = useMemo(() => {
     let result = [...products];
     
-    // ★ 新增：如果不是店家本人，就過濾掉所有隱藏銷售商品，讓別人絕對看不到
+    // ★ 新增：如果不是店家本人，就過濾掉所有隱藏銷售商品，以及「被檢舉審核中」的商品，讓別人絕對看不到
     const isShopOwner = currentUser && currentShop && currentUser.id === (currentShop.shop_id || currentShop.id);
     if (!isShopOwner) {
-        result = result.filter(p => !(p as any).is_hidden);
+        result = result.filter(p => !(p as any).is_hidden && !(p as any).is_under_review);
     }
 
     // 熱銷商品優先邏輯
@@ -297,30 +296,6 @@ const Shop: React.FC<ShopProps> = ({
     } else {
         alert(`請手動複製網址分享：\n${shareUrl}`);
     }
-  };
-
-  const openReport = (type: 'SHOP' | 'PRODUCT', id: string, name: string) => {
-      setReportData({ type, targetId: id, targetName: name, subject: '', reason: '' });
-      setShowReportModal(true);
-  };
-
-  const submitReport = async () => {
-      if (!reportData.subject || !reportData.reason) return alert('請填寫主題與原因');
-      if (!currentUser) return alert('請先登入');
-
-      try {
-          await API.createReport({
-              ...reportData,
-              reporterId: currentUser.id,
-              reporterName: currentUser.name
-          });
-
-          alert('檢舉已送出，管理員將會進行審核。');
-          setShowReportModal(false);
-      } catch (e) {
-          console.error(e);
-          alert('檢舉發送失敗，請確認伺服器已連線');
-      }
   };
 
   const handleUpdateRank = async (product: Product, rank: number) => {
@@ -534,7 +509,15 @@ const Shop: React.FC<ShopProps> = ({
                 </div>
 
                 <div className="flex-1 min-w-0 mb-1 w-full">
-                  <h1 className="text-xl md:text-2xl font-black text-slate-800 drop-shadow-sm truncate">{currentShop.shop_name || currentShop.name}</h1>
+                  <div className="font-bold text-lg md:text-2xl text-slate-800 mb-1 flex flex-wrap items-center justify-start gap-2">
+                    <span className="truncate max-w-full">{currentShop.shop_name || currentShop.name}</span>
+                    {/* ★ 新增：優良商家金牌 Icon */}
+                    {(currentShop.has_excellent_badge || (currentShop as any).excellent_badge_expire_at) && (
+                       <span className="bg-yellow-50 text-yellow-600 px-2 py-0.5 rounded text-[10px] md:text-xs font-black border border-yellow-200 flex items-center gap-1 shadow-sm shrink-0 mt-1 md:mt-0">
+                          <i className="fa-solid fa-medal"></i> 優良商家
+                       </span>
+                    )}
+                 </div>
                   
                   <div className="text-sm text-slate-500 line-clamp-2 mt-1 max-w-2xl">{currentShop.shop_description || '這個賣家很懶，還沒有撰寫介紹...'}</div>
                   
@@ -561,7 +544,7 @@ const Shop: React.FC<ShopProps> = ({
                   <button onClick={() => onNavigate && onNavigate(View.CHAT, undefined, currentShop.shop_id || currentShop.id)} className="flex-auto md:flex-none px-3 py-2 text-xs md:text-sm bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700 transition flex items-center justify-center whitespace-nowrap"><i className="fa-regular fa-comments mr-1.5"></i>愛聊</button>
                   {canRateSeller && (<button onClick={() => setShowRateModal(true)} className="flex-auto md:flex-none px-3 py-2 text-xs md:text-sm bg-yellow-400 text-white rounded-lg font-bold hover:bg-yellow-500 transition shadow-sm flex items-center justify-center gap-1.5 whitespace-nowrap"><i className="fa-solid fa-star"></i> 評分</button>)}
                   <button onClick={handleShareShop} className="flex-auto md:flex-none px-3 py-2 text-xs md:text-sm bg-white border border-slate-200 text-slate-600 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-1.5 whitespace-nowrap"><i className="fa-solid fa-share-nodes"></i> 分享</button>
-                  <button onClick={() => openReport('SHOP', currentShop.id, currentShop.shop_name || currentShop.name)} className="flex-auto md:flex-none px-3 py-2 bg-white border border-red-200 text-red-500 rounded-lg font-bold hover:bg-red-50 transition text-xs flex items-center justify-center gap-1.5 whitespace-nowrap"><i className="fa-solid fa-triangle-exclamation"></i> 檢舉</button>
+                  <button onClick={() => setIsReportingShop(true)} className="flex-auto md:flex-none px-3 py-2 bg-white border border-red-200 text-red-500 rounded-lg font-bold hover:bg-red-50 transition text-xs flex items-center justify-center gap-1.5 whitespace-nowrap"><i className="fa-solid fa-triangle-exclamation"></i> 檢舉</button>
                 </div>
               </div>
             </div>
@@ -871,12 +854,12 @@ const Shop: React.FC<ShopProps> = ({
 
                       <div className="relative pt-[100%] overflow-hidden bg-slate-100">
                         {product.images[0]?.startsWith('data:video') || product.images[0]?.endsWith('.mp4') ? (
-                          <video src={product.images[0] + '#t=0.1'} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" muted />
+                          <video src={product.images[0] + '#t=0.1'} preload="metadata" className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" muted playsInline />
                         ) : (
-                          <img 
+                          <LazyImage 
                             src={product.images[0] || 'https://placehold.co/300'} 
                             alt={product.name}
-                            className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                            className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-all duration-500"
                           />
                         )}
                         
@@ -1061,46 +1044,17 @@ const Shop: React.FC<ShopProps> = ({
          </div>
       )}
 
-      {/* 檢舉視窗 */}
-      {showReportModal && (
-         <div className="fixed inset-0 bg-black/50 z-[1300] flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 animate-fade-in-up">
-               <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
-                  <i className="fa-solid fa-triangle-exclamation text-red-500"></i>
-                  檢舉{reportData.type === 'SHOP' ? '商家' : '商品'}
-               </h3>
-               <div className="space-y-4">
-                  <div>
-                     <label className="block text-sm font-bold text-slate-600 mb-1">檢舉對象</label>
-                     <div className="text-slate-800 font-bold bg-slate-50 p-2 rounded">{reportData.targetName}</div>
-                  </div>
-                  <div>
-                     <label className="block text-sm font-bold text-slate-600 mb-1">檢舉主題</label>
-                     <input 
-                        type="text" 
-                        className="w-full border border-slate-300 rounded-lg p-2 outline-none focus:border-red-500"
-                        placeholder="例如：販售違禁品、詐騙..."
-                        value={reportData.subject}
-                        onChange={e => setReportData({...reportData, subject: e.target.value})}
-                     />
-                  </div>
-                  <div>
-                     <label className="block text-sm font-bold text-slate-600 mb-1">詳細原因</label>
-                     <textarea 
-                        className="w-full h-32 border border-slate-300 rounded-lg p-2 outline-none focus:border-red-500 resize-none"
-                        placeholder="請詳細說明檢舉原因..."
-                        value={reportData.reason}
-                        onChange={e => setReportData({...reportData, reason: e.target.value})}
-                     />
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                     <button onClick={submitReport} className="flex-1 bg-red-500 text-white font-bold py-2 rounded-lg hover:bg-red-600">提交檢舉</button>
-                     <button onClick={() => setShowReportModal(false)} className="flex-1 bg-slate-200 text-slate-600 font-bold py-2 rounded-lg hover:bg-slate-300">取消</button>
-                  </div>
-               </div>
-            </div>
-         </div>
+      {/* ★ 新版檢舉視窗 (直接呼叫共用元件) */}
+      {isReportingShop && currentShop && (
+         <ReportModal 
+            targetId={currentShop.shop_id || currentShop.id} 
+            targetName={currentShop.shop_name || currentShop.name} 
+            type="SHOP" 
+            currentUser={currentUser || null} 
+            onClose={() => setIsReportingShop(false)} 
+         />
       )}
+      
     </div>
   );
 };

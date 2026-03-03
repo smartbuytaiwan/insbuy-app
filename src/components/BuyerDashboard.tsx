@@ -449,8 +449,20 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
                                         <img src={item.images?.[0] || 'https://placehold.co/100'} className="w-full h-full object-cover" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-bold text-slate-800 line-clamp-1">{item.name}</div>
-                                        <div className="text-xs text-slate-500 mt-1">{item.selectedVariant ? `規格: ${item.selectedVariant}` : '單一規格'} x {item.qty}</div>
+                                        <div className="text-sm font-bold text-slate-800 line-clamp-1 flex items-center gap-2">
+                                           {item.name}
+                                           {item.is_banned && (
+                                              <span className="text-[10px] text-red-500 bg-red-50 border border-red-200 px-2 py-0.5 rounded font-black whitespace-nowrap animate-pulse">
+                                                 <i className="fa-solid fa-ban mr-1"></i>違規下架
+                                              </span>
+                                           )}
+                                        </div>
+                                        <div className="text-xs text-slate-500 mt-1 flex flex-col gap-1">
+                                           <span>{item.selectedVariant ? `規格: ${item.selectedVariant}` : '單一規格'} x {item.qty}</span>
+                                           {item.is_banned && (
+                                              <span className="text-red-500 font-bold">（此為違規商品，請盡快聯繫後續退貨處理）</span>
+                                           )}
+                                        </div>
                                     </div>
                                     <div className="text-right">
                                         <div className="text-sm font-black text-slate-700">${item.price.toLocaleString()}</div>

@@ -16,6 +16,7 @@ import { SELLER_ORDER_STATUS_OPTIONS, BUYER_ORDER_STATUS_OPTIONS, COLORS } from 
 import AdminProductForm from './AdminProductForm';
 import BuyerReport from './BuyerReport'; // ★ 引入全新的買家報表
 import AdminAnnouncement from './AdminAnnouncement'; // ★ 新增：引入全站公告後台管理元件
+import AdminReports from './AdminReports'; // ★ 新增：引入全站檢舉審核面板
 
 
 interface AdminDashboardProps {
@@ -485,6 +486,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   };
 
   const overviewData = useMemo(() => {
+    // ★ 修復：將要分析的商品清單宣告移至最頂部，確保下方計算利潤時讀得到
+    const productsToAnalyze = user.role === 'ADMIN' ? products : myShopProducts;
+
     // 1. 基本設定與日期區間
     const startDate = new Date(overviewRange.start);
     startDate.setHours(0, 0, 0, 0);
@@ -510,7 +514,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
     });
 
     // 3. 計算當前週期核心指標
+    let totalCost = 0;
+    currentOrders.forEach(o => {
+        o.items.forEach(item => {
+            const p = productsToAnalyze.find(prod => prod.id === item.id);
+            let unitCost = 0;
+            if (p) {
+                const v = p.variants?.find(v => v.name === item.selectedVariant);
+                unitCost = v?.cost || p.average_cost || p.cost || 0;
+            }
+            totalCost += unitCost * item.qty;
+        });
+    });
     const totalSales = currentOrders.reduce((sum, o) => sum + o.total_amount, 0);
+    const totalProfit = totalSales - totalCost; // ★ 新增：計算總毛利
     const totalOrders = currentOrders.length;
     const uniqueBuyers = new Set(currentOrders.map(o => o.receiver_phone)).size;
     const aov = totalOrders > 0 ? Math.round(totalSales / totalOrders) : 0;
@@ -518,6 +535,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
 
     // 計算上一週期核心指標 (用來算成長率)
     const prevTotalSales = prevOrders.reduce((sum, o) => sum + o.total_amount, 0);
+    let prevTotalCost = 0;
+    prevOrders.forEach(o => {
+        o.items.forEach(item => {
+            const p = productsToAnalyze.find(prod => prod.id === item.id);
+            let unitCost = 0;
+            if (p) {
+                const v = p.variants?.find(v => v.name === item.selectedVariant);
+                unitCost = v?.cost || p.average_cost || p.cost || 0;
+            }
+            prevTotalCost += unitCost * item.qty;
+        });
+    });
+    const prevTotalProfit = prevTotalSales - prevTotalCost; // ★ 新增：計算上期總毛利
     const prevTotalOrders = prevOrders.length;
     const prevUniqueBuyers = new Set(prevOrders.map(o => o.receiver_phone)).size;
     const prevAov = prevTotalOrders > 0 ? Math.round(prevTotalSales / prevTotalOrders) : 0;
@@ -531,6 +561,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
 
     const growth = {
         sales: calcGrowth(totalSales, prevTotalSales),
+        profit: calcGrowth(totalProfit, prevTotalProfit), // ★ 新增：毛利成長率
         orders: calcGrowth(totalOrders, prevTotalOrders),
         buyers: calcGrowth(uniqueBuyers, prevUniqueBuyers),
         aov: calcGrowth(aov, prevAov),
@@ -544,12 +575,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
       const dateStr = d.toISOString().split('T')[0];
       const dailyOrders = currentOrders.filter(o => o.created_at.startsWith(dateStr));
       const dailySales = dailyOrders.reduce((sum, o) => sum + o.total_amount, 0);
+      let dailyCost = 0;
+      dailyOrders.forEach(o => {
+          o.items.forEach(item => {
+              const p = productsToAnalyze.find(prod => prod.id === item.id);
+              let unitCost = 0;
+              if (p) {
+                  const v = p.variants?.find(v => v.name === item.selectedVariant);
+                  unitCost = v?.cost || p.average_cost || p.cost || 0;
+              }
+              dailyCost += unitCost * item.qty;
+          });
+      });
+      const dailyProfit = dailySales - dailyCost;
       const dailyBuyers = new Set(dailyOrders.map(o => o.receiver_phone)).size;
       
       salesTrend.push({ 
           name: dateStr.slice(5), 
           fullDate: dateStr,
           sales: dailySales,
+          profit: dailyProfit, // ★ 新增：每日毛利推入走勢圖
           orders: dailyOrders.length,
           buyers: dailyBuyers,
           aov: dailyOrders.length > 0 ? Math.round(dailySales / dailyOrders.length) : 0,
@@ -596,7 +641,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
     let intervalPlatformViews = 0; let prevIntervalPlatformViews = 0;
     let todayPlatformViews = 0;
 
-    const productsToAnalyze = user.role === 'ADMIN' ? products : myShopProducts;
     const prevStartStr = prevStartDate.toISOString().split('T')[0];
     const prevEndStr = prevEndDate.toISOString().split('T')[0];
 
@@ -632,7 +676,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
     growth.ctr = calcGrowth(ctr, prevCtr);
 
     return { 
-        salesTrend, pieData, totalSales, totalOrders, uniqueBuyers, aov, arpu, ctr, growth, topProducts,
+        salesTrend, pieData, totalSales, totalProfit, totalOrders, uniqueBuyers, aov, arpu, ctr, growth, topProducts,
         intervalProductViews, todayProductViews, todayProductViewsList,
         intervalPlatformViews, todayPlatformViews 
     };
@@ -797,14 +841,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
 
   const handleViewReportTarget = (rpt: Report) => {
       if (rpt.type === 'PRODUCT') {
-          const targetProduct = products.find(p => p.id === rpt.targetId);
+          const targetProduct = products.find(p => p.id === rpt.target_id);
           if (targetProduct) {
               onNavigate(View.PRODUCT, targetProduct);
           } else {
               alert('找不到該商品，可能已被刪除或下架。');
           }
       } else {
-          onNavigate(View.SHOP, undefined, rpt.targetId);
+          onNavigate(View.SHOP, undefined, rpt.target_id);
       }
   };
 
@@ -1116,6 +1160,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
                     }
 
                     if(item.id === 'create') {
+                      sessionStorage.removeItem('insbuy_new_product_draft'); // ★ 新增：明確點擊新增商品時，強制清空舊草稿
                       setForm(getInitialForm());
                       setEditingId(null);
                       setGlobalSearchId('');
@@ -1290,74 +1335,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
         
         {/* Reports Tab */}
         {activeTab === 'reports' && user.role === 'ADMIN' && (
-           <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 md:p-8">
-              <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2"><i className="fa-solid fa-triangle-exclamation text-red-500"></i> 檢舉案件管理</h2>
-              <div className="overflow-x-auto w-full">
-                 <table className="w-full text-left border-collapse whitespace-nowrap min-w-[600px]">
-                    <thead>
-                       <tr className="bg-slate-100 text-slate-600 text-sm">
-                          <th className="p-3 rounded-tl-xl">日期</th>
-                          <th className="p-3">類型</th>
-                          <th className="p-3">被檢舉對象</th>
-                          <th className="p-3">主題</th>
-                          <th className="p-3">檢舉人</th>
-                          <th className="p-3">狀態</th>
-                          <th className="p-3 rounded-tr-xl">操作</th>
-                       </tr>
-                    </thead>
-                    <tbody>
-                       {paginatedReports.length === 0 ? (
-                         <tr><td colSpan={7} className="p-8 text-center text-slate-400">目前沒有檢舉案件</td></tr>
-                       ) : (
-                          paginatedReports.map(rpt => (
-                             <tr key={rpt.id} className="border-b border-slate-50 hover:bg-red-50/30">
-                                <td className="p-3 text-sm text-slate-500">{new Date(rpt.created_at).toLocaleDateString()}</td>
-                                <td className="p-3 text-sm font-bold">
-                                   <span className={`px-2 py-1 rounded text-xs ${rpt.type === 'SHOP' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>{rpt.type === 'SHOP' ? '商家' : '商品'}</span>
-                                </td>
-                                <td className="p-3 text-sm font-bold text-slate-800">
-                                   {rpt.targetName}
-                                   <div className="text-[10px] text-slate-400 font-mono">{rpt.targetId}</div>
-                                </td>
-                                <td className="p-3 text-sm text-slate-700">
-                                   <div className="font-bold">{rpt.subject}</div>
-                                   <div className="text-xs text-slate-500 truncate max-w-[200px]">{rpt.reason}</div>
-                                </td>
-                                <td className="p-3 text-sm text-slate-600">{rpt.reporterName}</td>
-                                <td className="p-3">
-                                   <select 
-                                      className={`text-xs font-bold px-2 py-1 rounded border-none outline-none cursor-pointer ${rpt.status === 'PENDING' ? 'bg-yellow-100 text-yellow-600' : rpt.status === 'RESOLVED' ? 'bg-green-100 text-green-600' : 'bg-slate-200 text-slate-600'}`}
-                                      value={rpt.status}
-                                      onChange={(e) => handleUpdateReportStatus(rpt.id, e.target.value as any)}
-                                   >
-                                      <option value="PENDING">待處理</option>
-                                      <option value="RESOLVED">已處理</option>
-                                      <option value="DISMISSED">忽略</option>
-                                   </select>
-                                </td>
-                                <td className="p-3 flex gap-2">
-                                   <button onClick={() => handleViewReportTarget(rpt)} className="px-3 py-1 bg-slate-800 text-white rounded text-xs hover:bg-slate-700">查看</button>
-                                   <button onClick={() => handleDeleteReport(rpt.id)} className="px-3 py-1 bg-red-100 text-red-600 rounded text-xs hover:bg-red-200">刪除</button>
-                                </td>
-                             </tr>
-                          ))
-                       )}
-                    </tbody>
-                 </table>
-              </div>
-              {totalReportPages > 1 && (
-                <div className="flex justify-center items-center gap-4 mt-8">
-                  <button onClick={() => setReportPage(p => Math.max(1, p - 1))} disabled={reportPage === 1} className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-600 disabled:opacity-50 hover:bg-slate-50"><i className="fa-solid fa-chevron-left mr-1"></i></button>
-                  <span className="text-sm font-bold text-slate-600">第 {reportPage} 頁 / 共 {totalReportPages} 頁</span>
-                  <button onClick={() => setReportPage(p => Math.min(totalReportPages, p + 1))} disabled={reportPage === totalReportPages} className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-600 disabled:opacity-50 hover:bg-slate-50"><i className="fa-solid fa-chevron-right ml-1"></i></button>
-                </div>
-              )}
-           </div>
+           <AdminReports 
+              allUsers={allUsers!} 
+              allProducts={products} 
+              onNavigate={onNavigate} 
+           />
         )}
 
         {/* Orders Management Tab */}
         {activeTab === 'orders' && (
            <AdminOrders 
+              products={products} // ★ 新增：將商品資料傳遞給訂單列表以計算毛利
               allOrders={localOrders}
               orderRange={orderRange}
               setOrderRange={setOrderRange}

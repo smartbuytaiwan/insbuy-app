@@ -6,12 +6,14 @@ export interface StockLog {
   reason: string;
   created_at: string;
   order_id?: string; // ★ 新增：用於關聯被取消的訂單
+  unit_cost?: number; // ★ 新增：紀錄當次異動時的「單位成本」
 }
 
 export interface ProductVariant {
   name: string;
   price: number;
   stock: number;
+  cost?: number; // ★ 新增：該規格的獨立成本
 }
 
 export interface ShippingRule {
@@ -60,6 +62,8 @@ export interface Product {
   images: string[];
   price: number;
   original_price: number;
+  cost?: number; // ★ 新增：商品初始成本
+  average_cost?: number; // ★ 新增：系統自動計算的移動平均成本
   status: 'OPEN' | 'CLOSED';
   product_type: 'PHYSICAL' | 'DIGITAL';
   digital_files?: string[];
@@ -74,6 +78,8 @@ export interface Product {
   is_pinned?: boolean;
   pin_rank?: number;
   is_hidden?: boolean; // ★ 新增：隱藏銷售
+  is_banned?: boolean; // ★ 新增：是否因為違規被管理員強制下架
+  report_count?: number; // ★ 新增：累計被檢舉次數 (達 5 次自動進入 is_hidden)
   view_password?: string; // ★ 新增：專屬密碼
   origin?: string;
   shipping_origin?: string; 
@@ -158,6 +164,10 @@ export interface User {
   };
   following?: string[];
   is_suspended?: boolean;
+  report_trust_score?: number; // ★ 新增：檢舉人信用評分 (低於標準即 Shadowban)
+  violation_points?: number; // ★ 新增：賣家違規記點
+  has_excellent_badge?: boolean; // ★ 新增：優良商家標章
+  excellent_badge_expire_at?: string; // ★ 新增：優良標章到期日
   google_map_url?: string;
   line_url?: string;
   facebook_url?: string;
@@ -220,13 +230,26 @@ export interface SiteSettings {
 export interface Report {
   id: string;
   type: 'SHOP' | 'PRODUCT';
-  targetId: string;
-  targetName: string;
-  subject: string;
+  target_id: string; // 配合資料庫轉為 snake_case
+  target_name: string;
+  category: string; // ★ 新增：檢舉分類
   reason: string;
-  reporterId: string;
-  reporterName: string;
-  status: 'PENDING' | 'RESOLVED' | 'DISMISSED';
+  images?: string[]; // ★ 新增：佐證照片
+  reporter_id: string;
+  reporter_name: string;
+  ip_address?: string; // ★ 新增：檢舉人 IP
+  status: 'PENDING' | 'REVIEWING' | 'OBSERVING' | 'RESOLVED' | 'DISMISSED'; // ★ 加入 OBSERVING 列入觀察狀態
+  created_at: string;
+}
+
+// ★ 新增：申訴紀錄表型別
+export interface Appeal {
+  id: string;
+  target_id: string;
+  seller_id: string;
+  reason: string;
+  proof_images?: string[];
+  status: 'PENDING' | 'RESOLVED' | 'REJECTED';
   created_at: string;
 }
 

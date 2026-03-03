@@ -34,11 +34,11 @@ const globalLimiter = rateLimit({
 });
 app.use('/api/', globalLimiter);
 
-// ★ 安全防護 3：商品上架專屬限流 (最快1分鐘1個)
+// ★ 安全防護 3：商品上架專屬限流 (放寬為每分鐘 30 個)
 const productCreationLimiter = rateLimit({
   windowMs: 1 * 60 * 1000,
-  max: 1,
-  message: { message: "上架速率限制：為維護系統穩定，每分鐘只能上架一個商品。" }
+  max: 30, // ★ 修改：放寬限制避免正常商家被誤擋
+  message: { message: "上架速率限制：為維護系統穩定，每分鐘只能上架 30 個商品。" }
 });
 
 // ★ 安全防護 6：隱形蜜罐陷阱 (Honeypot) 攔截器
@@ -94,6 +94,10 @@ const userSchema = new mongoose.Schema({
   name: String,
   failed_login_attempts: { type: Number, default: 0 }, // ★ 防護 11：登入失敗次數
   lockout_until: { type: Date, default: null }, // ★ 防護 11：帳號鎖定時間
+  violation_points: { type: Number, default: 0 }, // ★ 新增：違規記點
+  has_excellent_badge: { type: Boolean, default: false }, // ★ 新增：優良標章
+  excellent_badge_expire_at: String, // ★ 新增：優良標章到期日
+  report_trust_score: { type: Number, default: 100 }, // ★ 新增：檢舉人信用評分
   shop_name: String,
   shop_description: String,
   tax_id: String, 
@@ -152,7 +156,10 @@ const productSchema = new mongoose.Schema({
   status: String,
   product_type: String,
   digital_files: [String],
-  variants: [{ name: String, price: Number, stock: Number }],
+  variants: [{ name: String, price: Number, stock: Number, cost: Number }], // ★ 新增：加入 cost 欄位
+  cost: Number, // ★ 新增：初始成本
+  average_cost: Number, // ★ 新增：移動平均成本
+  stock_logs: Array, // ★ 新增：庫存異動歷史紀錄
   shipping_rules: [{ name: String, fee: Number, free_threshold: Number, limit_qty: Number, pickup_address: String }],
   payment_methods: [String],
   bank_info: { bank_name: String, bank_code: String, account_name: String, account_number: String },
@@ -166,6 +173,9 @@ const productSchema = new mongoose.Schema({
   shipping_origin: String, 
   keywords: [String], 
   is_hidden: { type: Boolean, default: false }, // ★ 新增：隱藏銷售
+  is_under_review: { type: Boolean, default: false }, // ★ 新增：被檢舉審核中隱藏
+  is_banned: { type: Boolean, default: false }, // ★ 新增：違規強制下架
+  report_count: { type: Number, default: 0 }, // ★ 新增：被檢舉次數
   view_password: { type: String, default: '' }, // ★ 新增：專屬密碼
   questions: [{ title: String, required: Boolean }],
   reviews: [{ id: String, userId: String, userName: String, rating: Number, comment: String, createdAt: String }]
@@ -770,6 +780,10 @@ app.put('/api/users/:id', async (req, res) => {
   // ★ 防呆機制：明確處理 level_expire_at，如果前端傳來空字串 (清除日期)，則明確存為 null 讓系統判定為「無期限」
   if (data.level_expire_at === '' || data.level_expire_at === null) {
      data.level_expire_at = null;
+  }
+  // ★ 新增：讓優良標章的日期也能正確被清空(永久有效)
+  if (data.excellent_badge_expire_at === '' || data.excellent_badge_expire_at === null) {
+     data.excellent_badge_expire_at = null;
   }
 
   const user = await User.findOneAndUpdate({ id: req.params.id }, data, { new: true });

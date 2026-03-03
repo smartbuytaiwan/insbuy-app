@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Product, CartItem, User, View, ProductVariant, Order } from '../types';
 import API from '../api';
+import ReportModal from './ReportModal'; // ★ 新增引入新版檢舉模組
 
 interface ProductDetailProps {
   product: Product;
@@ -35,27 +36,22 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
   
   // 檢舉相關 State
   const [showReportModal, setShowReportModal] = useState(false);
-  const [reportData, setReportData] = useState<{subject: string, reason: string}>({ subject: '', reason: '' });
 
-  // ==========================================
+// ==========================================
   // 分潤系統：解析網址 ?ref=... 並記錄點擊
   // ==========================================
   useEffect(() => {
     if (!product) return;
-    // ★ 修正：改用標準的 location.search 來解析乾淨網址後的查詢參數
     const urlParams = new URLSearchParams(window.location.search);
     const refCode = urlParams.get('ref');
     if (refCode) {
-        // 1. 存入瀏覽器，期限設為 30 天
         const expiry = new Date().getTime() + 30 * 24 * 60 * 60 * 1000;
         localStorage.setItem('insbuy_affiliate', JSON.stringify({ code: refCode, expiry }));
-        // 2. 靜默呼叫 API 記錄點擊次數 (防呆不跳錯，不影響買家體驗)
         API.recordAffiliateClick({ code: refCode, shop_id: product.shop_id }).catch(() => {});
       }
   }, [product?.id, product?.shop_id]);
   
-  // ★ 新增：真正有效的動態 SEO 注入機制
-  // ★ 新增：真正有效的動態 SEO 注入機制
+  // ★ 動態 SEO 注入機制
   useEffect(() => {
     if (!product) return;
     
@@ -65,10 +61,8 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
     let originalKeywords = '';
     let originalDesc = '';
 
-    // 1. 動態更新網頁標題 (優先使用商家自訂的 seo_title)
     document.title = product.seo_title ? product.seo_title : `${product.name} | InsBuy 拍拍購`;
 
-    // 2. 動態寫入 SEO 關鍵字
     if (product.keywords && product.keywords.length > 0) {
         if (metaKeywords) {
             originalKeywords = metaKeywords.getAttribute('content') || '';
@@ -81,7 +75,6 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
         }
     }
 
-    // 3. 動態寫入 SEO 描述 (優先使用商家自訂的 seo_description，沒有才用前 150 字 description)
     const descToUse = product.seo_description || product.description || '';
     if (descToUse) {
         const cleanDesc = descToUse.substring(0, 150).replace(/\n/g, ' ');
@@ -138,14 +131,12 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
         return false; 
     }
 
-    // ★ 安全防護 7：單筆訂單最多買 10 件防呆
     if (parseInt(qty as any) > 10) {
         alert("防護機制：為了讓更多人能購買，單一商品單次最多限購 10 件喔！");
         setQty(10);
         return false;
     }
     
-    // 確保當前輸入的數量是有效數字
     let finalQty = parseInt(qty as any);
     if (isNaN(finalQty) || finalQty < 1) {
         alert('請輸入有效的數量');
@@ -153,10 +144,9 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
         return false;
     }
 
-    // 嚴格阻擋大於庫存的數量
     if (product.product_type === 'PHYSICAL' && selectedVariant.stock < finalQty) {
       alert(`庫存不足！該規格目前僅剩 ${selectedVariant.stock} 件`);
-      setQty(Math.max(1, selectedVariant.stock)); // 自動幫買家修正為最大庫存
+      setQty(Math.max(1, selectedVariant.stock));
       return false;
     }
     
@@ -167,17 +157,33 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
       finalPrice: product.price + selectedVariant.price,
       isReviewed: false
     });
-    return true; // 成功加入回傳 true
+    return true; 
   };
-
 
   const handleAdminClose = async () => {
     if (!currentUser || currentUser.role !== 'ADMIN') return;
     if (!window.confirm('⚠️ 管理員確認：您確定要強制下架(結標)此商品嗎？\n此操作將無法復原。')) return;
 
     try {
-      await API.closeProduct(product.id); // 注意：這裡修正為 closeProduct，若 api.ts 名稱不同請對應修改
-      alert('已執行強制結標！');
+      await API.closeProduct(product.id);
+      
+      // ★ 新增：自動化愛聊通知邏輯
+      try {
+         const messageContent = `[系統通知] 您的商品「${product.name}」因違反平台規範，已遭到管理員強制下架。若有疑慮，請前往賣家後台商品管理點擊「我要申訴」並上傳相關證明文件。`;
+         const targetSellerId = seller?.id || product.shop_id;
+         if (targetSellerId) {
+             await API.sendMessage({
+                 senderId: 'ADMIN',
+                 receiverId: targetSellerId,
+                 content: messageContent,
+                 timestamp: new Date().toISOString()
+             });
+         }
+      } catch (msgErr) {
+         console.error('發送下架通知失敗', msgErr);
+      }
+
+      alert('已執行強制結標！系統已自動發送「愛聊通知」給該賣家。');
       window.location.reload(); 
     } catch (e) {
       alert('操作失敗，請檢查網路或權限');
@@ -208,28 +214,6 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
     } else {
         alert(`請手動複製網址分享：\n${shareUrl}`);
     }
-  };
-
-  const submitReport = async () => {
-      if (!reportData.subject || !reportData.reason) return alert('請填寫主題與原因');
-      if (!currentUser) return alert('請先登入');
-
-      try {
-          await API.createReport({
-              type: 'PRODUCT',
-              targetId: product.id,
-              targetName: product.name,
-              subject: reportData.subject,
-              reason: reportData.reason,
-              reporterId: currentUser.id,
-              reporterName: currentUser.name
-          });
-          alert('檢舉已送出，管理員將會進行審核。');
-          setShowReportModal(false);
-          setReportData({ subject: '', reason: '' });
-      } catch (e) {
-          alert('檢舉發送失敗');
-      }
   };
 
   const finalPrice = product.price + (selectedVariant?.price || 0);
@@ -575,7 +559,15 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
                  <img src={seller?.logo || 'https://placehold.co/150?text=Shop'} className="w-full h-full object-cover" />
               </div>
               <div className="flex-1 text-center md:text-left">
-                 <div className="font-bold text-lg text-slate-800 mb-1">{seller?.shop_name || seller?.name || '未知賣家'}</div>
+                 <div className="font-bold text-lg text-slate-800 mb-1 flex items-center justify-center md:justify-start gap-2">
+                    {seller?.shop_name || seller?.name || '未知賣家'}
+                    {/* ★ 新增：優良商家金牌 Icon */}
+                    {(seller?.has_excellent_badge || (seller as any)?.excellent_badge_expire_at) && (
+                       <span className="bg-yellow-50 text-yellow-600 px-2 py-0.5 rounded text-[10px] font-black border border-yellow-200 flex items-center gap-1 shadow-sm">
+                          <i className="fa-solid fa-medal"></i> 優良商家
+                       </span>
+                    )}
+                 </div>
                  <div className="flex flex-wrap justify-center md:justify-start gap-4 text-xs text-slate-500">
                     <span className="flex items-center gap-1"><i className="fa-solid fa-star text-yellow-400"></i> {shopStats?.averageRating || '5.0'} 評價</span>
                     <span className="flex items-center gap-1"><i className="fa-solid fa-users text-pink-400"></i> {shopStats?.followerCount || 0} 粉絲</span>
@@ -649,42 +641,13 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
       </div>
 
       {showReportModal && (
-         <div className="fixed inset-0 bg-black/60 z-[2000] flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl animate-fade-in-up">
-               <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
-                  <i className="fa-solid fa-triangle-exclamation text-red-500"></i> 檢舉商品
-               </h3>
-               <div className="space-y-4">
-                  <div>
-                     <label className="block text-sm font-bold text-slate-600 mb-1">檢舉對象</label>
-                     <div className="text-slate-800 font-bold bg-slate-50 p-2 rounded">{product.name}</div>
-                  </div>
-                  <div>
-                     <label className="block text-sm font-bold text-slate-600 mb-1">檢舉主題</label>
-                     <input 
-                        type="text" 
-                        className="w-full border border-slate-300 rounded-lg p-2 outline-none focus:border-red-500"
-                        placeholder="例如：販售違禁品、詐騙..."
-                        value={reportData.subject}
-                        onChange={e => setReportData({...reportData, subject: e.target.value})}
-                     />
-                  </div>
-                  <div>
-                     <label className="block text-sm font-bold text-slate-600 mb-1">詳細原因</label>
-                     <textarea 
-                        className="w-full h-32 border border-slate-300 rounded-lg p-2 outline-none focus:border-red-500 resize-none"
-                        placeholder="請詳細說明檢舉原因..."
-                        value={reportData.reason}
-                        onChange={e => setReportData({...reportData, reason: e.target.value})}
-                     />
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                     <button onClick={submitReport} className="flex-1 bg-red-500 text-white font-bold py-2 rounded-lg hover:bg-red-600">提交檢舉</button>
-                     <button onClick={() => setShowReportModal(false)} className="flex-1 bg-slate-200 text-slate-600 font-bold py-2 rounded-lg hover:bg-slate-300">取消</button>
-                  </div>
-               </div>
-            </div>
-         </div>
+        <ReportModal 
+          targetId={product.id} 
+          targetName={product.name} 
+          type="PRODUCT" 
+          currentUser={currentUser} 
+          onClose={() => setShowReportModal(false)} 
+        />
       )}
     </div>
   );

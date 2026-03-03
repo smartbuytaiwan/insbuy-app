@@ -1,5 +1,5 @@
 import React from 'react';
-import { Order, User, View } from '../types';
+import { Order, User, View, Product } from '../types';
 
 const SELLER_ORDER_STATUS_OPTIONS = [
   { value: 'ALL', label: '全部' },
@@ -13,6 +13,7 @@ const SELLER_ORDER_STATUS_OPTIONS = [
 const STATUS_FLOW = ['PENDING', 'CONFIRMED', 'SHIPPED', 'COMPLETED', 'CANCELLED'];
 
 interface AdminOrdersProps {
+  products: Product[]; // ★ 新增：傳入商品資料以供比對成本
   allOrders?: Order[];
   orderRange: { start: string; end: string };
   setOrderRange: (range: { start: string; end: string }) => void;
@@ -43,6 +44,7 @@ interface AdminOrdersProps {
 }
 
 const AdminOrders: React.FC<AdminOrdersProps> = ({
+  products, // ★ 新增
   allOrders = [],
   orderRange, setOrderRange, orderStatusFilter, setOrderStatusFilter, orderSearchTerm,
   setOrderSearchTerm, orderViewMode, setOrderViewMode, setShowExportModal, filteredOrders,
@@ -72,6 +74,21 @@ const AdminOrders: React.FC<AdminOrdersProps> = ({
   const toShipCount = stats.PENDING + stats.CONFIRMED;
   const shippedCount = stats.SHIPPED + stats.COMPLETED;
   const cancelledCount = stats.CANCELLED;
+
+  // ★ 新增：即時計算單筆訂單的預估毛利
+  const getOrderProfit = (o: Order) => {
+      let totalCost = 0;
+      o.items.forEach(item => {
+          const p = products.find(prod => prod.id === item.id);
+          let unitCost = 0;
+          if (p) {
+              const v = p.variants?.find(v => v.name === item.selectedVariant);
+              unitCost = v?.cost || p.average_cost || p.cost || 0;
+          }
+          totalCost += unitCost * item.qty;
+      });
+      return o.total_amount - totalCost;
+  };
 
   return (
     <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 md:p-8">
@@ -172,7 +189,7 @@ const AdminOrders: React.FC<AdminOrdersProps> = ({
                  <tr className="bg-slate-50 text-slate-500 border-b border-slate-200">
                     <th className="p-3 font-bold">訂單編號/時間</th>
                     <th className="p-3 font-bold">買家資訊</th>
-                    <th className="p-3 font-bold text-right">訂單金額</th>
+                    <th className="p-3 font-bold text-right">金額 / 預估毛利</th>
                     <th className="p-3 font-bold text-center">狀態操作</th>
                     <th className="p-3 font-bold text-center">收款狀態</th>
                  </tr>
@@ -196,8 +213,11 @@ const AdminOrders: React.FC<AdminOrdersProps> = ({
                           <div className="font-bold text-slate-800">{o.receiver_name}</div>
                           <div className="text-xs text-slate-500 font-mono">{o.receiver_phone}</div>
                        </td>
-                       <td className="p-3 text-right font-black text-[#EE4D2D]">
-                          ${o.total_amount.toLocaleString()}
+                       <td className="p-3 text-right">
+                          <div className="font-black text-[#EE4D2D]">${o.total_amount.toLocaleString()}</div>
+                          <div className="text-[10px] text-green-600 font-bold mt-1 bg-green-50 px-1.5 py-0.5 rounded inline-block border border-green-200">
+                              毛利 ${getOrderProfit(o).toLocaleString()}
+                          </div>
                        </td>
                        <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
                           <select 
@@ -332,8 +352,11 @@ const AdminOrders: React.FC<AdminOrdersProps> = ({
                 ))}
               </div>
 
-              <div className="text-right font-black text-[#EE4D2D] text-lg">
-                  ${o.total_amount.toLocaleString()}
+              <div className="text-right flex flex-col items-end">
+                  <div className="font-black text-[#EE4D2D] text-lg">${o.total_amount.toLocaleString()}</div>
+                  <div className="text-[10px] text-green-600 font-bold mt-1 bg-green-50 border border-green-200 px-2 py-0.5 rounded shadow-sm">
+                      預估毛利：${getOrderProfit(o).toLocaleString()}
+                  </div>
               </div>
 
               {expandedOrderId === o.id && (

@@ -308,10 +308,30 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
         if (originSelect === '手動填寫') finalOrigin = originManual;
         else if (originDistrictSelect) finalOrigin = `${originSelect}${originDistrictSelect}`;
 
+        const generatedId = editingId || `p-${Date.now()}`;
+        let initialLogs: any[] = form.stock_logs || [];
+        // ★ 新增：如果是第一次建立商品，自動為有庫存的規格產生第一筆「建立商品初始庫存」的會計日誌
+        if (!editingId && form.variants) {
+            form.variants.forEach((v, idx) => {
+                if (v.stock > 0) {
+                    const vCost = v.cost || 0; // 統一以規格的獨立成本為主
+                    initialLogs.push({
+                        id: `log-init-${Date.now()}-${idx}`,
+                        variant_name: v.name || '單一規格',
+                        change_amount: v.stock,
+                        reason: `建立商品初始庫存`,
+                        created_at: new Date().toISOString(),
+                        unit_cost: vCost
+                    });
+                }
+            });
+        }
+
         const productData: Product = {
             ...getInitialForm(), ...form, shipping_origin: finalOrigin, 
-            id: editingId || `p-${Date.now()}`, shop_id: shopId, category_id: form.category_ids?.[0] || '',
-            total_stock: form.variants?.reduce((sum, v) => sum + v.stock, 0) || 0
+            id: generatedId, shop_id: shopId, category_id: form.category_ids?.[0] || '',
+            total_stock: form.variants?.reduce((sum, v) => sum + v.stock, 0) || 0,
+            stock_logs: initialLogs
         } as Product;
 
         try {
@@ -325,8 +345,9 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
             sessionStorage.removeItem('insbuy_new_product_draft'); // 成功發布後清除草稿
             resetForm();
             alert(editingId ? '商品修改成功！' : '商品已成功發布！');
-        } catch (error) {
-            alert('儲存失敗，請檢查網路或系統連線。');
+        } catch (error: any) {
+            // ★ 修正：精準捕捉後端傳來的錯誤訊息 (例如 429 速率限制)
+            alert(error.response?.data?.message || '儲存失敗，請檢查網路或系統連線。');
         }
     };
 
@@ -365,7 +386,7 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                             <label className="text-xs font-bold text-slate-500 mb-2 block">團購基礎價</label>
                             <input type="number" className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm font-black text-[#EE4D2D]" value={form.price || ''} onChange={e => setForm({...form, price: parseInt(e.target.value) || 0})} placeholder="NT$" />
                         </div>
-                        <div className="w-full">
+                        <div className="w-full md:col-span-2">
                             <label className="text-xs font-bold text-slate-500 mb-2 block">原價 (選填，將顯示為刪除線)</label>
                             <input type="number" className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm outline-none focus:border-slate-400" value={form.original_price || ''} onChange={e => setForm({...form, original_price: parseInt(e.target.value) || 0})} placeholder="NT$" />
                         </div>
@@ -520,6 +541,11 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                                 <div className="w-full md:flex-1">
                                     <label className="text-xs font-bold text-slate-500 mb-1 block">庫存數量</label>
                                     <input type="number" className="w-full border border-slate-200 rounded-lg p-3 text-sm md:text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.stock.toString() === '0' && v.stock !== 0 ? '' : v.stock.toString().replace(/^0+/, '') || '0'} onChange={e => updateVariant(i, 'stock', e.target.value === '' ? 0 : parseInt(e.target.value, 10))} onFocus={e => e.target.select()} />
+                                </div>
+                                {/* ★ 新增：規格獨立成本輸入框 */}
+                                <div className="w-full md:flex-1">
+                                    <label className="text-xs font-bold text-slate-500 mb-1 block">單件成本</label>
+                                    <input type="number" className="w-full border border-slate-200 rounded-lg p-3 text-sm md:text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.cost === undefined ? '' : v.cost} onChange={e => updateVariant(i, 'cost', e.target.value === '' ? undefined : parseInt(e.target.value, 10))} placeholder="未填則預設同主成本" onFocus={e => e.target.select()} />
                                 </div>
                                 {form.variants && form.variants.length > 1 && <button onClick={() => removeVariant(i)} className="absolute top-2 right-2 md:static md:w-auto p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"><i className="fa-solid fa-trash-can text-lg"></i></button>}
                             </div>

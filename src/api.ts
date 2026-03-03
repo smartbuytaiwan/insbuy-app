@@ -85,6 +85,11 @@ export const API = {
   updateReport: (id: string, updates: any) => api.put(`/reports/${id}`, updates).then(res => res.data),
   deleteReport: (id: string) => api.delete(`/reports/${id}`).then(res => res.data),
 
+  // ★ 新增：申訴機制 API
+  createAppeal: (appealData: any) => api.post('/appeals', appealData).then(res => res.data),
+  getAppeals: () => api.get('/appeals').then(res => res.data),
+  updateAppeal: (id: string, updates: any) => api.put(`/appeals/${id}`, updates).then(res => res.data),
+
   // ==========================================
   // ★ 新增：黑名單與瀏覽量 API
   // ==========================================

@@ -103,13 +103,52 @@ const SYSTEM_ADMIN_USER: User = {
   stats: { ratingCount: 0, productCount: 0, followerCount: 0, responseRate: 100, responseTime: '即時', joinTime: '', averageRating: 0 }
 };
 
+// ★ 核心修復：在 React 第一次畫面前，同步解析網址與權限，徹底解決畫面閃爍問題
+const getInitialRouteState = () => {
+  const path = window.location.pathname.replace(/^\//, '').split('?')[0];
+  const parts = path.split('/');
+  let viewName = parts[0];
+  const id = parts[1] || null;
+
+  let activeUser = null;
+  try {
+    const activeUserStr = localStorage.getItem('insbuy_user');
+    if (activeUserStr) activeUser = JSON.parse(activeUserStr);
+  } catch(e) {}
+
+  // 路由守衛 (同步驗證，避免閃過不該看的畫面)
+  if (viewName === View.USER_MANAGEMENT && (!activeUser || activeUser.role !== 'ADMIN')) {
+     viewName = View.SHOP;
+  } else if (viewName === View.ADMIN_HOME && (!activeUser || (activeUser.role !== 'SELLER' && activeUser.role !== 'ADMIN'))) {
+     viewName = View.SHOP;
+  } else if ((viewName === View.INFLUENCER_DASHBOARD || viewName === View.BUYER_DASHBOARD) && !activeUser) {
+     viewName = View.AUTH;
+  }
+
+  let initialView: any = View.SHOP;
+  if (viewName === 'privacy') initialView = 'PRIVACY';
+  else if (viewName === 'terms') initialView = 'TERMS';
+  else if (Object.values(View).includes(viewName as View)) {
+    initialView = viewName as View;
+  }
+
+  return { initialView, id, activeUser };
+};
+
+const initRoute = getInitialRouteState();
+
 const App: React.FC = () => {
-  const [view, setView] = useState<View>(View.SHOP);
-  const [user, setUser] = useState<User | null>(null);
+  const [view, setView] = useState<View>(initRoute.initialView);
+  
+  // ★ 核心修復：將 user 與 cart 改為同步初始化，解決選單或購物車瞬間空白的閃爍
+  const [user, setUser] = useState<User | null>(initRoute.activeUser);
+  const [cart, setCart] = useState<CartItem[]>(() => {
+     try { const saved = localStorage.getItem('insbuy_cart'); return saved ? JSON.parse(saved) : []; } catch { return []; }
+  });
+  
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]); 
-  const [cart, setCart] = useState<CartItem[]>([]);
   const [checkoutItems, setCheckoutItems] = useState<CartItem[]>([]); 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -117,11 +156,11 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState(''); 
   const [appliedSearch, setAppliedSearch] = useState(''); 
 
-  const [chatTarget, setChatTarget] = useState<string | null>(null);
-  const [currentShopId, setCurrentShopId] = useState<string | null>(null); 
+  const [chatTarget, setChatTarget] = useState<string | null>(initRoute.initialView === View.CHAT ? initRoute.id : null);
+  const [currentShopId, setCurrentShopId] = useState<string | null>(initRoute.initialView === View.SHOP ? initRoute.id : null); 
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
-  const [dashboardTab, setDashboardTab] = useState<string | null>(null);
-  const [adminTab, setAdminTab] = useState<string | null>(null);
+  const [dashboardTab, setDashboardTab] = useState<string | null>(initRoute.initialView === View.BUYER_DASHBOARD ? initRoute.id : null);
+  const [adminTab, setAdminTab] = useState<string | null>(initRoute.initialView === View.ADMIN_HOME ? initRoute.id : null);
   const [systemCategories, setSystemCategories] = useState<Category[]>([]);
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [announcementText, setAnnouncementText] = useState('');
@@ -205,11 +244,8 @@ const App: React.FC = () => {
   useEffect(() => {
     const initApp = async () => {
         setFetchError(false);
-        const savedUser = localStorage.getItem('insbuy_user');
-        if (savedUser) setUser(JSON.parse(savedUser));
         
-        const savedCart = localStorage.getItem('insbuy_cart');
-        if (savedCart) setCart(JSON.parse(savedCart));
+        // ★ 註：user 與 cart 已在 useState 階段同步載入，這裡移除重複讀取 localStorage 的代碼，省下效能！
 
         // ★ 新增：紀錄平台首頁與總體瀏覽量
         if (API.recordPlatformView) {
@@ -223,8 +259,9 @@ const App: React.FC = () => {
         API.getUsers().then(users => {
             setAllUsers([...users, SYSTEM_ADMIN_USER]);
             // 確保每次重整頁面時，同步更新當前使用者的最新等級與權限
-            if (savedUser) {
-                const parsedUser = JSON.parse(savedUser);
+            const currentUserStr = localStorage.getItem('insbuy_user');
+            if (currentUserStr) {
+                const parsedUser = JSON.parse(currentUserStr);
                 const freshUser = users.find(u => u.id === parsedUser.id);
                 if (freshUser) {
                     setUser(freshUser);
