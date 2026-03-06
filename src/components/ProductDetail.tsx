@@ -89,10 +89,36 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
         }
     }
 
+    // ★ 新增：動態產生 Canonical (標準網址) 標籤，解決 Google「這是重複網頁」的問題
+    let canonicalLink = document.querySelector('link[rel="canonical"]');
+    let originalCanonical = '';
+    const cleanUrl = `${window.location.origin}/PRODUCT/${product.id}`; // 乾淨的標準網址，不含 ?ref= 等參數
+
+    if (canonicalLink) {
+        originalCanonical = canonicalLink.getAttribute('href') || '';
+        canonicalLink.setAttribute('href', cleanUrl);
+    } else {
+        canonicalLink = document.createElement('link');
+        canonicalLink.setAttribute('rel', 'canonical');
+        canonicalLink.setAttribute('href', cleanUrl);
+        document.head.appendChild(canonicalLink);
+    }
+
     return () => {
         document.title = originalTitle;
         if (metaKeywords && originalKeywords) metaKeywords.setAttribute('content', originalKeywords);
         if (metaDescription && originalDesc) metaDescription.setAttribute('content', originalDesc);
+        
+        // ★ 離開頁面時還原或移除 canonical，避免污染其他頁面
+        if (canonicalLink) {
+            if (originalCanonical) {
+                canonicalLink.setAttribute('href', originalCanonical);
+            } else {
+                if (document.head.contains(canonicalLink)) {
+                    document.head.removeChild(canonicalLink);
+                }
+            }
+        }
     };
   }, [product]);
 

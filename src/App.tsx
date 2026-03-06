@@ -17,78 +17,9 @@ import InfluencerDashboard from './components/InfluencerDashboard';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import TermsOfService from './components/TermsOfService';
 import AnnouncementModal from './components/AnnouncementModal'; // ★ 新增：引入新版公告彈窗
-
-// ★ 新增：圖形驗證碼元件
-const CaptchaModal = ({ onVerify, onCancel }: { onVerify: () => void, onCancel: () => void }) => {
-  const [code, setCode] = useState('');
-  const [input, setInput] = useState('');
-  const canvasRef = React.useRef<HTMLCanvasElement>(null);
-
-  const generateCode = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let result = '';
-    for (let i = 0; i < 4; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
-    setCode(result);
-  };
-
-  useEffect(() => { generateCode(); }, []);
-
-  useEffect(() => {
-    if (canvasRef.current && code) {
-      const ctx = canvasRef.current.getContext('2d');
-      if (ctx) {
-        ctx.clearRect(0, 0, 120, 40);
-        ctx.fillStyle = '#f1f5f9';
-        ctx.fillRect(0, 0, 120, 40);
-        ctx.font = 'bold 24px monospace';
-        ctx.fillStyle = '#334155';
-        ctx.textBaseline = 'middle';
-        ctx.textAlign = 'center';
-        // 加入干擾線
-        for(let i=0; i<5; i++) {
-           ctx.strokeStyle = `rgba(0,0,0,0.1)`;
-           ctx.beginPath();
-           ctx.moveTo(Math.random()*120, Math.random()*40);
-           ctx.lineTo(Math.random()*120, Math.random()*40);
-           ctx.stroke();
-        }
-        ctx.fillText(code, 60, 20);
-      }
-    }
-  }, [code]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (input.toUpperCase() === code) onVerify();
-    else { alert('驗證碼錯誤，請重新輸入'); generateCode(); setInput(''); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-scale-up">
-        <h3 className="font-bold text-lg mb-4 text-center">安全驗證</h3>
-        <p className="text-xs text-slate-500 mb-4 text-center">為了確保您的帳號安全，請輸入下方驗證碼</p>
-        <div className="flex justify-center mb-4 cursor-pointer" onClick={generateCode} title="點擊更換">
-           <canvas ref={canvasRef} width={120} height={40} className="rounded border border-slate-200" />
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-           <input 
-             autoFocus
-             type="text" 
-             className="w-full border border-slate-200 rounded-xl px-4 py-3 text-center font-bold outline-none focus:border-[#EE4D2D] tracking-widest uppercase"
-             placeholder="輸入驗證碼"
-             value={input}
-             onChange={e => setInput(e.target.value)}
-           />
-           <div className="flex gap-2">
-             <button type="button" onClick={onCancel} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">取消</button>
-             <button type="submit" className="flex-1 py-3 bg-[#EE4D2D] text-white rounded-xl font-bold shadow-md">確認登入</button>
-           </div>
-        </form>
-      </div>
-    </div>
-  );
-};
+import CaptchaModal from './components/CaptchaModal'; // ★ 新增：引入剛剛抽離的驗證碼彈窗
+import BrandBookingStorefront from './booking-crm/BrandBookingStorefront'; // ★ 新增：預約前台
+import SellerBookingDashboard from './booking-crm/SellerBookingDashboard'; // ★ 新增：預約後台
 
 const SYSTEM_ADMIN_USER: User = {
   id: 'ADMIN',
@@ -157,7 +88,7 @@ const App: React.FC = () => {
   const [appliedSearch, setAppliedSearch] = useState(''); 
 
   const [chatTarget, setChatTarget] = useState<string | null>(initRoute.initialView === View.CHAT ? initRoute.id : null);
-  const [currentShopId, setCurrentShopId] = useState<string | null>(initRoute.initialView === View.SHOP ? initRoute.id : null); 
+  const [currentShopId, setCurrentShopId] = useState<string | null>((initRoute.initialView === View.SHOP || initRoute.initialView === View.BRAND_BOOKING) ? initRoute.id : null);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [dashboardTab, setDashboardTab] = useState<string | null>(initRoute.initialView === View.BUYER_DASHBOARD ? initRoute.id : null);
   const [adminTab, setAdminTab] = useState<string | null>(initRoute.initialView === View.ADMIN_HOME ? initRoute.id : null);
@@ -515,9 +446,9 @@ const App: React.FC = () => {
         const pool = currentProducts || products;
         const p = pool.find(item => item.id === id);
         if (p) setSelectedProduct(p);
-      } else if (viewName === View.SHOP && id) {
+      } else if ((viewName === View.SHOP || viewName === View.BRAND_BOOKING) && id) {
         setCurrentShopId(id);
-      } else if (viewName === View.SHOP && !id) {
+      } else if ((viewName === View.SHOP || viewName === View.BRAND_BOOKING) && !id) {
         setCurrentShopId(null);
       }
       if (viewName === View.CHAT && id) setChatTarget(id);
@@ -554,13 +485,14 @@ const App: React.FC = () => {
     }
 
     if (targetId) {
-      if (newView === View.SHOP) setCurrentShopId(targetId);
+      if (newView === View.SHOP || newView === View.BRAND_BOOKING) setCurrentShopId(targetId);
       else if (newView === View.CHAT) setChatTarget(targetId);
       else if (newView === View.BUYER_DASHBOARD) setDashboardTab(targetId);
       else if (newView === View.ADMIN_HOME) setAdminTab(targetId);
 
       if (newView !== View.PRODUCT) path += `/${targetId}`;
-    } else if (newView === View.SHOP) {
+    }
+     else if (newView === View.SHOP) {
       setCurrentShopId(null);
       if (!targetId) {
         setSearchQuery('');
@@ -1112,6 +1044,16 @@ const App: React.FC = () => {
             {/* ★ 網紅專屬後台渲染 */}
             {view === View.INFLUENCER_DASHBOARD && (
                <InfluencerDashboard currentUser={user} onNavigate={navigateTo} />
+            )}
+
+            {/* ★ 新增：品牌預約系統前台 */}
+            {view === View.BRAND_BOOKING && currentShopId && (
+               <BrandBookingStorefront 
+                  shopId={currentShopId} 
+                  currentUser={user}
+                  onNavigate={navigateTo}
+                  onNavigateBack={() => navigateTo(View.SHOP, undefined, currentShopId)} 
+               />
             )}
           </>
       </main>

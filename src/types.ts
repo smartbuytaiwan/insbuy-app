@@ -265,7 +265,9 @@ export enum View {
   BUYER_DASHBOARD = 'BUYER_DASHBOARD',
   CHAT = 'CHAT',
   USER_MANAGEMENT = 'USER_MANAGEMENT',
-  INFLUENCER_DASHBOARD = 'INFLUENCER_DASHBOARD' // ★ 新增這個網紅後台的路由
+  INFLUENCER_DASHBOARD = 'INFLUENCER_DASHBOARD', // ★ 新增這個網紅後台的路由
+  BRAND_BOOKING = 'BRAND_BOOKING',               // ★ 新增：品牌預約系統 (買家前台)
+  SELLER_BOOKING = 'SELLER_BOOKING'              // ★ 新增：預約與 CRM 管理 (賣家後台)
 }
 
 export const SYSTEM_CATEGORIES = [

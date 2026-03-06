@@ -17,6 +17,7 @@ import AdminProductForm from './AdminProductForm';
 import BuyerReport from './BuyerReport'; // ★ 引入全新的買家報表
 import AdminAnnouncement from './AdminAnnouncement'; // ★ 新增：引入全站公告後台管理元件
 import AdminReports from './AdminReports'; // ★ 新增：引入全站檢舉審核面板
+import SellerBookingDashboard from '../booking-crm/SellerBookingDashboard'; // ★ 新增：引入預約系統後台元件
 
 
 interface AdminDashboardProps {
@@ -150,7 +151,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
       };
   }, [activePermissions, user.level]);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'products' | 'create' | 'categories' | 'settings' | 'affiliate' | 'customers' | 'system_cats' | 'buying_account' | 'buying_orders' | 'buying_reports' | 'reports' | 'announcement'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'products' | 'create' | 'categories' | 'settings' | 'affiliate' | 'customers' | 'system_cats' | 'buying_account' | 'buying_orders' | 'buying_reports' | 'reports' | 'announcement' | 'seller_booking'>('overview');
   const [showMobileMenu, setShowMobileMenu] = useState(true);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1120,17 +1121,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
     ));
   };
 
-  const navItems = [
-    { id: 'overview', icon: 'fa-chart-pie', label: '經營概況' },
-    { id: 'orders', icon: 'fa-receipt', label: '訂單管理' },
-    { id: 'products', icon: 'fa-box-open', label: '商品管理' },
-    { id: 'customers', icon: 'fa-users', label: '客戶管理' }, // ★ 改為常駐顯示
-    { id: 'categories', icon: 'fa-list-ul', label: user.role === 'ADMIN' ? '平台分類管理' : '分類管理' },
-    { id: 'settings', icon: 'fa-store', label: '商店設定' },
-    { id: 'affiliate', icon: 'fa-bullhorn', label: '網紅分潤設定' }, // ★ 新增分潤獨立頁面
-    ...(user.role === 'ADMIN' ? [{ id: 'announcement', icon: 'fa-bell', label: '全站公告設定' }] : []), // ★ 新增：僅限管理員可見
-    { id: 'create', icon: 'fa-plus-circle', label: editingId ? '編輯商品' : '新增商品' },
-  ];
+  // ★ 重構：將選單分為三大區塊
+  const menuSections = [
+    {
+      title: '經營情況 (網購)',
+      items: [
+        { id: 'overview', icon: 'fa-chart-pie', label: '經營概況' },
+        { id: 'orders', icon: 'fa-receipt', label: '訂單管理' },
+        { id: 'products', icon: 'fa-box-open', label: '商品管理' },
+        { id: 'customers', icon: 'fa-users', label: '客戶管理' },
+        { id: 'categories', icon: 'fa-list-ul', label: user.role === 'ADMIN' ? '平台分類管理' : '分類管理' },
+        { id: 'settings', icon: 'fa-store', label: '商店設定' },
+        { id: 'affiliate', icon: 'fa-bullhorn', label: '網紅分潤設定' },
+        ...(user.role === 'ADMIN' ? [{ id: 'announcement', icon: 'fa-bell', label: '全站公告設定' }] : []),
+        { id: 'create', icon: 'fa-plus-circle', label: editingId ? '編輯商品' : '新增商品' },
+      ]
+    },
+    {
+      title: '預約與 CRM 管理',
+      items: [
+        { id: 'seller_booking', icon: 'fa-calendar-days', label: '預約與 CRM 專區' }
+      ]
+    }
+  ];
   
 
   const renderSidebar = () => (
@@ -1148,38 +1161,43 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
               </div>
             </div>
           </div>
+          
           <nav className="space-y-1">
-            {navItems.map(item => (
-              <button 
-                key={item.id}
-                onClick={() => { 
-                  // ★ 新增：無權限點擊客戶管理時的阻擋與升級提示
-                    if (item.id === 'customers' && !sellerConfig.can_view_stats && user.role !== 'ADMIN') {
-                        alert('【會員等級限制】\n您目前的會員等級無法使用「客戶管理系統」。\n請升級您的會員等級以解鎖此強大功能！');
-                        return;
-                    }
-
-                    if(item.id === 'create') {
-                      sessionStorage.removeItem('insbuy_new_product_draft'); // ★ 新增：明確點擊新增商品時，強制清空舊草稿
-                      setForm(getInitialForm());
-                      setEditingId(null);
-                      setGlobalSearchId('');
-                      setActiveTab('create');
-                      setShowMobileMenu(false); 
-                  } else {
-                        handleTabChange(item.id as any);
-                        if(item.id !== 'create') setEditingId(null); 
-                    }
-                }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all relative ${activeTab === item.id ? 'bg-[#EE4D2D] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
-              >
-                {item.id === 'orders' && pendingNotificationCount > 0 && (
-                    <div className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 border border-white rounded-full"></div>
-                )}
-                <i className={`fa-solid ${item.icon} w-5`}></i>
-                {item.label}
-              </button>
+            {menuSections.map((section, sIdx) => (
+              <div key={sIdx} className="mb-4">
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2 px-2 mt-4">{section.title}</div>
+                {section.items.map(item => (
+                  <button 
+                    key={item.id}
+                    onClick={() => { 
+                      if (item.id === 'customers' && !sellerConfig.can_view_stats && user.role !== 'ADMIN') {
+                          alert('【會員等級限制】\n您目前的會員等級無法使用「客戶管理系統」。\n請升級您的會員等級以解鎖此強大功能！');
+                          return;
+                      }
+                      if(item.id === 'create') {
+                          sessionStorage.removeItem('insbuy_new_product_draft');
+                          setForm(getInitialForm());
+                          setEditingId(null);
+                          setGlobalSearchId('');
+                          setActiveTab('create');
+                          setShowMobileMenu(false); 
+                      } else {
+                          handleTabChange(item.id as any);
+                          if(item.id !== 'create') setEditingId(null); 
+                      }
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all relative ${activeTab === item.id ? 'bg-[#EE4D2D] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                  >
+                    {item.id === 'orders' && pendingNotificationCount > 0 && (
+                        <div className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 border border-white rounded-full"></div>
+                    )}
+                    <i className={`fa-solid ${item.icon} w-5`}></i>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
             ))}
+            
             
             {user.role === 'ADMIN' && (
               <>
@@ -1204,7 +1222,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
                  <button 
                    key={item.id}
                    onClick={() => handleTabChange(item.id as any)}
-                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === item.id ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === item.id ? 'bg-[#EE4D2D] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                  >
                    <i className={`fa-solid ${item.icon} w-5`}></i>
                    {item.label}
@@ -1276,6 +1294,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
                  前往處理
               </button>
            </div>
+        )}
+
+       {/* ★ 新增：預約系統後台 Tab */}
+        {activeTab === 'seller_booking' && (
+           <SellerBookingDashboard />
         )}
 
         {/* Overview Tab */}

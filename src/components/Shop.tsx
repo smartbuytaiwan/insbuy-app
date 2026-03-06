@@ -545,6 +545,14 @@ const Shop: React.FC<ShopProps> = ({
                   {canRateSeller && (<button onClick={() => setShowRateModal(true)} className="flex-auto md:flex-none px-3 py-2 text-xs md:text-sm bg-yellow-400 text-white rounded-lg font-bold hover:bg-yellow-500 transition shadow-sm flex items-center justify-center gap-1.5 whitespace-nowrap"><i className="fa-solid fa-star"></i> 評分</button>)}
                   <button onClick={handleShareShop} className="flex-auto md:flex-none px-3 py-2 text-xs md:text-sm bg-white border border-slate-200 text-slate-600 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-1.5 whitespace-nowrap"><i className="fa-solid fa-share-nodes"></i> 分享</button>
                   <button onClick={() => setIsReportingShop(true)} className="flex-auto md:flex-none px-3 py-2 bg-white border border-red-200 text-red-500 rounded-lg font-bold hover:bg-red-50 transition text-xs flex items-center justify-center gap-1.5 whitespace-nowrap"><i className="fa-solid fa-triangle-exclamation"></i> 檢舉</button>
+                  
+                  {/* ★ 新增：品牌預約系統按鈕 (特別用不同的顏色強調) */}
+                  <button 
+                    onClick={() => onNavigate && onNavigate(View.BRAND_BOOKING, undefined, currentShop.shop_id || currentShop.id)} 
+                    className="flex-auto md:flex-none px-3 py-2 text-xs md:text-sm bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition flex items-center justify-center gap-1.5 whitespace-nowrap shadow-sm border border-purple-700"
+                  >
+                    <i className="fa-solid fa-calendar-check"></i> 品牌預約系統
+                  </button>
                 </div>
               </div>
             </div>
