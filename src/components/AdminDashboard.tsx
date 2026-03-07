@@ -15,6 +15,7 @@ import AdminOverview from './AdminOverview';
 import { SELLER_ORDER_STATUS_OPTIONS, BUYER_ORDER_STATUS_OPTIONS, COLORS } from '../constants';
 import AdminProductForm from './AdminProductForm';
 import BuyerReport from './BuyerReport'; // ★ 引入全新的買家報表
+import BuyerBookingDashboard from '../booking-crm/components/BuyerBookingDashboard'; // ★ 新增：引入買家預約中心元件
 import AdminAnnouncement from './AdminAnnouncement'; // ★ 新增：引入全站公告後台管理元件
 import AdminReports from './AdminReports'; // ★ 新增：引入全站檢舉審核面板
 import SellerBookingDashboard from '../booking-crm/SellerBookingDashboard'; // ★ 新增：引入預約系統後台元件
@@ -151,7 +152,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
       };
   }, [activePermissions, user.level]);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'products' | 'create' | 'categories' | 'settings' | 'affiliate' | 'customers' | 'system_cats' | 'buying_account' | 'buying_orders' | 'buying_reports' | 'reports' | 'announcement' | 'seller_booking'>('overview');
+  // ★ 修正：加入 'buying_bookings' 型別
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'products' | 'create' | 'categories' | 'settings' | 'affiliate' | 'customers' | 'system_cats' | 'buying_account' | 'buying_orders' | 'buying_reports' | 'buying_bookings' | 'reports' | 'announcement' | 'seller_booking'>('overview');
   const [showMobileMenu, setShowMobileMenu] = useState(true);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1217,7 +1219,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
                {[
                  { id: 'buying_account', icon: 'fa-user', label: '我的帳戶' },
                  { id: 'buying_orders', icon: 'fa-bag-shopping', label: '購買清單' },
-                 { id: 'buying_reports', icon: 'fa-chart-line', label: '我的報表' }
+                 { id: 'buying_reports', icon: 'fa-chart-line', label: '我的報表' },
+                 { id: 'buying_bookings', icon: 'fa-calendar-check', label: '我的預約' } // ★ 新增：我的預約按鈕
                ].map(item => (
                  <button 
                    key={item.id}
@@ -1729,6 +1732,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
         {/* ★ 替換為全新獨立的 BuyerReport 報表元件 (傳入 buyOrders 作為個人消費數據) */}
         {activeTab === 'buying_reports' && (
            <BuyerReport orders={buyOrders} />
+        )}
+
+        {/* ★ 新增：買家預約中心渲染區塊 */}
+        {activeTab === 'buying_bookings' && (
+           <BuyerBookingDashboard currentUser={user} onNavigate={onNavigate as any} />
         )}
       </div>
 

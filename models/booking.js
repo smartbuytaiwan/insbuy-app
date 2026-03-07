@@ -11,6 +11,11 @@ const staffSchema = new mongoose.Schema({
   bio: { type: String },
   service_ids: [{ type: String }], // 該員工可執行的服務項目 ID
   work_schedule: { type: Object, default: {} }, // 營業與排班時間設定
+  // ★ 新增：排班與請假系統所需欄位 (確保 Mongoose 能正確儲存資料)
+  shifts: { type: Array, default: [] },
+  leave_records: { type: Array, default: [] },
+  leave_templates: { type: Array, default: [] },
+  shift_assignments: { type: Object, default: {} },
   created_at: { type: String }
 });
 
@@ -26,6 +31,7 @@ const serviceSchema = new mongoose.Schema({
   deposit_amount: { type: Number, default: 0 },
   image_url: { type: String }, // ★ 新增：服務宣傳照
   category: { type: String, default: '未分類' }, // ★ 新增：大分類項目
+  allowed_payment_methods: { type: Array, default: ['PAY_ON_SITE', 'FULL'] }, // ★ 新增：允許的結帳方式
   allowed_times: [{ type: String }], // ★ 新增：限定此服務可預約的特定時間 (如 10:00, 13:00)
   staff_ids: [{ type: String }], // ★ 新增：可執行此服務的指定員工 ID 列表
   addons: [{
@@ -71,6 +77,12 @@ const bookingSchema = new mongoose.Schema({
     default: 'UNPAID' 
   },
   used_voucher_id: { type: String }, // 若使用套券，紀錄套券 ID
+  // ★ 新增：金流與折抵相關欄位
+  payment_method: { type: String, enum: ['FULL', 'DEPOSIT', 'PAY_ON_SITE'], default: 'PAY_ON_SITE' }, // 付款方式：全額/訂金/現場付款
+  payable_amount: { type: Number, default: 0 }, // 最終應付總額 (扣除折抵後)
+  discount_amount: { type: Number, default: 0 }, // 總折抵金額
+  used_wallet_amount: { type: Number, default: 0 }, // 儲值金回用扣抵金額
+  used_coupon_id: { type: String }, // 使用的優惠券 ID
   created_at: { type: String }
 });
 
@@ -100,15 +112,22 @@ const voucherSchema = new mongoose.Schema({
 // 7. 店家營業時間與公休設定 (StoreBookingSetting) 模型
 const storeBookingSettingSchema = new mongoose.Schema({
   shop_id: { type: String, required: true, unique: true },
-  default_open_time: { type: String, default: "10:00" }, // 留作向下相容
-  default_close_time: { type: String, default: "21:00" }, // 留作向下相容
-  weekly_schedule: { type: Object, default: {} }, // ★ 升級：紀錄每週幾的營業與休息時間
-  closed_dates: [{ type: String }], // 留作向下相容舊資料
-  special_dates: { type: Object, default: {} }, // ★ 新增：特定日期的客製化營業/休息設定
-  service_categories: [{ type: String }], // ★ 新增：服務項目的自訂分類列表
-  auto_assign_rule: { type: String, enum: ['LEAST_BOOKINGS', 'LEAST_REVENUE', 'PRIORITY'], default: 'LEAST_BOOKINGS' }, // ★ 新增：不指定時的派單規則
-  priority_staff_id: { type: String }, // ★ 新增：優先派發的員工 ID (當規則為 PRIORITY 時使用)
-  updated_at: { type: String }
+  default_open_time: { type: String, default: "10:00" }, 
+  default_close_time: { type: String, default: "21:00" }, 
+  weekly_schedule: { type: Object, default: {} }, 
+  closed_dates: [{ type: String }], 
+  special_dates: { type: Object, default: {} }, 
+  service_categories: [{ type: String }], 
+  auto_assign_rule: { type: String, enum: ['LEAST_BOOKINGS', 'LEAST_REVENUE', 'PRIORITY'], default: 'LEAST_BOOKINGS' }, 
+  priority_staff_id: { type: String }, 
+  updated_at: { type: String },
+  
+  // ★ 關鍵修復：必須在這裡完整宣告所有欄位，Mongoose 才不會把前端傳來的資料丟掉！
+  storefront_name: { type: String },
+  storefront_avatar: { type: String }, 
+  storefront_banner: { type: String },
+  storefront_address: { type: String },
+  storefront_notices: { type: String }
 });
 
 export const Staff = mongoose.model('Staff', staffSchema);

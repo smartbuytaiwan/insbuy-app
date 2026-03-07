@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Staff } from '../types';
 import { BookingAPI } from '../api';
 import { uploadImageToSupabase } from '../../supabaseClient';
+import StaffShiftCalendar from './StaffShiftCalendar.tsx'; // ★ 新增引入
 
 export default function StaffManagement({ shopId }: { shopId: string }) {
   const defaultSchedule = {
@@ -19,6 +20,7 @@ export default function StaffManagement({ shopId }: { shopId: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [form, setForm] = useState<Partial<Staff>>({ name: '', nickname: '', bio: '', avatar_url: '', work_schedule: defaultSchedule });
+  const [selectedStaffForShift, setSelectedStaffForShift] = useState<Staff | null>(null); // ★ 控制進階排班日曆的彈窗
 
   useEffect(() => { fetchStaff(); }, [shopId]);
 
@@ -99,30 +101,6 @@ export default function StaffManagement({ shopId }: { shopId: string }) {
               <label className="block text-xs font-bold text-slate-500 mb-1">專長與簡介</label>
               <textarea value={form.bio} onChange={e => setForm({...form, bio: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg outline-none focus:border-purple-500 resize-none h-20" />
             </div>
-            
-            {/* ★ 排班設定區域 */}
-            <div className="md:col-span-2 border-t border-slate-200 pt-4 mt-2">
-              <label className="block text-sm font-black text-slate-700 mb-3"><i className="fa-regular fa-calendar-check text-purple-600 mr-2"></i>常態上班時間排班</label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {[1, 2, 3, 4, 5, 6, 0].map((day) => {
-                  const dayNames = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-                  const schedule = form.work_schedule?.[String(day)] || { active: false, start: '10:00', end: '20:00' };
-                  return (
-                    <div key={day} className={`flex items-center justify-between p-2 rounded-lg border ${schedule.active ? 'bg-white border-purple-200' : 'bg-slate-50 border-slate-200 opacity-60'}`}>
-                      <label className="flex items-center gap-2 cursor-pointer w-24 shrink-0">
-                        <input type="checkbox" checked={schedule.active} className="w-4 h-4 accent-purple-600" onChange={e => setForm({ ...form, work_schedule: { ...form.work_schedule, [String(day)]: { ...schedule, active: e.target.checked } } })} />
-                        <span className="text-sm font-bold text-slate-700">{dayNames[day]}</span>
-                      </label>
-                      <div className="flex items-center gap-1 flex-1">
-                        <input type="time" value={schedule.start} disabled={!schedule.active} onChange={e => setForm({ ...form, work_schedule: { ...form.work_schedule, [String(day)]: { ...schedule, start: e.target.value } } })} className="bg-transparent border border-slate-200 rounded px-1 py-0.5 text-xs outline-none focus:border-purple-500" />
-                        <span className="text-slate-400 text-xs">-</span>
-                        <input type="time" value={schedule.end} disabled={!schedule.active} onChange={e => setForm({ ...form, work_schedule: { ...form.work_schedule, [String(day)]: { ...schedule, end: e.target.value } } })} className="bg-transparent border border-slate-200 rounded px-1 py-0.5 text-xs outline-none focus:border-purple-500" />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
           </div>
           <div className="flex gap-3 pt-2">
             <button type="submit" className="px-6 py-2 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700">儲存</button>
@@ -143,14 +121,31 @@ export default function StaffManagement({ shopId }: { shopId: string }) {
               <div className="flex-1 min-w-0">
                 <h4 className="font-bold text-slate-800 truncate">{staff.nickname || staff.name}</h4>
                 {staff.nickname && <div className="text-xs text-slate-400 mb-1 truncate">本名：{staff.name}</div>}
-                <div className="flex gap-2 mt-3">
-                  <button onClick={() => { setForm({...staff, work_schedule: staff.work_schedule || defaultSchedule}); setIsEditing(true); window.scrollTo(0,0); }} className="text-xs font-bold text-purple-600 hover:underline">編輯</button>
-                  <button onClick={() => handleDelete(staff.id)} className="text-xs font-bold text-red-500 hover:underline">刪除</button>
+                <div className="flex gap-2 mt-3 flex-wrap">
+                  <button onClick={() => setSelectedStaffForShift(staff)} className="text-xs font-bold text-white bg-[#EE4D2D] hover:bg-[#d73211] px-3 py-1.5 rounded shadow-sm transition"><i className="fa-solid fa-calendar-plus mr-1"></i>日曆排班與休假設定</button>
+                  <button onClick={() => { setForm({...staff, work_schedule: staff.work_schedule || defaultSchedule}); setIsEditing(true); window.scrollTo(0,0); }} className="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded transition"><i className="fa-solid fa-pen"></i> 基本編輯</button>
+                  <button onClick={() => handleDelete(staff.id)} className="text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded transition"><i className="fa-solid fa-trash"></i> 刪除</button>
                 </div>
               </div>
             </div>
           ))}
         </div>
+      )}
+
+      {/* ★ 載入新增的進階排班日曆元件 */}
+      {selectedStaffForShift && (
+        <StaffShiftCalendar 
+           staff={selectedStaffForShift} 
+           onClose={() => setSelectedStaffForShift(null)} 
+           onSave={async (updatedStaff) => {
+              try {
+                 await BookingAPI.updateStaff(updatedStaff.id!, updatedStaff);
+                 fetchStaff(); // 儲存後刷新名單
+              } catch (e) {
+                 alert('排班儲存失敗');
+              }
+           }} 
+        />
       )}
     </div>
   );

@@ -3,6 +3,7 @@ import { User, Order, View, SiteSettings } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import API from '../api';
 import BuyerReport from './BuyerReport'; // ★ 引入全新的買家報表
+import BuyerBookingDashboard from '../booking-crm/components/BuyerBookingDashboard'; // ★ 新增：引入買家專屬的預約紀錄元件
 
 // ★ 新增：宣告全域 google 變數避免 TS 報錯
 declare global {
@@ -41,7 +42,8 @@ const DELIVERY_STEPS = [
 ];
 
 const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSellers, siteSettings, onNavigate, onSubmitReview, onUpdateOrderStatus, onUpdateUser, initialTab }) => {
-  const [activeTab, setActiveTab] = useState<'ACCOUNT' | 'ORDERS' | 'REPORTS' | 'CREATE_SHOP'>('ACCOUNT');
+  // ★ 修改：在型別中加入 'BOOKINGS'
+  const [activeTab, setActiveTab] = useState<'ACCOUNT' | 'ORDERS' | 'REPORTS' | 'BOOKINGS' | 'CREATE_SHOP'>('ACCOUNT');
   
   const [showMobileMenu, setShowMobileMenu] = useState(true);
 
@@ -206,6 +208,7 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
               { id: 'ACCOUNT', icon: 'fa-user', label: '我的帳戶' },
               { id: 'ORDERS', icon: 'fa-bag-shopping', label: '我的訂單' },
               { id: 'REPORTS', icon: 'fa-chart-line', label: '消費分析' },
+              { id: 'BOOKINGS', icon: 'fa-calendar-check', label: '我的預約' }, // ★ 新增：我的預約按鈕
             ].map(item => (
               <button 
                 key={item.id}
@@ -508,6 +511,11 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
          {/* ★ 替換為全新獨立的 BuyerReport 報表元件 */}
          {activeTab === 'REPORTS' && (
             <BuyerReport orders={orders} />
+         )}
+
+         {/* ★ 新增：點擊我的預約時，顯示 BuyerBookingDashboard 元件 */}
+         {activeTab === 'BOOKINGS' && (
+            <BuyerBookingDashboard currentUser={user} onNavigate={onNavigate} />
          )}
 
          {activeTab === 'CREATE_SHOP' && user.role !== 'SELLER' && (

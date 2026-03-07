@@ -1,4 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import API from '../../api'; // ★ 新增：引入全域 API
+import BuyerBookingsView from './BuyerBookingsView'; // ★ 新增：引入預約明細子頁面
+import BuyerVouchersView from './BuyerVouchersView'; // ★ 新增：引入票券管理子頁面
 
 interface Props {
   currentUser: any;
@@ -6,6 +9,38 @@ interface Props {
 }
 
 export default function BuyerBookingDashboard({ currentUser, onNavigate }: Props) {
+  const [stats, setStats] = useState({ bookings: 0, vouchers: 0, wallet: 0, points: 0 });
+  
+  // ★ 新增：控制當前顯示畫面的 State
+  const [currentView, setCurrentView] = useState<'HOME' | 'BOOKINGS' | 'VOUCHERS'>('HOME');
+  const [bookingList, setBookingList] = useState<any[]>([]);
+  const [voucherList, setVoucherList] = useState<any[]>([]);
+
+  // ★ 修改：將 fetch 獨立出來供子元件重整呼叫
+  const fetchBuyerData = async () => {
+      if (!currentUser?.id) return;
+      try {
+          const [bookings, vouchers, walletData] = await Promise.all([
+              API.getBuyerBookings(currentUser.id).catch(() => []),
+              API.getBuyerVouchers(currentUser.id).catch(() => []),
+              API.getBuyerWallet(currentUser.id).catch(() => ({ total_balance: 0 }))
+          ]);
+          setStats({ bookings: bookings.length || 0, vouchers: vouchers.length || 0, wallet: walletData.total_balance || 0, points: currentUser.points || 0 });
+          setBookingList(bookings);
+          setVoucherList(vouchers);
+      } catch (error) {
+          console.error('讀取買家預約資料失敗', error);
+      }
+  };
+
+  useEffect(() => {
+    fetchBuyerData();
+  }, [currentUser]);
+
+  // ★ 新增：切換子頁面渲染
+  if (currentView === 'BOOKINGS') return <BuyerBookingsView bookings={bookingList} onBack={() => setCurrentView('HOME')} />;
+  if (currentView === 'VOUCHERS') return <BuyerVouchersView vouchers={voucherList} currentUser={currentUser} onBack={() => setCurrentView('HOME')} onRefresh={fetchBuyerData} />;
+
   return (
     <div className="w-full bg-[#F5F5F5] min-h-screen relative flex justify-center animate-fade-in">
       {/* 限制最大寬度，模擬手機 App 體驗 */}
@@ -36,12 +71,16 @@ export default function BuyerBookingDashboard({ currentUser, onNavigate }: Props
         {/* 4 大數據卡片 */}
         <div className="px-6 grid grid-cols-2 gap-3 mb-6">
           {[
-            { icon: 'fa-regular fa-calendar-check', label: '我的預約', value: '0' },
-            { icon: 'fa-solid fa-ticket', label: '擁有票券', value: '0' },
-            { icon: 'fa-solid fa-coins', label: '目前儲值金', value: '0' },
-            { icon: 'fa-solid fa-gift', label: '紅利兌換', value: '0' },
+            { id: 'BOOKINGS', icon: 'fa-regular fa-calendar-check', label: '我的預約', value: stats.bookings.toString() },
+            { id: 'VOUCHERS', icon: 'fa-solid fa-ticket', label: '擁有票券', value: stats.vouchers.toString() },
+            { id: 'WALLET', icon: 'fa-solid fa-coins', label: '目前儲值金', value: `$${stats.wallet}` },
+            { id: 'POINTS', icon: 'fa-solid fa-gift', label: '紅利兌換', value: stats.points.toString() },
           ].map((item, idx) => (
-            <div key={idx} className="bg-[#fcfcfc] rounded-2xl p-4 flex flex-col justify-between border border-slate-100 cursor-pointer hover:border-[#ffbba5] hover:bg-[#FFF4F2] transition group">
+            <div 
+               key={idx} 
+               onClick={() => { if(item.id === 'BOOKINGS') setCurrentView('BOOKINGS'); else if(item.id === 'VOUCHERS') setCurrentView('VOUCHERS'); }}
+               className="bg-[#fcfcfc] rounded-2xl p-4 flex flex-col justify-between border border-slate-100 cursor-pointer hover:border-[#ffbba5] hover:bg-[#FFF4F2] transition group"
+            >
               <div className="flex justify-between items-center text-slate-500 mb-3 group-hover:text-[#EE4D2D]">
                 <span className="text-sm font-bold flex items-center gap-2"><i className={item.icon}></i> {item.label}</span>
                 <i className="fa-solid fa-chevron-right text-[10px] opacity-40"></i>
@@ -54,11 +93,15 @@ export default function BuyerBookingDashboard({ currentUser, onNavigate }: Props
         {/* 功能列表清單 */}
         <div className="px-6 flex flex-col flex-1">
           {[
-            { icon: 'fa-solid fa-file-signature', label: '問卷與同意書', count: '0' },
-            { icon: 'fa-regular fa-calendar-days', label: '預約管理', count: null },
-            { icon: 'fa-solid fa-ticket-simple', label: '票券管理', count: null },
+            { id: 'FORMS', icon: 'fa-solid fa-file-signature', label: '問卷與同意書', count: '0' },
+            { id: 'BOOKINGS', icon: 'fa-regular fa-calendar-days', label: '預約管理', count: null },
+            { id: 'VOUCHERS', icon: 'fa-solid fa-ticket-simple', label: '票券管理', count: null },
           ].map((item, idx) => (
-            <div key={idx} className="flex justify-between items-center py-4 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition px-2 -mx-2 rounded-xl">
+            <div 
+               key={idx} 
+               onClick={() => { if(item.id === 'BOOKINGS') setCurrentView('BOOKINGS'); else if(item.id === 'VOUCHERS') setCurrentView('VOUCHERS'); }}
+               className="flex justify-between items-center py-4 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition px-2 -mx-2 rounded-xl"
+            >
               <div className="flex items-center gap-3 text-slate-700 font-bold">
                 <i className={`${item.icon} text-lg w-6 text-center text-slate-300`}></i> {item.label}
               </div>

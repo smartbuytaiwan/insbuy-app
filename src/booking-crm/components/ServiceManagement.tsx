@@ -12,7 +12,7 @@ export default function ServiceManagement({ shopId }: { shopId: string }) {
   const [isUploading, setIsUploading] = useState(false);
   // ★ 新增：定義初始狀態，包含分類與加購項目
   const initialFormState: Partial<Service> = {
-    name: '', price: 0, duration_minutes: 60, buffer_minutes: 15, requires_deposit: false, deposit_amount: 0, is_active: true, image_url: '', category: '', addons: [], allowed_times: [], staff_ids: []
+    name: '', price: 0, duration_minutes: 60, buffer_minutes: 15, requires_deposit: false, deposit_amount: 0, is_active: true, image_url: '', category: '', addons: [], allowed_times: [], staff_ids: [], allowed_payment_methods: ['PAY_ON_SITE', 'FULL', 'VOUCHER', 'WALLET']
   };
   const [form, setForm] = useState<Partial<Service>>(initialFormState);
   const [categories, setCategories] = useState<string[]>([]); // ★ 新增：儲存從後台抓取的分類列表
@@ -210,6 +210,40 @@ export default function ServiceManagement({ shopId }: { shopId: string }) {
               )}
             </div>
 
+            <div className="md:col-span-2 bg-[#FFF4F2] p-3 rounded-lg border border-[#ffbba5] mt-2">
+              <label className="block text-xs font-bold text-[#EE4D2D] mb-2"><i className="fa-solid fa-credit-card mr-1"></i>開放的結帳方式 (勾選代表允許客人使用該方式)</label>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded border border-[#ffbba5] shadow-sm">
+                  <input type="checkbox" checked={!form.allowed_payment_methods || form.allowed_payment_methods.includes('PAY_ON_SITE')} onChange={e => {
+                      const curr = form.allowed_payment_methods || ['PAY_ON_SITE', 'FULL', 'VOUCHER', 'WALLET'];
+                      setForm({...form, allowed_payment_methods: e.target.checked ? [...curr, 'PAY_ON_SITE'] : curr.filter(m => m !== 'PAY_ON_SITE')});
+                  }} className="w-4 h-4 accent-[#EE4D2D]" />
+                  <span className="text-sm font-bold text-slate-700">現場付款</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded border border-[#ffbba5] shadow-sm">
+                  <input type="checkbox" checked={!form.allowed_payment_methods || form.allowed_payment_methods.includes('FULL')} onChange={e => {
+                      const curr = form.allowed_payment_methods || ['PAY_ON_SITE', 'FULL', 'VOUCHER', 'WALLET'];
+                      setForm({...form, allowed_payment_methods: e.target.checked ? [...curr, 'FULL'] : curr.filter(m => m !== 'FULL')});
+                  }} className="w-4 h-4 accent-[#EE4D2D]" />
+                  <span className="text-sm font-bold text-slate-700">線上全額結帳</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded border border-purple-200 shadow-sm">
+                  <input type="checkbox" checked={!form.allowed_payment_methods || form.allowed_payment_methods.includes('VOUCHER')} onChange={e => {
+                      const curr = form.allowed_payment_methods || ['PAY_ON_SITE', 'FULL', 'VOUCHER', 'WALLET'];
+                      setForm({...form, allowed_payment_methods: e.target.checked ? [...curr, 'VOUCHER'] : curr.filter(m => m !== 'VOUCHER')});
+                  }} className="w-4 h-4 accent-purple-600" />
+                  <span className="text-sm font-bold text-purple-700">預約票券折抵</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded border border-orange-200 shadow-sm">
+                  <input type="checkbox" checked={!form.allowed_payment_methods || form.allowed_payment_methods.includes('WALLET')} onChange={e => {
+                      const curr = form.allowed_payment_methods || ['PAY_ON_SITE', 'FULL', 'VOUCHER', 'WALLET'];
+                      setForm({...form, allowed_payment_methods: e.target.checked ? [...curr, 'WALLET'] : curr.filter(m => m !== 'WALLET')});
+                  }} className="w-4 h-4 accent-orange-500" />
+                  <span className="text-sm font-bold text-orange-700">儲值金扣抵</span>
+                </label>
+              </div>
+            </div>
+            
             <div className="md:col-span-2 flex items-center gap-4 border-t border-slate-200 pt-4 mt-2">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.requires_deposit} onChange={e => setForm({...form, requires_deposit: e.target.checked})} className="w-4 h-4 accent-purple-600" />
@@ -271,19 +305,21 @@ export default function ServiceManagement({ shopId }: { shopId: string }) {
           {services.map(srv => (
             <div key={srv.id} className="bg-white border border-slate-200 p-4 rounded-xl shadow-sm hover:shadow-md transition flex flex-col justify-between overflow-hidden">
               <div>
-                {srv.image_url && (
-                  <div className="w-full aspect-square bg-slate-100 -mt-4 -mx-4 mb-4 border-b border-slate-100">
-                    <img src={srv.image_url} className="w-full h-full object-cover" alt={srv.name} />
-                  </div>
-                )}
                 <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full mb-1 inline-block border border-slate-200">
-                      {srv.category || '未分類'}
-                    </span>
-                    <h4 className="font-bold text-slate-800">{srv.name}</h4>
+                  <div className="flex items-start gap-3">
+                    {srv.image_url && (
+                      <div className="w-16 h-16 shrink-0 bg-slate-100 rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+                        <img src={srv.image_url} className="w-full h-full object-cover" alt={srv.name} />
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full mb-1 inline-block border border-slate-200">
+                        {srv.category || '未分類'}
+                      </span>
+                      <h4 className="font-bold text-slate-800">{srv.name}</h4>
+                    </div>
                   </div>
-                  <span className="text-purple-600 font-black">${srv.price.toLocaleString()}</span>
+                  <span className="text-purple-600 font-black ml-2">${srv.price.toLocaleString()}</span>
                 </div>
                 <div className="text-xs text-slate-500 flex flex-wrap gap-2 mb-3">
                   <span className="flex items-center gap-1 bg-slate-50 px-1.5 py-0.5 rounded text-slate-600"><i className="fa-regular fa-clock"></i> 施作 {srv.duration_minutes} 分</span>

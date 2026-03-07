@@ -255,3 +255,10 @@ export {
 export { 
   Staff, Service, Resource, Booking, CustomerProfile, Voucher, StoreBookingSetting 
 } from './booking.js';
+
+// ==========================================
+// ★ 新增：匯出金流與折抵擴充模型
+// ==========================================
+export { Wallet } from './wallet.js';
+export { Coupon } from './coupon.js';
+export { VoucherPlan } from './voucherPlan.js'; // ★ 新增：販售套券方案模型

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DaySchedule } from '../types';
+import { uploadImageToSupabase } from '../../supabaseClient'; // ★ 引入上傳圖片功能
 
 const defaultDay = (): DaySchedule => ({ isOpen: true, open: '10:00', close: '21:00', breakStart: '', breakEnd: '', slot_interval: 30, disabled_slots: [] });
 const closedDay = (): DaySchedule => ({ isOpen: false, open: '', close: '', breakStart: '', breakEnd: '', slot_interval: 30, disabled_slots: [] });
@@ -24,6 +25,43 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
   const [priorityStaffId, setPriorityStaffId] = useState('');
   const [staffList, setStaffList] = useState<any[]>([]);
 
+  // ★ 新增：品牌首頁自訂設定狀態
+  const [storefrontForm, setStorefrontForm] = useState({
+     storefront_name: '',
+     storefront_avatar: '', // ★ 新增：大頭照
+     storefront_banner: '',
+     storefront_address: '',
+     storefront_notices: '✦ 工作室可攜伴(但勿催促⚠️)\n✦ 操作時間約 2.5 - 4 小時請保留時間\n✦ 取消/改期請於 2 天前告知，臨時改期下次預約須先付訂金，無故取消將列入黑名單'
+  });
+  
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+
+  // ★ 新增：處理圖片上傳
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'banner') => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      if (type === 'avatar') setIsUploadingAvatar(true);
+      else setIsUploadingBanner(true);
+
+      try {
+          const url = await uploadImageToSupabase(file, 'images');
+          if (url) {
+              if (type === 'avatar') setStorefrontForm(prev => ({ ...prev, storefront_avatar: url }));
+              else setStorefrontForm(prev => ({ ...prev, storefront_banner: url }));
+          } else {
+              alert('圖片上傳失敗，請檢查網路或系統設定');
+          }
+      } catch (error) {
+          console.error('上傳錯誤', error);
+          alert('上傳發生錯誤');
+      } finally {
+          if (type === 'avatar') setIsUploadingAvatar(false);
+          else setIsUploadingBanner(false);
+      }
+  };
+
   useEffect(() => {
     fetch(`http://127.0.0.1:3001/api/booking/settings/${shopId}`)
       .then(res => res.json())
@@ -41,6 +79,15 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
           // ★ 讀取派單規則
           if (data.auto_assign_rule) setAutoAssignRule(data.auto_assign_rule);
           if (data.priority_staff_id) setPriorityStaffId(data.priority_staff_id);
+          
+          // ★ 讀取首頁設定
+          setStorefrontForm({
+             storefront_name: data.storefront_name || '',
+             storefront_avatar: data.storefront_avatar || '', // ★ 讀取大頭照
+             storefront_banner: data.storefront_banner || '',
+             storefront_address: data.storefront_address || '',
+             storefront_notices: data.storefront_notices || '✦ 工作室可攜伴(但勿催促⚠️)\n✦ 操作時間約 2.5 - 4 小時請保留時間\n✦ 取消/改期請於 2 天前告知，臨時改期下次預約須先付訂金，無故取消將列入黑名單'
+          });
         }
       }).catch(console.error);
 
@@ -53,13 +100,32 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
   const handleSave = async () => {
     setIsSaving(true);
     try {
+      // ★ 核心修復：將前端統整的 specialDates 拆分為「特規營業日(Object)」與「公休日(Array)」
+      const finalSpecialDates: Record<string, DaySchedule> = {};
+      const finalClosedDates: string[] = [];
+      
+      Object.keys(specialDates).forEach(date => {
+        if (specialDates[date].isOpen) {
+          finalSpecialDates[date] = specialDates[date]; // 有營業的特規日
+        } else {
+          finalClosedDates.push(date); // 標記為公休的日子，只抽出日期字串
+        }
+      });
+
       await fetch(`http://127.0.0.1:3001/api/booking/settings/${shopId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ 
            weekly_schedule: weeklySchedule, 
-           special_dates: specialDates,
+           special_dates: finalSpecialDates,         // ★ 只傳入有營業的特規日
+           closed_dates: finalClosedDates,           // ★ 將公休日期抽出為專屬陣列傳給後端
            auto_assign_rule: autoAssignRule,         // ★ 儲存派單規則
-           priority_staff_id: priorityStaffId        // ★ 儲存優先員工
+           priority_staff_id: priorityStaffId,       // ★ 儲存優先員工
+           // ★ 儲存首頁設定
+           storefront_name: storefrontForm.storefront_name,
+           storefront_avatar: storefrontForm.storefront_avatar, // ★ 儲存大頭照
+           storefront_banner: storefrontForm.storefront_banner,
+           storefront_address: storefrontForm.storefront_address,
+           storefront_notices: storefrontForm.storefront_notices
         })
       });
       alert('營業時間與派單設定已成功儲存！');
@@ -175,6 +241,7 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
         <button onClick={() => setActiveTab('calendar')} className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-bold border-2 transition ${activeTab === 'calendar' ? 'border-[#EE4D2D] text-[#EE4D2D] bg-[#FFF4F2]' : 'border-transparent bg-slate-100 text-slate-500'}`}>當月行事曆預覽</button>
         <button onClick={() => setActiveTab('weekly')} className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-bold border-2 transition ${activeTab === 'weekly' ? 'border-[#EE4D2D] text-[#EE4D2D] bg-[#FFF4F2]' : 'border-transparent bg-slate-100 text-slate-500'}`}>每週預設時間</button>
         <button onClick={() => setActiveTab('special')} className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-bold border-2 transition ${activeTab === 'special' ? 'border-[#EE4D2D] text-[#EE4D2D] bg-[#FFF4F2]' : 'border-transparent bg-slate-100 text-slate-500'}`}>特定日期(特休/加班)</button>
+        <button onClick={() => setActiveTab('storefront' as any)} className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-bold border-2 transition ${activeTab === 'storefront' as any ? 'border-[#EE4D2D] text-[#EE4D2D] bg-[#FFF4F2]' : 'border-transparent bg-slate-100 text-slate-500'}`}>首頁品牌設定</button>
       </div>
 
       {/* ★ 新增：自動派單規則設定區塊 (常駐在上方) */}
@@ -316,6 +383,62 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
                    ))}
                  </div>
                )}
+            </div>
+          </div>
+        )}
+
+        {/* ★ 新增：品牌首頁設定 Tab */}
+        {activeTab === 'storefront' as any && (
+          <div className="animate-fade-in space-y-6 max-w-2xl">
+            <p className="text-sm text-slate-500 font-bold mb-4 border-l-4 border-[#EE4D2D] pl-2">您在此處的設定將會即時顯示在買家的「線上預約首頁」。</p>
+            
+            <div>
+               <label className="block text-sm font-bold text-slate-700 mb-1">品牌/店家顯示名稱</label>
+               <input type="text" value={storefrontForm.storefront_name} onChange={e => setStorefrontForm({...storefrontForm, storefront_name: e.target.value})} placeholder="例如：拍拍購合作店家" className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:border-[#EE4D2D]" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                   <label className="block text-sm font-bold text-slate-700 mb-1">店家大頭照 / Logo (選填)</label>
+                   <p className="text-[10px] text-slate-400 mb-2">建議尺寸：1:1 正方形 (例如 400x400 px)</p>
+                   <div className="flex items-end gap-4">
+                       <div className="w-24 h-24 rounded-full border-2 border-dashed border-slate-300 overflow-hidden bg-slate-50 flex items-center justify-center shrink-0">
+                           {isUploadingAvatar ? <i className="fa-solid fa-spinner fa-spin text-slate-400 text-2xl"></i> :
+                            storefrontForm.storefront_avatar ? <img src={storefrontForm.storefront_avatar} className="w-full h-full object-cover" /> :
+                            <i className="fa-solid fa-image text-slate-300 text-2xl"></i>}
+                       </div>
+                       <label className="cursor-pointer bg-white border border-slate-200 hover:border-[#EE4D2D] hover:text-[#EE4D2D] text-slate-600 px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm mb-2">
+                           選擇照片
+                           <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'avatar')} className="hidden" />
+                       </label>
+                   </div>
+                </div>
+
+                <div>
+                   <label className="block text-sm font-bold text-slate-700 mb-1">首頁品牌 Banner 背景圖 (選填)</label>
+                   <p className="text-[10px] text-slate-400 mb-2">建議尺寸：長方形比例 (例如 1200x400 px)</p>
+                   <div className="flex flex-col gap-2">
+                       <div className="w-full h-24 rounded-xl border-2 border-dashed border-slate-300 overflow-hidden bg-slate-50 flex items-center justify-center relative">
+                           {isUploadingBanner ? <i className="fa-solid fa-spinner fa-spin text-slate-400 text-2xl"></i> :
+                            storefrontForm.storefront_banner ? <img src={storefrontForm.storefront_banner} className="w-full h-full object-cover" /> :
+                            <i className="fa-solid fa-image text-slate-300 text-2xl"></i>}
+                       </div>
+                       <label className="cursor-pointer text-center bg-white border border-slate-200 hover:border-[#EE4D2D] hover:text-[#EE4D2D] text-slate-600 px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm w-fit">
+                           上傳背景圖
+                           <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'banner')} className="hidden" />
+                       </label>
+                   </div>
+                </div>
+            </div>
+
+            <div>
+               <label className="block text-sm font-bold text-slate-700 mb-1">實體店面地址</label>
+               <input type="text" value={storefrontForm.storefront_address} onChange={e => setStorefrontForm({...storefrontForm, storefront_address: e.target.value})} placeholder="點擊可引導客人開啟 Google 地圖" className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:border-[#EE4D2D]" />
+            </div>
+
+            <div>
+               <label className="block text-sm font-bold text-slate-700 mb-1">預約注意事項</label>
+               <textarea value={storefrontForm.storefront_notices} onChange={e => setStorefrontForm({...storefrontForm, storefront_notices: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:border-[#EE4D2D] h-32" placeholder="輸入退換貨或遲到須知..."></textarea>
             </div>
           </div>
         )}

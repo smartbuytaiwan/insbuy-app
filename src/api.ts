@@ -117,6 +117,16 @@ export const API = {
   createAffiliateLink: (link: any) => api.post('/affiliate-links', link).then(res => res.data),
   updateAffiliateLink: (id: string, updates: any) => api.put(`/affiliate-links/${id}`, updates).then(res => res.data),
   recordAffiliateClick: (clickData: any) => api.post('/affiliate-clicks', clickData).then(res => res.data),
+  
+  // ==========================================
+  // ★ 新增：買家預約與折抵資產 API
+  // ==========================================
+  getBuyerBookings: (buyerId: string) => api.get(`/booking/list?buyer_id=${buyerId}`).then(res => res.data),
+  getBuyerVouchers: (buyerId: string) => api.get(`/booking/vouchers/buyer/${buyerId}`).then(res => res.data),
+  getBuyerWallet: (buyerId: string) => api.get(`/booking/wallet/buyer/${buyerId}`).then(res => res.data),
+  
+  // ★ 新增：票券轉贈好友 API
+  transferVoucher: (data: { voucher_id: string, from_buyer_id: string, to_buyer_id: string }) => api.post('/booking/vouchers/transfer', data).then(res => res.data),
 };
 
 export default API;

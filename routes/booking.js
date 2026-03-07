@@ -1,5 +1,5 @@
 import express from 'express';
-import { Staff, Service, Resource, Booking, CustomerProfile, Voucher, StoreBookingSetting } from '../models/index.js';
+import { Staff, Service, Resource, Booking, CustomerProfile, Voucher, StoreBookingSetting, Wallet } from '../models/index.js'; // ★ 新增：引入 Wallet 模型
 
 const router = express.Router();
 
@@ -70,6 +70,8 @@ router.post('/available-slots', async (req, res) => {
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
+    // ★ 跨日邏輯支援：為了確保能抓到跨日到凌晨的預約單進行防撞期比對，將結束時間往後推 24 小時
+    endOfDay.setDate(endOfDay.getDate() + 1); 
 
     const existingBookings = await Booking.find({
       shop_id,
@@ -78,7 +80,27 @@ router.post('/available-slots', async (req, res) => {
       start_time: { $gte: startOfDay.toISOString(), $lte: endOfDay.toISOString() }
     }).lean();
 
-    res.json({ totalMinutesNeeded, existingBookings, storeSetting, isClosedDay: false, message: '已回傳防撞期所需基礎數據' });
+    // ★ 新增：取得指定的員工當日班表，交給前端判斷是否可預約
+    let staffShift = null;
+    if (staff_id) {
+       const staff = await Staff.findOne({ id: staff_id }).lean();
+       if (staff) {
+          const leaveRecord = staff.leave_records?.find(l => l.date === date);
+          if (leaveRecord) {
+             staffShift = { isLeave: true, leaveType: leaveRecord.leave_type };
+          } else {
+             const assignedShiftId = staff.shift_assignments?.[date];
+             if (assignedShiftId) {
+                const shift = staff.shifts?.find(s => s.id === assignedShiftId);
+                if (shift) staffShift = { isLeave: false, start: shift.start_time, end: shift.end_time };
+             } else {
+                staffShift = { isLeave: false, start: null, end: null }; // 未排班
+             }
+          }
+       }
+    }
+
+    res.json({ totalMinutesNeeded, existingBookings, storeSetting, staffShift, isClosedDay: false, message: '已回傳防撞期所需基礎數據' });
   } catch (error) {
     res.status(500).json({ message: '時段計算失敗' });
   }
@@ -105,10 +127,14 @@ router.get('/list', async (req, res) => {
 });
 
 // ★ 新增：更新預約單狀態
+// ★ 新增：更新預約單狀態 (支援付款狀態更新)
 router.patch('/update-status/:id', async (req, res) => {
   try {
-    const { status } = req.body;
-    res.json(await Booking.findOneAndUpdate({ id: req.params.id }, { status }, { new: true }));
+    const { status, deposit_status } = req.body;
+    const updateData = {};
+    if (status) updateData.status = status;
+    if (deposit_status) updateData.deposit_status = deposit_status;
+    res.json(await Booking.findOneAndUpdate({ id: req.params.id }, { $set: updateData }, { new: true }));
   } catch (e) { res.status(500).json({ message: 'Error' }); }
 });
 
@@ -171,6 +197,54 @@ router.put('/settings/:shop_id', async (req, res) => {
     const setting = await StoreBookingSetting.findOneAndUpdate({ shop_id: req.params.shop_id }, data, { new: true, upsert: true });
     res.json(setting);
   } catch (e) { res.status(500).json({ message: 'Error' }); }
+});
+
+// ==========================================
+// 9. 買家專屬資產查詢 (Buyer Assets)
+// ==========================================
+// 取得買家擁有的所有票券
+router.get('/vouchers/buyer/:buyer_id', async (req, res) => {
+  try { res.json(await Voucher.find({ buyer_id: req.params.buyer_id }).lean()); }
+  catch (e) { res.status(500).json({ message: 'Error' }); }
+});
+
+// 取得買家儲值金總餘額
+router.get('/wallet/buyer/:buyer_id', async (req, res) => {
+  try { 
+    const wallets = await Wallet.find({ buyer_id: req.params.buyer_id }).lean();
+    const totalBalance = wallets.reduce((sum, w) => sum + w.balance, 0);
+    res.json({ total_balance: totalBalance, wallets }); 
+  }
+  catch (e) { res.status(500).json({ message: 'Error' }); }
+});
+
+// ==========================================
+// 10. 票券轉贈 (Transfer Voucher)
+// ==========================================
+router.post('/vouchers/transfer', async (req, res) => {
+  try {
+    const { voucher_id, from_buyer_id, to_buyer_id } = req.body;
+    
+    // 檢查朋友是否存在 (透過 mongoose 動態取得 User model)
+    const mongoose = await import('mongoose');
+    const User = mongoose.model('User');
+    const friend = await User.findOne({ id: to_buyer_id });
+    
+    if (!friend) {
+        return res.status(404).json({ message: '找不到該好友 ID，請確認輸入是否正確！' });
+    }
+
+    const voucher = await Voucher.findOne({ id: voucher_id, buyer_id: from_buyer_id });
+    if (!voucher) return res.status(404).json({ message: '找不到此票券，或您無權限轉贈。' });
+
+    // 轉移擁有權
+    voucher.buyer_id = to_buyer_id;
+    await voucher.save();
+    
+    res.json({ success: true, message: `成功將票券贈送給好友「${friend.name || friend.id}」！` });
+  } catch (e) { 
+    res.status(500).json({ message: '轉贈發生錯誤，請稍後再試。' }); 
+  }
 });
 
 export default router;

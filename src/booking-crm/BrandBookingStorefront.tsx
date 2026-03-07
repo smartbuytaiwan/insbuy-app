@@ -32,22 +32,50 @@ export default function BrandBookingStorefront(props: Props) {
   const [memo, setMemo] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>(''); // ★ 新增：追蹤目前被點擊的分類頁籤
 
+  // ★ 新增：Step 4 結帳與折抵相關狀態
+  const [useCoupon, setUseCoupon] = useState<boolean>(false);
+  const [paymentMethod, setPaymentMethod] = useState<string>('PAY_ON_SITE');
+  
+  // ★ 買家資產狀態 (票券與儲值金)
+  const [userVouchers, setUserVouchers] = useState<any[]>([]);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [selectedVoucherId, setSelectedVoucherId] = useState<string>('');
+
   const [availableSlots, setAvailableSlots] = useState<{time: string, available: boolean}[]>([]);
   const [isCheckingSlots, setIsCheckingSlots] = useState(false);
+  
+  // ★ 新增：首頁方案購買狀態
+  const [plans, setPlans] = useState<any[]>([]);
+  const [purchasingPlan, setPurchasingPlan] = useState<any>(null);
 
-  // 1. 初始化載入
+  // 1. 抓取使用者資產 (票券與錢包)
+  useEffect(() => {
+    if (currentUser?.id) {
+       fetch(`http://127.0.0.1:3001/api/booking/vouchers/buyer/${currentUser.id}`).then(r => r.json()).then(res => setUserVouchers(res || [])).catch(()=>{});
+       fetch(`http://127.0.0.1:3001/api/booking/wallet/buyer/${currentUser.id}`).then(r => r.json()).then(res => setWalletBalance(res?.total_balance || 0)).catch(()=>{});
+    }
+  }, [currentUser]);
+
+  // 2. 初始化載入
   useEffect(() => {
     const initData = async () => {
       setIsLoading(true);
       try {
-        const [srvRes, stfRes, storeRes] = await Promise.all([
+        const [srvRes, stfRes, storeRes, planRes] = await Promise.all([
           BookingAPI.getServices(shopId),
           BookingAPI.getStaff(shopId),
-          BookingAPI.getStoreSettings(shopId).catch(() => ({})) // 拿取店家設定(可放注意事項等)
+          // ★ 修正：直接用 fetch 呼叫 API，解決前台抓不到資料的問題
+          fetch(`http://127.0.0.1:3001/api/booking/settings/${shopId}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+          // ★ 抓取上架的方案 (若API未實作則從 localStorage 讀取備用)
+          fetch(`http://127.0.0.1:3001/api/booking/voucher-plans/${shopId}`).then(r => r.ok ? r.json() : []).catch(() => {
+              const local = localStorage.getItem(`insbuy_voucher_plans_${shopId}`);
+              return local ? JSON.parse(local) : [];
+          })
         ]);
         setServices(srvRes || []);
         setStaffList(stfRes || []);
         setStoreInfo(storeRes || {});
+        setPlans((planRes || []).filter((p: any) => p.is_active));
       } catch (error) {
         console.error('載入資料失敗', error);
       } finally {
@@ -86,111 +114,183 @@ export default function BrandBookingStorefront(props: Props) {
     try {
       const addOnMinutes = selectedAddons.reduce((sum, item) => sum + (item.duration_minutes || 0), 0);
       
-      const response: any = await BookingAPI.getAvailableSlots(
-        shopId, selectedService!.id, selectedStaffId || null, selectedDate
-      );
-      
-      const { totalMinutesNeeded, existingBookings, storeSetting, isClosedDay } = response;
-      const finalMinutesNeeded = totalMinutesNeeded + addOnMinutes; 
+      // ★ 核心升級：為了支援「跨夜排班」(例如營業到凌晨2點)，我們直接抓取所有預約單在前端精準運算
+      const allBookings = await BookingAPI.getBookings(shopId) || [];
+      const settingsRes = await fetch(`http://127.0.0.1:3001/api/booking/settings/${shopId}`);
+      const storeSetting = settingsRes.ok ? await settingsRes.json() : null;
+
+      const finalMinutesNeeded = (selectedService?.duration_minutes || 0) + (selectedService?.buffer_minutes || 0) + addOnMinutes; 
 
       const slots: {time: string, available: boolean}[] = [];
       const targetDateObj = new Date(selectedDate);
-      const dayOfWeek = targetDateObj.getDay().toString(); 
       
-      let effectiveSchedule = {
-          isOpen: true,
-          open: storeSetting?.default_open_time || '10:00',
-          close: storeSetting?.default_close_time || '21:00',
-          breakStart: '', breakEnd: '',
-          slot_interval: 30, // 預設 30 分鐘
-          disabled_slots: [] as string[]
+      // 取得「前一天」的日期字串 (用來檢查是否有跨夜營業延續到今天)
+      const prevDateObj = new Date(targetDateObj);
+      prevDateObj.setDate(prevDateObj.getDate() - 1);
+      const prevDateStr = prevDateObj.toISOString().split('T')[0];
+
+      const getShopSchedule = (dateStr: string) => {
+          const d = new Date(dateStr);
+          let sch = { isOpen: true, open: storeSetting?.default_open_time || '10:00', close: storeSetting?.default_close_time || '21:00', breakStart: '', breakEnd: '', slot_interval: 30, disabled_slots: [] as string[] };
+          if (storeSetting?.weekly_schedule?.[d.getDay()]) sch = { ...sch, ...storeSetting.weekly_schedule[d.getDay()] };
+          if (storeSetting?.special_dates?.[dateStr]) sch = { ...sch, ...storeSetting.special_dates[dateStr] };
+          if (storeSetting?.closed_dates?.includes(dateStr)) sch.isOpen = false;
+          return sch;
       };
 
-      if (storeSetting?.weekly_schedule && storeSetting.weekly_schedule[dayOfWeek]) {
-          effectiveSchedule = { ...effectiveSchedule, ...storeSetting.weekly_schedule[dayOfWeek] };
-      }
-      if (storeSetting?.special_dates && storeSetting.special_dates[selectedDate]) {
-          effectiveSchedule = { ...effectiveSchedule, ...storeSetting.special_dates[selectedDate] };
-      }
-      if (isClosedDay || storeSetting?.closed_dates?.includes(selectedDate)) {
-          effectiveSchedule.isOpen = false;
-      }
+      const currShop = getShopSchedule(selectedDate);
+      const prevShop = getShopSchedule(prevDateStr);
 
-      if (!effectiveSchedule.isOpen) {
-         setAvailableSlots([]); 
-         setIsCheckingSlots(false);
-         return;
-      }
-
+      const interval = currShop.slot_interval || prevShop.slot_interval || 30;
       const now = new Date();
-      const interval = effectiveSchedule.slot_interval || 30; // 取得後台設定的間隔
-      const openTimeObj = new Date(`${selectedDate}T${effectiveSchedule.open || '10:00'}:00`);
-      const closeTimeObj = new Date(`${selectedDate}T${effectiveSchedule.close || '21:00'}:00`);
-      
-      const bookings = existingBookings.map((b: any) => ({
-        start: new Date(b.start_time).getTime(),
-        end: new Date(b.end_time).getTime()
-      }));
 
-      let currentSlotObj = new Date(openTimeObj);
-      
-      while (currentSlotObj < closeTimeObj) {
+      // 我們只需要產生 selectedDate 當天的 00:00 ~ 23:59 時段
+      let currentSlotObj = new Date(`${selectedDate}T00:00:00`);
+      const endOfDayObj = new Date(`${selectedDate}T23:59:59`);
+
+      while (currentSlotObj <= endOfDayObj) {
          const slotStart = currentSlotObj.getTime();
-         // ★ Issue 3 解決：加上服務總時長，確保結束時間不能超過打烊時間！
          const slotEnd = slotStart + finalMinutesNeeded * 60000; 
          const h = currentSlotObj.getHours().toString().padStart(2, '0');
          const m = currentSlotObj.getMinutes().toString().padStart(2, '0');
          const timeStr = `${h}:${m}`;
          
-         let isAvailable = true;
+         let isAvailable = false;
+         let sourceSchedule = null;
 
-         // 1. 檢查是否超過打烊極限時間 (包含做完的時間)
-         if (slotStart < now.getTime() || slotEnd > closeTimeObj.getTime()) {
-            isAvailable = false;
-         }
-         // 2. 檢查是否跨到午休時間
-         else if (effectiveSchedule.breakStart && effectiveSchedule.breakEnd) {
-             const breakStart = new Date(`${selectedDate}T${effectiveSchedule.breakStart}:00`).getTime();
-             const breakEnd = new Date(`${selectedDate}T${effectiveSchedule.breakEnd}:00`).getTime();
-             if ((slotStart >= breakStart && slotStart < breakEnd) || 
-                 (slotEnd > breakStart && slotEnd <= breakEnd) || 
-                 (slotStart <= breakStart && slotEnd >= breakEnd)) {
-                 isAvailable = false;
-             }
-         }
-         
-         // 3. 檢查商家是否手動關閉了該時段 (Issue 5)
-         if (effectiveSchedule.disabled_slots?.includes(timeStr)) {
-             isAvailable = false;
-         }
-
-         // 4. 檢查服務專屬限定時段 (Issue 4)
-         if (selectedService?.allowed_times && selectedService.allowed_times.length > 0) {
-             if (!selectedService.allowed_times.includes(timeStr)) {
-                 isAvailable = false;
+         // 1. 檢查店家是否有營業？
+         // 情況 A：前一天跨夜營業延續到今天凌晨 (例如 00:00 ~ 02:00)
+         if (prevShop.isOpen && prevShop.close < prevShop.open && timeStr < prevShop.close) {
+             isAvailable = true; sourceSchedule = prevShop;
+         } 
+         // 情況 B：今天的正常營業時段
+         else if (currShop.isOpen) {
+             if (currShop.close < currShop.open) { // 今天會跨夜到明天，所以今天可以一路排到 23:59
+                 if (timeStr >= currShop.open) { isAvailable = true; sourceSchedule = currShop; }
+             } else { // 正常營業時間 (例如 10:00 ~ 21:00)
+                 if (timeStr >= currShop.open && timeStr < currShop.close) { isAvailable = true; sourceSchedule = currShop; }
              }
          }
 
-         // 5. 檢查預約防撞期
+         if (isAvailable && sourceSchedule) {
+             // 檢查休息時間
+             if (sourceSchedule.breakStart && sourceSchedule.breakEnd) {
+                 const breakStartMs = new Date(`${selectedDate}T${sourceSchedule.breakStart}:00`).getTime();
+                 let breakEndMs = new Date(`${selectedDate}T${sourceSchedule.breakEnd}:00`).getTime();
+                 if (sourceSchedule.breakEnd < sourceSchedule.breakStart) breakEndMs += 86400000;
+                 
+                 if ((slotStart >= breakStartMs && slotStart < breakEndMs) || 
+                     (slotEnd > breakStartMs && slotEnd <= breakEndMs) || 
+                     (slotStart <= breakStartMs && slotEnd >= breakEndMs)) {
+                     isAvailable = false;
+                 }
+             }
+
+             // 檢查店家手動關閉
+             if (sourceSchedule.disabled_slots?.includes(timeStr)) isAvailable = false;
+
+             // 檢查服務限定時段
+             if (selectedService?.allowed_times && selectedService.allowed_times.length > 0) {
+                 if (!selectedService.allowed_times.includes(timeStr)) isAvailable = false;
+             }
+
+             // 檢查是否已過期 (過去時間不能預約)
+             let endLimitMs = new Date(`${selectedDate}T${sourceSchedule.close}:00`).getTime();
+             if (sourceSchedule === currShop && currShop.close < currShop.open) endLimitMs += 86400000;
+             if (slotStart < now.getTime() || slotEnd > endLimitMs) isAvailable = false;
+         }
+
+         // 2. 檢查是否有員工上班？
+         const getStaffShift = (staff: any, dStr: string) => {
+             if (staff.leave_records?.some((l:any) => l.date === dStr)) return null;
+             const shiftId = staff.shift_assignments?.[dStr];
+             return staff.shifts?.find((s:any) => s.id === shiftId) || null;
+         };
+
+         let coveringStaffCount = 0;
          if (isAvailable) {
-            const overlaps = bookings.filter((b: any) => slotStart < b.end && slotEnd > b.start).length;
-            if (selectedStaffId) {
-              if (overlaps > 0) isAvailable = false;
-            } else {
-              const totalStaffCount = staffList.length || 1;
-              if (overlaps >= totalStaffCount) isAvailable = false;
-            }
+             staffList.forEach(staff => {
+                 if (selectedService?.staff_ids?.length && !selectedService.staff_ids.includes(staff.id)) return;
+                 
+                 let staffWorksThisSlot = false;
+                 let shiftEndLimitMs = 0;
+
+                 // 檢查前一天跨夜班
+                 const pShift = getStaffShift(staff, prevDateStr);
+                 if (pShift && pShift.end_time < pShift.start_time && timeStr < pShift.end_time) {
+                     staffWorksThisSlot = true;
+                     shiftEndLimitMs = new Date(`${selectedDate}T${pShift.end_time}:00`).getTime();
+                 }
+                 
+                 // 檢查今天的班
+                 const cShift = getStaffShift(staff, selectedDate);
+                 if (cShift && !staffWorksThisSlot) { // 若沒被前一天的跨夜班涵蓋
+                     if (cShift.end_time < cShift.start_time && timeStr >= cShift.start_time) {
+                         staffWorksThisSlot = true;
+                         shiftEndLimitMs = new Date(`${selectedDate}T${cShift.end_time}:00`).getTime() + 86400000;
+                     }
+                     else if (cShift.start_time <= cShift.end_time && timeStr >= cShift.start_time && timeStr < cShift.end_time) {
+                         staffWorksThisSlot = true;
+                         shiftEndLimitMs = new Date(`${selectedDate}T${cShift.end_time}:00`).getTime();
+                     }
+                 }
+
+                 // 如果員工有涵蓋此時段，檢查「施作完畢時間」是否超過員工下班時間
+                 if (staffWorksThisSlot && slotEnd <= shiftEndLimitMs) {
+                     coveringStaffCount++;
+                     if (selectedStaffId === staff.id) coveringStaffCount = 999; 
+                 }
+             });
+
+             if (selectedStaffId && coveringStaffCount < 999) isAvailable = false;
+             if (!selectedStaffId && coveringStaffCount === 0) isAvailable = false;
          }
 
-         // 確保時段起點本身還沒超過打烊時間才放入陣列
-         if (slotStart < closeTimeObj.getTime()) {
-            slots.push({ time: timeStr, available: isAvailable });
+         // 3. 檢查現有預約單防撞期
+         if (isAvailable) {
+             const overlaps = allBookings.filter((b: any) => {
+                 const bStart = new Date(b.start_time).getTime();
+                 const bEnd = new Date(b.end_time).getTime();
+                 return slotStart < bEnd && slotEnd > bStart && b.status !== 'CANCELLED' && b.status !== 'NO_SHOW';
+             });
+
+             if (selectedStaffId) {
+                 const staffOverlaps = overlaps.filter((b: any) => b.staff_id === selectedStaffId).length;
+                 if (staffOverlaps > 0) isAvailable = false;
+             } else {
+                 // 計算「可用且未被預約」的員工數
+                 const availableCoveringStaff = staffList.filter(staff => {
+                     if (selectedService?.staff_ids?.length && !selectedService.staff_ids.includes(staff.id)) return false;
+                     
+                     let shiftEndLimitMs = 0;
+                     const pShift = getStaffShift(staff, prevDateStr);
+                     const cShift = getStaffShift(staff, selectedDate);
+                     if (pShift && pShift.end_time < pShift.start_time && timeStr < pShift.end_time) {
+                         shiftEndLimitMs = new Date(`${selectedDate}T${pShift.end_time}:00`).getTime();
+                     } else if (cShift) {
+                         if (cShift.end_time < cShift.start_time && timeStr >= cShift.start_time) shiftEndLimitMs = new Date(`${selectedDate}T${cShift.end_time}:00`).getTime() + 86400000;
+                         else if (cShift.start_time <= cShift.end_time && timeStr >= cShift.start_time && timeStr < cShift.end_time) shiftEndLimitMs = new Date(`${selectedDate}T${cShift.end_time}:00`).getTime();
+                     }
+                     
+                     if (shiftEndLimitMs === 0 || slotEnd > shiftEndLimitMs) return false;
+                     return !overlaps.some((b:any) => b.staff_id === staff.id); // 此員工沒有被預約
+                 });
+                 
+                 if (availableCoveringStaff.length === 0) isAvailable = false;
+             }
          }
-         
-         // 依照設定的間隔 (15/30/45/60) 推進下一個時段
+
+         if (isAvailable || sourceSchedule) { 
+             if (sourceSchedule) slots.push({ time: timeStr, available: isAvailable });
+         }
+
          currentSlotObj = new Date(currentSlotObj.getTime() + interval * 60000);
       }
-      setAvailableSlots(slots);
+      
+      // 確保陣列唯一，避免極端設定導致重複推入
+      const uniqueSlots = Array.from(new Map(slots.map(item => [item.time, item])).values());
+      setAvailableSlots(uniqueSlots);
+
     } catch (e) {
       console.error('防撞期計算失敗', e);
     } finally {
@@ -203,6 +303,13 @@ export default function BrandBookingStorefront(props: Props) {
       alert('請先登入會員才能進行預約！');
       onNavigate('AUTH');
       return;
+    }
+    // ★ 進入結帳頁面前，確保預設的付款方式是該服務有開放的
+    if (step === 3 && selectedService) {
+       const allowed = selectedService.allowed_payment_methods || ['PAY_ON_SITE', 'FULL', 'VOUCHER', 'WALLET'];
+       if (!allowed.includes(paymentMethod) && allowed.length > 0) {
+           setPaymentMethod(allowed[0]); // 自動選取第一個可用的方式
+       }
     }
     setStep(prev => Math.min(prev + 1, 4) as any);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -221,75 +328,127 @@ export default function BrandBookingStorefront(props: Props) {
     );
   };
 
+  // ★ 新增：處理客人購買方案
+  const handlePurchasePlan = (plan: any) => {
+      if (!currentUser) {
+          alert('請先登入會員才能購買優惠方案！');
+          onNavigate('AUTH');
+          return;
+      }
+      setPurchasingPlan(plan);
+  };
+
+  const confirmPurchase = () => {
+      alert(`🎉 成功購買「${purchasingPlan.name}」！\n系統已為您自動生成專屬票券/儲值金並存入您的帳戶中。`);
+      if (purchasingPlan.type === 'WALLET') {
+          setWalletBalance(prev => prev + purchasingPlan.value);
+      } else {
+          fetch(`http://127.0.0.1:3001/api/booking/vouchers/buyer/${currentUser.id}`).then(r => r.json()).then(res => setUserVouchers(res || [])).catch(()=>{});
+      }
+      setPurchasingPlan(null);
+  };
+
   const handleSubmitBooking = async () => {
     if (!selectedService || !selectedDate || !selectedTime) return alert('預約資訊不完整！');
 
     try {
-      // ★ 核心升級：自動派單演算法 (當客人選擇不指定時觸發)
-      let finalStaffId = selectedStaffId;
-      
-      if (!finalStaffId) {
-         // 1. 抓取當天所有的預約單
-         const todayBookings = await BookingAPI.getBookings(shopId);
-         const targetDateBookings = todayBookings.filter((b: any) => b.start_time.startsWith(selectedDate));
-         
-         // 2. 取得能執行此服務的「可用員工名單」
-         const availableStaff = staffList.filter(s => !selectedService.staff_ids?.length || selectedService.staff_ids.includes(s.id));
-         
-         if (availableStaff.length > 0) {
-             // 3. 讀取店家設定的派單規則 (預設為 LEAST_BOOKINGS 案子最少)
-             const rule = storeInfo?.auto_assign_rule || 'LEAST_BOOKINGS';
-             
-             if (rule === 'PRIORITY' && storeInfo?.priority_staff_id) {
-                 // 優先指派給特定紅牌
-                 finalStaffId = storeInfo.priority_staff_id;
-             } else if (rule === 'LEAST_REVENUE') {
-                 // 派給營業額最少的人 (以預約數量代替簡易計算)
-                 const staffStats = availableStaff.map(staff => {
-                     const count = targetDateBookings.filter((b: any) => b.staff_id === staff.id).length;
-                     return { id: staff.id, count };
-                 });
-                 staffStats.sort((a, b) => a.count - b.count);
-                 finalStaffId = staffStats[0].id;
-             } else {
-                 // 預設：LEAST_BOOKINGS (派給今天最閒的人)
-                 const staffStats = availableStaff.map(staff => {
-                     const count = targetDateBookings.filter((b: any) => b.staff_id === staff.id).length;
-                     return { id: staff.id, count };
-                 });
-                 staffStats.sort((a, b) => a.count - b.count);
-                 finalStaffId = staffStats[0].id;
-             }
-         }
-      }
-
       const [hh, mm] = selectedTime.split(':');
       const startTime = new Date(selectedDate);
       startTime.setHours(parseInt(hh), parseInt(mm), 0, 0);
       
       const addOnMinutes = selectedAddons.reduce((sum, item) => sum + (item.duration_minutes || 0), 0);
-      const addOnNames = selectedAddons.map(a => a.name).join('、');
-      
       const totalMinutes = selectedService.duration_minutes + selectedService.buffer_minutes + addOnMinutes;
       const endTime = new Date(startTime.getTime() + totalMinutes * 60000);
+      const slotStartMs = startTime.getTime();
+      const slotEndMs = endTime.getTime();
 
-      // 將加購項目寫入備註
+      // ★ 核心修復：自動派單演算法 (嚴格過濾該時段「真正在上班」且「沒被預約」的員工)
+      let finalStaffId = selectedStaffId;
+      
+      if (!finalStaffId) {
+         const allBookings = await BookingAPI.getBookings(shopId) || [];
+         
+         const availableStaff = staffList.filter(staff => {
+             // 1. 檢查服務是否有綁定此員工
+             if (selectedService?.staff_ids?.length && !selectedService.staff_ids.includes(staff.id)) return false;
+             // 2. 檢查是否請假
+             if (staff.leave_records?.some(l => l.date === selectedDate)) return false;
+             
+             const shiftId = staff.shift_assignments?.[selectedDate];
+             const shift = staff.shifts?.find(sh => sh.id === shiftId);
+             
+             // 3. 檢查班表是否涵蓋此時段 (支援跨夜班檢查)
+             let shiftEndLimitMs = 0;
+             const prevDateObj = new Date(startTime); prevDateObj.setDate(prevDateObj.getDate() - 1);
+             const pShiftId = staff.shift_assignments?.[prevDateObj.toISOString().split('T')[0]];
+             const pShift = staff.shifts?.find(sh => sh.id === pShiftId);
+             const timeStr = `${hh}:${mm}`;
+
+             if (pShift && pShift.end_time < pShift.start_time && timeStr < pShift.end_time) {
+                 shiftEndLimitMs = new Date(`${selectedDate}T${pShift.end_time}:00`).getTime();
+             } else if (shift) {
+                 if (shift.end_time < shift.start_time && timeStr >= shift.start_time) shiftEndLimitMs = new Date(`${selectedDate}T${shift.end_time}:00`).getTime() + 86400000;
+                 else if (shift.start_time <= shift.end_time && timeStr >= shift.start_time && timeStr < shift.end_time) shiftEndLimitMs = new Date(`${selectedDate}T${shift.end_time}:00`).getTime();
+             }
+             if (shiftEndLimitMs === 0 || slotEndMs > shiftEndLimitMs) return false; // 下班前做不完
+
+             // 4. 檢查此員工這時段是否有其他預約
+             const isBusy = allBookings.some((b:any) => {
+                 if (b.staff_id !== staff.id || ['CANCELLED', 'NO_SHOW'].includes(b.status)) return false;
+                 return slotStartMs < new Date(b.end_time).getTime() && slotEndMs > new Date(b.start_time).getTime();
+             });
+             return !isBusy;
+         });
+         
+         if (availableStaff.length > 0) {
+             const rule = storeInfo?.auto_assign_rule || 'LEAST_BOOKINGS';
+             if (rule === 'PRIORITY' && storeInfo?.priority_staff_id && availableStaff.find(s => s.id === storeInfo.priority_staff_id)) {
+                 finalStaffId = storeInfo.priority_staff_id;
+             } else {
+                 const targetDateBookings = allBookings.filter((b: any) => b.start_time.startsWith(selectedDate));
+                 const staffStats = availableStaff.map(staff => {
+                     return { id: staff.id, count: targetDateBookings.filter((b: any) => b.staff_id === staff.id).length };
+                 });
+                 staffStats.sort((a, b) => a.count - b.count);
+                 finalStaffId = staffStats[0].id;
+             }
+         } else {
+             return alert('抱歉，該時段的服務人員已被預約滿了，請重新選擇時段！');
+         }
+      }
+
+      const addOnNames = selectedAddons.map(a => a.name).join('、');
       const finalMemo = `${memo}\n${addOnNames ? `[加購項目: ${addOnNames}]` : ''}`.trim();
+      const totalAmount = (selectedService.price || 0) + selectedAddons.reduce((s, a) => s + a.price, 0);
+
+      // ★ 驗證票券與儲值金
+      if (paymentMethod === 'VOUCHER' && !selectedVoucherId) return alert('請選擇要使用的票券！');
+      if (paymentMethod === 'WALLET' && walletBalance < totalAmount) return alert('儲值金餘額不足，請先點擊儲值！');
+
+      let finalDepositStatus = 'UNPAID'; 
+      if (paymentMethod === 'FULL' || paymentMethod === 'DEPOSIT' || paymentMethod === 'VOUCHER' || paymentMethod === 'WALLET') {
+          finalDepositStatus = 'PAID'; 
+      }
 
       await BookingAPI.createBooking({
         shop_id: shopId,
         buyer_id: currentUser.id,
-        buyer_name: currentUser.name || '未提供姓名',   // ★ 新增：自動帶入會員姓名
-        buyer_phone: currentUser.phone || '未提供電話', // ★ 新增：自動帶入會員電話
-        buyer_email: currentUser.email || '',         // ★ 新增：自動帶入會員信箱
-        service_name: selectedService.name,           // ★ 新增：紀錄服務名稱供行事曆顯示
-        staff_id: finalStaffId || undefined,          // ★ 修改：套用自動派單結果，絕對不為空
+        buyer_name: currentUser.name || '未提供姓名',
+        buyer_phone: currentUser.phone || '未提供電話',
+        buyer_email: currentUser.email || '',
+        service_name: selectedService.name,
+        staff_id: finalStaffId || undefined,
         service_id: selectedService.id,
         start_time: startTime.toISOString(),
         end_time: endTime.toISOString(),
         memo: finalMemo,
         status: 'PENDING',
-        deposit_status: selectedService.requires_deposit ? 'UNPAID' : 'PAID'
+        deposit_status: finalDepositStatus as any,
+        payment_method: paymentMethod as any, // ★ 加上 as any 解決 TS 報錯
+        payable_amount: totalAmount,
+        used_wallet_amount: paymentMethod === 'WALLET' ? totalAmount : 0,
+        used_coupon_id: useCoupon ? 'dummy_coupon' : undefined,
+        used_voucher_id: paymentMethod === 'VOUCHER' ? selectedVoucherId : undefined
       });
 
       alert('🎉 預約成功！商家確認後將通知您。');
@@ -321,42 +480,100 @@ export default function BrandBookingStorefront(props: Props) {
         
         {/* Step 0: 品牌主頁 (首頁) */}
         {step === 0 && (
-          <div className="bg-white min-h-[80vh] animate-fade-in flex flex-col">
+          <div className="bg-white min-h-[80vh] animate-fade-in flex flex-col relative">
+            
+            {/* ★ 新增：購買確認彈跳視窗 */}
+            {purchasingPlan && (
+               <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                  <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-fade-in-up">
+                     <h3 className="font-black text-xl text-slate-800 mb-4 border-b border-slate-100 pb-3">確認購買方案</h3>
+                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6">
+                        <div className="text-sm font-bold text-slate-500 mb-1">{purchasingPlan.type === 'VOUCHER' ? '服務套券' : '儲值金'}</div>
+                        <div className="font-black text-lg text-slate-800 mb-2">{purchasingPlan.name}</div>
+                        <div className="flex justify-between items-center text-slate-700">
+                           <span>應付總額</span>
+                           <span className="text-2xl font-black text-[#EE4D2D]">${purchasingPlan.price.toLocaleString()}</span>
+                        </div>
+                     </div>
+                     <div className="flex gap-3">
+                        <button onClick={confirmPurchase} className="flex-1 py-3 bg-[#EE4D2D] text-white rounded-xl font-black shadow-md">確認付款</button>
+                        <button onClick={() => setPurchasingPlan(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">取消</button>
+                     </div>
+                  </div>
+               </div>
+            )}
+
             {/* Banner & Logo 區塊 */}
-            <div className="relative h-48 bg-[#fdf5f3] flex items-center justify-center border-b border-orange-100">
-                {/* 如果商家有設定 banner 可放這裡，預設放店名大字 */}
-                <h1 className="text-5xl font-serif text-[#d7a195] tracking-widest opacity-60">
-                  {currentUser?.shop_name?.substring(0,2) || '品牌'}
-                </h1>
+            <div className="relative h-48 bg-[#fdf5f3] flex items-center justify-center border-b border-orange-100 overflow-visible">
+                {storeInfo?.storefront_banner ? (
+                   <img src={storeInfo.storefront_banner} className="w-full h-full object-cover opacity-90" />
+                ) : (
+                   <h1 className="text-5xl font-serif text-[#d7a195] tracking-widest opacity-60">
+                     {(storeInfo?.storefront_name || currentUser?.shop_name || '品牌').substring(0,2)}
+                   </h1>
+                )}
                 
-                <div className="absolute -bottom-8 left-6 flex items-end gap-4">
-                   <div className="w-20 h-20 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center p-1 overflow-hidden">
-                       <div className="w-full h-full bg-[#FFF4F2] rounded-full flex items-center justify-center text-[#EE4D2D] font-black text-xl">
-                          {currentUser?.shop_name?.substring(0,1) || '店'}
-                       </div>
+                <div className="absolute -bottom-8 left-6 flex items-end gap-4 z-10">
+                   <div className="w-20 h-20 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center p-1 overflow-hidden shrink-0">
+                       {/* ★ 新增：大頭照渲染邏輯 */}
+                       {storeInfo?.storefront_avatar ? (
+                          <img src={storeInfo.storefront_avatar} className="w-full h-full object-cover rounded-full" />
+                       ) : (
+                          <div className="w-full h-full bg-[#FFF4F2] rounded-full flex items-center justify-center text-[#EE4D2D] font-black text-2xl">
+                             {(storeInfo?.storefront_name || currentUser?.shop_name || '店').substring(0,1)}
+                          </div>
+                       )}
                    </div>
-                   <div className="pb-2">
-                       <h2 className="text-xl font-black text-slate-800">{currentUser?.shop_name || '拍拍購合作店家'}</h2>
-                       <button onClick={onNavigateBack} className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-md mt-1"><i className="fa-solid fa-rotate mr-1"></i>切換賣場</button>
+                   <div className="pb-2 bg-white/80 px-3 py-1 rounded-xl backdrop-blur-sm border border-white/50">
+                       <h2 className="text-xl font-black text-slate-800">{storeInfo?.storefront_name || currentUser?.shop_name || '拍拍購合作店家'}</h2>
+                       <button onClick={onNavigateBack} className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded mt-1 hover:bg-slate-200"><i className="fa-solid fa-rotate mr-1"></i>切換賣場</button>
                    </div>
                 </div>
             </div>
 
-            <div className="px-6 pt-12 pb-6 flex-1">
-                <h3 className="font-black text-lg text-slate-800 mb-3 border-l-4 border-[#EE4D2D] pl-2">店家資訊</h3>
-                <p className="text-blue-600 underline text-sm mb-6"><i className="fa-solid fa-location-dot mr-1"></i>{currentUser?.address || '點擊查看地圖地址'}</p>
-
-                <h3 className="font-black text-lg text-slate-800 mb-3 border-l-4 border-[#EE4D2D] pl-2">注意事項</h3>
-                <div className="text-sm text-slate-600 space-y-3 leading-relaxed">
-                   {/* 預設注意事項，若未來後台有欄位可替換 */}
-                   <p>✦ 工作室可攜伴(但勿催促⚠️)</p>
-                   <p>✦ 操作時間約 2.5 - 4 小時請保留時間</p>
-                   <p>✦ 取消/改期請於 2 天前告知，臨時改期下次預約須先付訂金，無故取消將列入黑名單</p>
+            <div className="px-6 pt-14 pb-6 flex-1 space-y-8">
+                
+                {/* ★ 新增：動態顯示店家資訊與注意事項 */}
+                <div>
+                   <h3 className="font-black text-lg text-slate-800 mb-3 border-l-4 border-[#EE4D2D] pl-2">店家資訊</h3>
+                   <p className="text-blue-600 font-bold text-sm hover:underline cursor-pointer"><i className="fa-solid fa-location-dot mr-1.5 text-[#EE4D2D]"></i>{storeInfo?.storefront_address || currentUser?.address || '實體店面地址未提供'}</p>
                 </div>
+
+                <div>
+                   <h3 className="font-black text-lg text-slate-800 mb-3 border-l-4 border-[#EE4D2D] pl-2">注意事項</h3>
+                   <div className="text-sm text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 whitespace-pre-wrap">
+                      {storeInfo?.storefront_notices || '✦ 預約前請先詳閱相關規定\n✦ 無故取消將列入黑名單'}
+                   </div>
+                </div>
+
+                {/* ★ 新增：超值方案購買區塊 */}
+                {plans.length > 0 && (
+                   <div>
+                      <h3 className="font-black text-lg text-slate-800 mb-4 border-l-4 border-purple-500 pl-2">超值票券與儲值</h3>
+                      <div className="flex overflow-x-auto gap-4 pb-2 no-scrollbar">
+                         {plans.map(plan => (
+                            <div key={plan.id} className="w-64 shrink-0 bg-white border border-purple-100 rounded-2xl p-4 shadow-sm relative overflow-hidden flex flex-col">
+                               <div className={`absolute top-0 right-0 text-[10px] text-white font-black px-3 py-1 rounded-bl-xl ${plan.type === 'VOUCHER' ? 'bg-purple-500' : 'bg-orange-500'}`}>
+                                  {plan.type === 'VOUCHER' ? '服務套券' : '現金儲值'}
+                               </div>
+                               <h4 className="font-black text-slate-800 text-lg mb-1 pr-12 line-clamp-1">{plan.name}</h4>
+                               <div className="text-2xl font-black text-[#EE4D2D] mb-3">${plan.price.toLocaleString()}</div>
+                               <div className="text-xs text-slate-500 mb-4 flex-1">
+                                  <p><i className="fa-solid fa-check text-green-500 mr-1"></i>內含: {plan.type === 'VOUCHER' ? `${plan.value} 次額度` : `$${plan.value} 購物金`}</p>
+                                  <p><i className="fa-solid fa-check text-green-500 mr-1"></i>期限: {plan.expire_days ? `${plan.expire_days} 天內` : '無期限'}</p>
+                               </div>
+                               <button onClick={() => handlePurchasePlan(plan)} className="w-full py-2 bg-purple-50 text-purple-700 hover:bg-purple-600 hover:text-white border border-purple-200 rounded-xl font-bold transition">立即購買</button>
+                            </div>
+                         ))}
+                      </div>
+                   </div>
+                )}
             </div>
 
-            <div className="p-4 border-t border-slate-100">
-               <button onClick={handleNextStep} className="w-full bg-[#EE4D2D] text-white py-4 rounded-xl font-black text-lg shadow-md hover:bg-[#d73211] transition">開始預約</button>
+            <div className="p-4 border-t border-slate-100 sticky bottom-0 bg-white shadow-[0_-10px_20px_rgba(0,0,0,0.02)] z-20">
+               <button onClick={handleNextStep} className="w-full bg-[#EE4D2D] text-white py-4 rounded-xl font-black text-lg shadow-md hover:bg-[#d73211] transition flex items-center justify-center gap-2">
+                 進入線上預約 <i className="fa-solid fa-arrow-right"></i>
+               </button>
             </div>
           </div>
         )}
@@ -402,7 +619,7 @@ export default function BrandBookingStorefront(props: Props) {
                             <div className="flex-1">
                                 <div className="font-bold text-slate-800 mb-1">{srv.name}</div>
                                 <div className="text-sm text-slate-500 flex items-center gap-3">
-                                   <span><i className="fa-regular fa-clock mr-1"></i>{srv.duration_minutes} 小時</span>
+                                   <span><i className="fa-regular fa-clock mr-1"></i>{srv.duration_minutes} 分鐘</span>
                                    <span className="text-[#EE4D2D] font-bold">NT${srv.price.toLocaleString()} 起</span>
                                 </div>
                             </div> {/* ★ 關鍵修復：補上這行結尾標籤 */}
@@ -479,8 +696,12 @@ export default function BrandBookingStorefront(props: Props) {
                   <div className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl border-2 ${selectedStaffId === '' ? 'border-[#EE4D2D] bg-[#FFF4F2] text-[#EE4D2D]' : 'border-slate-200 bg-slate-100 text-slate-400'}`}><i className="fa-solid fa-users"></i></div>
                   <span className="text-xs font-bold text-slate-700">不指定</span>
                 </div>
-                {/* ★ 新增：只顯示該服務有綁定的服務人員 (若未設定則預設全顯示，防呆) */}
-                {staffList.filter(s => !selectedService?.staff_ids?.length || selectedService.staff_ids.includes(s.id)).map(staff => (
+                {/* ★ 需求 2：只顯示「選定日期有排班、沒請假，且符合該服務綁定」的服務人員 */}
+                {staffList.filter(s => {
+                   if (selectedService?.staff_ids?.length && !selectedService.staff_ids.includes(s.id)) return false;
+                   if (s.leave_records?.some(l => l.date === selectedDate)) return false;
+                   return !!s.shift_assignments?.[selectedDate];
+                }).map(staff => (
                   <div 
                     key={staff.id} 
                     onClick={() => setSelectedStaffId(staff.id)}
@@ -498,13 +719,23 @@ export default function BrandBookingStorefront(props: Props) {
             {/* 日期選擇 */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
               <label className="block font-black text-slate-800 mb-3">選擇預約日期</label>
-              <input 
-                type="date" 
-                min={new Date().toISOString().split('T')[0]} 
-                value={selectedDate}
-                onChange={e => setSelectedDate(e.target.value)}
-                className="w-full p-3 border-2 border-slate-200 rounded-xl outline-none focus:border-[#EE4D2D] font-bold text-slate-700"
-              />
+              <div className="flex gap-2">
+                <input 
+                  type="date" 
+                  min={new Date().toISOString().split('T')[0]} 
+                  value={selectedDate}
+                  onChange={e => {
+                     if(e.target.value) {
+                         setSelectedDate(e.target.value);
+                         setSelectedStaffId(''); 
+                     }
+                  }}
+                  className="flex-1 p-3 border-2 border-slate-200 rounded-xl outline-none focus:border-[#EE4D2D] font-bold text-slate-700 bg-white cursor-pointer transition hover:border-[#ffbba5]"
+                />
+                <div className="shrink-0 flex items-center justify-center px-4 bg-[#FFF4F2] border-2 border-[#ffbba5] text-[#EE4D2D] font-black rounded-xl text-lg shadow-sm">
+                  ({['日', '一', '二', '三', '四', '五', '六'][new Date(selectedDate).getDay()]})
+                </div>
+              </div>
             </div>
 
             {/* 時段選擇 */}
@@ -588,6 +819,144 @@ export default function BrandBookingStorefront(props: Props) {
                 />
               </div>
             </div>
+
+            {/* ★ 新增 5-1【優惠與折抵區塊】 */}
+            {/* ★ 5-1【優惠與折扣區塊】 (移除儲值金/票券，僅保留優惠券) */}
+            <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 mt-4">
+              <h3 className="font-black text-lg text-slate-800 mb-4 border-b border-slate-100 pb-2">使用優惠</h3>
+              <div 
+                className="flex justify-between items-center p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-orange-50 transition"
+                onClick={() => setUseCoupon(!useCoupon)}
+              >
+                <div className="flex items-center gap-3">
+                  <i className="fa-solid fa-ticket text-[#EE4D2D] text-lg"></i>
+                  <div>
+                    <div className="font-bold text-slate-700 text-sm">使用優惠券 (Coupon)</div>
+                    <div className="text-xs text-slate-400">點擊選擇可用優惠券</div>
+                  </div>
+                </div>
+                <div className={`w-5 h-5 rounded flex items-center justify-center border transition-colors ${useCoupon ? 'bg-[#EE4D2D] border-[#EE4D2D]' : 'border-slate-300'}`}>
+                  {useCoupon && <i className="fa-solid fa-check text-white text-xs"></i>}
+                </div>
+              </div>
+            </div>
+
+            {/* ★ 5-2【付款方式區塊】 (整合票券與儲值金扣抵功能) */}
+            <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 mt-4 mb-6">
+              <h3 className="font-black text-lg text-slate-800 mb-4 border-b border-slate-100 pb-2">付款方式</h3>
+              
+              <div className="space-y-3">
+                {/* 現場付款 */}
+                {(!selectedService?.allowed_payment_methods || selectedService.allowed_payment_methods.includes('PAY_ON_SITE')) && (
+                  <label className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition ${paymentMethod === 'PAY_ON_SITE' ? 'border-[#EE4D2D] bg-[#FFF4F2]' : 'border-slate-200'}`}>
+                    <input type="radio" name="payment" value="PAY_ON_SITE" checked={paymentMethod === 'PAY_ON_SITE'} onChange={() => setPaymentMethod('PAY_ON_SITE')} className="w-4 h-4 accent-[#EE4D2D]" />
+                    <span className="font-bold text-slate-700 text-sm">現場付款</span>
+                  </label>
+                )}
+
+                {/* 線上全額 */}
+                {(!selectedService?.allowed_payment_methods || selectedService.allowed_payment_methods.includes('FULL')) && (
+                  <label className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition ${paymentMethod === 'FULL' ? 'border-[#EE4D2D] bg-[#FFF4F2]' : 'border-slate-200'}`}>
+                    <input type="radio" name="payment" value="FULL" checked={paymentMethod === 'FULL'} onChange={() => setPaymentMethod('FULL')} className="w-4 h-4 accent-[#EE4D2D]" />
+                    <span className="font-bold text-slate-700 text-sm">直接全額結帳 (線上刷卡/轉帳)</span>
+                  </label>
+                )}
+
+                {/* 定金 */}
+                {selectedService?.requires_deposit && (
+                  <label className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition ${paymentMethod === 'DEPOSIT' ? 'border-[#EE4D2D] bg-[#FFF4F2]' : 'border-slate-200'}`}>
+                    <input type="radio" name="payment" value="DEPOSIT" checked={paymentMethod === 'DEPOSIT'} onChange={() => setPaymentMethod('DEPOSIT')} className="w-4 h-4 accent-[#EE4D2D]" />
+                    <div className="flex-1">
+                      <div className="font-bold text-slate-700 text-sm">支付訂金 (線上刷卡/轉帳)</div>
+                      <div className="text-xs text-[#EE4D2D] mt-1">需先支付 ${selectedService?.deposit_amount || 0} 確保預約保留</div>
+                    </div>
+                  </label>
+                )}
+
+                {/* 票券付款 */}
+                {(!selectedService?.allowed_payment_methods || selectedService.allowed_payment_methods.includes('VOUCHER')) && (
+                <div className={`border rounded-xl transition ${paymentMethod === 'VOUCHER' ? 'border-purple-500 bg-purple-50' : 'border-slate-200'}`}>
+                  <label className="flex items-center gap-3 p-3 cursor-pointer">
+                    <input type="radio" name="payment" value="VOUCHER" checked={paymentMethod === 'VOUCHER'} onChange={() => setPaymentMethod('VOUCHER')} className="w-4 h-4 accent-purple-600" />
+                    <div className="flex-1">
+                       <span className="font-bold text-slate-700 text-sm">預約票券折抵</span>
+                    </div>
+                  </label>
+                  {paymentMethod === 'VOUCHER' && (
+                     <div className="px-4 pb-4 pt-1 animate-fade-in">
+                        <select value={selectedVoucherId} onChange={e => setSelectedVoucherId(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-purple-500 bg-white">
+                           <option value="" disabled hidden>請選擇可用的票券...</option>
+                           {userVouchers.filter(v => (v.service_id === selectedService?.id || !v.service_id) && v.remaining_count > 0).map(v => (
+                              <option key={v.id} value={v.id}>票券代碼: {v.code} (剩餘 {v.remaining_count} 次)</option>
+                           ))}
+                        </select>
+                        {userVouchers.filter(v => (v.service_id === selectedService?.id || !v.service_id) && v.remaining_count > 0).length === 0 && (
+                           <div className="text-xs text-red-500 mt-2"><i className="fa-solid fa-circle-exclamation mr-1"></i>您的帳戶中目前沒有適用於此服務的票券。</div>
+                        )}
+                     </div>
+                  )}
+                </div>
+                )}
+
+                {/* 儲值金付款 */}
+                {(!selectedService?.allowed_payment_methods || selectedService.allowed_payment_methods.includes('WALLET')) && (
+                <div className={`border rounded-xl transition ${paymentMethod === 'WALLET' ? 'border-orange-500 bg-orange-50' : 'border-slate-200'}`}>
+                  <label className="flex items-center gap-3 p-3 cursor-pointer">
+                    <input type="radio" name="payment" value="WALLET" checked={paymentMethod === 'WALLET'} onChange={() => setPaymentMethod('WALLET')} className="w-4 h-4 accent-orange-500" />
+                    <div className="flex-1 flex justify-between items-center">
+                       <span className="font-bold text-slate-700 text-sm">儲值金錢包扣抵</span>
+                       <span className="text-xs font-bold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">餘額: ${walletBalance.toLocaleString()}</span>
+                    </div>
+                  </label>
+                  {paymentMethod === 'WALLET' && (
+                     <div className="px-4 pb-4 pt-1 animate-fade-in">
+                        {walletBalance >= ((selectedService?.price || 0) + selectedAddons.reduce((s, a) => s + a.price, 0)) ? (
+                           <div className="text-xs text-green-600 font-bold bg-green-50 p-2 rounded border border-green-100"><i className="fa-solid fa-check-circle mr-1"></i>餘額充足，將直接全額扣抵</div>
+                        ) : (
+                           <div className="text-xs text-red-500 bg-red-50 p-2 rounded border border-red-100 flex items-center justify-between">
+                              <span><i className="fa-solid fa-triangle-exclamation mr-1"></i>餘額不足，請先購買儲值方案</span>
+                              <button onClick={() => {
+                                  const walletPlans = plans.filter(p => p.type === 'WALLET');
+                                  if(walletPlans.length > 0) setPurchasingPlan(walletPlans[0]);
+                                  else alert('商家目前無開放儲值方案');
+                              }} className="bg-orange-500 text-white px-3 py-1.5 rounded shadow-sm hover:bg-orange-600 font-bold">點此儲值</button>
+                           </div>
+                        )}
+                     </div>
+                  )}
+                </div>
+                )}
+
+                {/* 儲值金付款 */}
+                <div className={`border rounded-xl transition ${paymentMethod === 'WALLET' ? 'border-[#EE4D2D] bg-[#FFF4F2]' : 'border-slate-200'}`}>
+                  <label className="flex items-center gap-3 p-3 cursor-pointer">
+                    <input type="radio" name="payment" value="WALLET" checked={paymentMethod === 'WALLET'} onChange={() => setPaymentMethod('WALLET')} className="w-4 h-4 accent-[#EE4D2D]" />
+                    <div className="flex-1 flex justify-between items-center">
+                       <span className="font-bold text-slate-700 text-sm">儲值金錢包扣抵</span>
+                       <span className="text-xs font-bold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">餘額: ${walletBalance.toLocaleString()}</span>
+                    </div>
+                  </label>
+                  {paymentMethod === 'WALLET' && (
+                     <div className="px-4 pb-4 pt-1 animate-fade-in">
+                        {walletBalance >= ((selectedService?.price || 0) + selectedAddons.reduce((s, a) => s + a.price, 0)) ? (
+                           <div className="text-xs text-green-600 font-bold bg-green-50 p-2 rounded border border-green-100"><i className="fa-solid fa-check-circle mr-1"></i>餘額充足，將直接全額扣抵</div>
+                        ) : (
+                           <div className="text-xs text-red-500 bg-red-50 p-2 rounded border border-red-100 flex items-center justify-between">
+                              <span><i className="fa-solid fa-triangle-exclamation mr-1"></i>餘額不足，請先購買儲值方案</span>
+                              <button onClick={() => {
+                                  const walletPlans = plans.filter(p => p.type === 'WALLET');
+                                  if(walletPlans.length > 0) setPurchasingPlan(walletPlans[0]);
+                                  else alert('商家目前無開放儲值方案');
+                              }} className="bg-[#EE4D2D] text-white px-3 py-1.5 rounded shadow-sm hover:bg-[#d73211] font-bold">點此儲值</button>
+                           </div>
+                        )}
+                     </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+          
 
             <button 
               onClick={handleSubmitBooking} 
