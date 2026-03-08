@@ -3,6 +3,7 @@ import { View, User } from '../types';
 import API from '../api'; // 引入 API 工具
 import FavoritesModal from './FavoritesModal'; // 引入全新我的最愛視窗
 import CalendarModal from './CalendarModal'; // ★ 引入全新的行事曆視窗
+import SavedProductsModal from './SavedProductsModal'; // ★ 新增：關注商品視窗
 
 interface HeaderProps {
   user: User | null;
@@ -25,6 +26,7 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
   const [isFavOpen, setIsFavOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false); // ★ 新增：行事曆開關
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false); // ★ 新增：會員選單開關
+  const [isSavedProductsOpen, setIsSavedProductsOpen] = useState(false); // ★ 新增：關注商品開關
   const [isLangOpen, setIsLangOpen] = useState(false);
   const [currentLang, setCurrentLang] = useState('zh-TW');
   const LANGUAGES = [
@@ -214,7 +216,11 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
                       {/* ★ 修正：強制點擊後台管理跳轉至主頁，改為乾淨網址 href 跳轉，完美觸發重載 */}
                       <button onClick={() => { setIsUserMenuOpen(false); window.location.href = `/${user.role === 'BUYER' ? View.BUYER_DASHBOARD : View.ADMIN_HOME}/${user.shop_id || user.id}`; }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-gauge w-4 text-center"></i> 後台管理</button>
 
-                      <button onClick={() => { setIsUserMenuOpen(false); setIsFavOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-star w-4 text-center"></i> 我的最愛</button>
+                      {/* ★ 新增：關注商品 (排在後台管理下方) */}
+                      <button onClick={() => { setIsUserMenuOpen(false); setIsSavedProductsOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-heart w-4 text-center"></i> 關注商品</button>
+
+                      {/* ★ 修改：將我的最愛改名為 快速網頁連結 */}
+                      <button onClick={() => { setIsUserMenuOpen(false); setIsFavOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-link w-4 text-center"></i> 快速網頁連結</button>
 
                       {/* ★ 新增：行事曆按鈕 (排在我的最愛正下方) */}
                       <button onClick={() => { setIsUserMenuOpen(false); setIsCalendarOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-regular fa-calendar-days w-4 text-center"></i> 行事曆</button>
@@ -266,13 +272,21 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
           user={user} 
       />
 
-      {/* ★ 行事曆 獨立模組視窗 */}
+     {/* ★ 行事曆 獨立模組視窗 */}
       <CalendarModal 
           isOpen={isCalendarOpen} 
           onClose={() => setIsCalendarOpen(false)} 
           user={user} 
       />
-    </header>
+
+      {/* ★ 關注商品 獨立模組視窗 */}
+      <SavedProductsModal 
+          isOpen={isSavedProductsOpen} 
+          onClose={() => setIsSavedProductsOpen(false)} 
+          user={user}
+          onNavigate={onNavigate}
+      />
+    </header> 
   );
 };
 

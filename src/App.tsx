@@ -112,6 +112,16 @@ const App: React.FC = () => {
   const [shopRefreshKey, setShopRefreshKey] = useState(0);
   const [pendingLoginUser, setPendingLoginUser] = useState<any>(null); // ★ 新增：暫存登入資訊
   
+  // ★ 修復：將身分狀態存入本機端，避免重新整理網頁後默默跑回 SYSTEM 模式
+  const [adminChatMode, setAdminChatMode] = useState<'SYSTEM' | 'SHOP'>(() => {
+      return (localStorage.getItem('insbuy_admin_chat_mode') as 'SYSTEM' | 'SHOP') || 'SYSTEM';
+  }); 
+
+  // ★ 新增：只要身分有切換，就馬上記憶起來
+  useEffect(() => {
+      localStorage.setItem('insbuy_admin_chat_mode', adminChatMode);
+  }, [adminChatMode]);
+  
   // ★ 新增：購物車遺忘提醒狀態
   const [showCartReminder, setShowCartReminder] = useState(false);
 
@@ -152,8 +162,17 @@ const App: React.FC = () => {
       }
   }, [view, selectedProduct?.id]);
 
-  // ★ 新增：購物車遺忘提醒邏輯
+  // ★ 修改：購物車遺忘提醒邏輯 (每日或每次登入僅提示一次)
   useEffect(() => {
+      const today = new Date().toLocaleDateString();
+      const lastReminder = localStorage.getItem('insbuy_cart_reminder_date');
+      
+      // 如果今天已經按過「叉叉」關閉提醒，就不再顯示
+      if (lastReminder === today) {
+          setShowCartReminder(false);
+          return;
+      }
+
       // 如果購物車有東西，且目前不在購物車或結帳頁面，延遲3秒後顯示提示
       if (cart.length > 0 && view !== View.CART && view !== View.CHECKOUT) {
           const timer = setTimeout(() => {
@@ -310,7 +329,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (chatTarget && user) {
-      const myId = user.role === 'ADMIN' ? 'ADMIN' : user.id;
+      // ★ 核心修復 1：同步已讀狀態時，必須區分當前是打開「管理員愛聊」還是「商家愛聊」
+      const myId = user.role === 'ADMIN' ? (adminChatMode === 'SYSTEM' ? 'ADMIN' : user.id) : user.id;
       const trueTarget = resolveGlobalChatId(chatTarget, allUsers);
       if (trueTarget) {
           API.markMessagesRead(trueTarget, myId).then(() => {
@@ -321,16 +341,18 @@ const App: React.FC = () => {
     }
   }, [chatTarget, user, allUsers]);
 
+
   // 訊息輪詢：每 10 秒一次
-  useEffect(() => {
-    const checkUnread = async () => {
-      if (!user) {
-        setUnreadCount(0);
-        return;
-      }
-      try {
-        const myId = user.role === 'ADMIN' ? SYSTEM_ADMIN_USER.id : user.id;
-        const allMsgs = await API.getAllUserMessages(myId);
+          useEffect(() => {
+            const checkUnread = async () => {
+              if (!user) {
+                setUnreadCount(0);
+                return;
+              }
+              try {
+                // ★ 核心修復 2：輪詢紅點時，跟隨你最後切換的愛聊模式來檢查未讀訊息
+                const myId = user.role === 'ADMIN' ? (adminChatMode === 'SYSTEM' ? SYSTEM_ADMIN_USER.id : user.id) : user.id;
+                const allMsgs = await API.getAllUserMessages(myId);
         const trueTarget = resolveGlobalChatId(chatTarget, allUsers);
         
         // 改為計算「有未讀訊息的對話(發送者)數量」，讓外部數字與對話列表的紅點數量一致
@@ -529,6 +551,7 @@ const App: React.FC = () => {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('insbuy_user');
+    localStorage.removeItem('insbuy_cart_reminder_date'); // ★ 新增：登出時清除購物車提醒紀錄，讓下次登入可再次提醒
     navigateTo(View.SHOP);
     setCart([]);
     showToast('已安全登出');
@@ -713,7 +736,10 @@ const App: React.FC = () => {
                   <i className="fa-solid fa-cart-shopping text-base"></i>
                   您的購物車裡還有商品等著結帳喔！
                </span>
-               <button onClick={() => setShowCartReminder(false)} className="ml-1 text-white/70 hover:text-white transition bg-white/20 w-5 h-5 rounded-full flex items-center justify-center">
+               <button onClick={() => {
+                  setShowCartReminder(false);
+                  localStorage.setItem('insbuy_cart_reminder_date', new Date().toLocaleDateString()); // ★ 紀錄今天已提醒過
+               }} className="ml-1 text-white/70 hover:text-white transition bg-white/20 w-5 h-5 rounded-full flex items-center justify-center">
                   <i className="fa-solid fa-xmark"></i>
                </button>
             </div>
@@ -852,6 +878,7 @@ const App: React.FC = () => {
               <Cart 
                 items={cart} 
                 allUsers={allUsers} 
+                onNavigate={navigateTo} // ★ 新增：傳遞導覽函數以支援點擊商品或商家跳轉 
                 onUpdateQty={(idx, newQty) => { 
                    if (newQty < 1) { 
                       setCart(cart.filter((_, i) => i !== idx)); 
@@ -1036,7 +1063,7 @@ const App: React.FC = () => {
                 />
             )}
             
-            {view === View.CHAT && <ChatRoom currentUser={user?.role === 'ADMIN' ? SYSTEM_ADMIN_USER : user} targetId={chatTarget} allUsers={allUsers} currentProduct={selectedProduct} siteSettings={siteSettings} />}
+            {view === View.CHAT && <ChatRoom currentUser={user?.role === 'ADMIN' ? (adminChatMode === 'SYSTEM' ? SYSTEM_ADMIN_USER : user) : user} targetId={chatTarget} allUsers={allUsers} currentProduct={selectedProduct} siteSettings={siteSettings} />}
             
             {/* ★ 雙重防護：不僅判斷 view，還要嚴格判斷 user.role 必須是 ADMIN 才渲染 */}
             {view === View.USER_MANAGEMENT && user && user.role === 'ADMIN' && <UserManagement currentUser={user} users={allUsers} orders={orders} permissions={permissions} siteSettings={siteSettings} onUpdateUsers={async (updatedUsers) => { setAllUsers([...updatedUsers, SYSTEM_ADMIN_USER]); }} onUpdatePermissions={async (updatedPermissions) => { await API.updatePermissions(updatedPermissions); setPermissions(updatedPermissions); }} onUpdateSiteSettings={async (updatedSettings) => { await API.updateSettings(updatedSettings); setSiteSettings(updatedSettings); }} onNavigate={navigateTo} onUpdateOrderStatus={handleUpdateOrderStatus} />}
@@ -1096,16 +1123,42 @@ const App: React.FC = () => {
                     </button>
                   )}
 
-                  <button 
-                      onClick={() => {
-                          navigateTo(View.CHAT);
-                          setIsFabOpen(false);
-                      }} 
-                      className="w-12 h-12 bg-white text-slate-700 rounded-full shadow-lg border border-slate-200 flex flex-col items-center justify-center hover:scale-110 transition-all relative animate-fade-in-up"
-                  >
-                    {unreadCount > 0 && <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border border-white flex items-center justify-center animate-bounce z-10 shadow-sm"><span className="text-[8px] text-white font-black">{unreadCount > 99 ? '99+' : unreadCount}</span></div>}
-                    <i className="fa-regular fa-comments text-lg text-[#EE4D2D]"></i><span className="text-[8px] font-bold">愛聊</span>
-                  </button>
+                  {user && user.role === 'ADMIN' ? (
+                      <>
+                          <button 
+                              onClick={() => {
+                                  setAdminChatMode('SHOP');
+                                  navigateTo(View.CHAT);
+                                  setIsFabOpen(false);
+                              }} 
+                              className="w-12 h-12 bg-white text-slate-700 rounded-full shadow-lg border border-slate-200 flex flex-col items-center justify-center hover:scale-110 transition-all relative animate-fade-in-up"
+                          >
+                            <i className="fa-solid fa-store text-lg text-[#EE4D2D]"></i><span className="text-[8px] font-bold">商家愛聊</span>
+                          </button>
+                          <button 
+                              onClick={() => {
+                                  setAdminChatMode('SYSTEM');
+                                  navigateTo(View.CHAT);
+                                  setIsFabOpen(false);
+                              }} 
+                              className="w-12 h-12 bg-white text-slate-700 rounded-full shadow-lg border border-slate-200 flex flex-col items-center justify-center hover:scale-110 transition-all relative animate-fade-in-up"
+                          >
+                            {unreadCount > 0 && <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border border-white flex items-center justify-center animate-bounce z-10 shadow-sm"><span className="text-[8px] text-white font-black">{unreadCount > 99 ? '99+' : unreadCount}</span></div>}
+                            <i className="fa-solid fa-user-shield text-lg text-[#EE4D2D]"></i><span className="text-[8px] font-bold">管理員愛聊</span>
+                          </button>
+                      </>
+                  ) : (
+                      <button 
+                          onClick={() => {
+                              navigateTo(View.CHAT);
+                              setIsFabOpen(false);
+                          }} 
+                          className="w-12 h-12 bg-white text-slate-700 rounded-full shadow-lg border border-slate-200 flex flex-col items-center justify-center hover:scale-110 transition-all relative animate-fade-in-up"
+                      >
+                        {unreadCount > 0 && <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border border-white flex items-center justify-center animate-bounce z-10 shadow-sm"><span className="text-[8px] text-white font-black">{unreadCount > 99 ? '99+' : unreadCount}</span></div>}
+                        <i className="fa-regular fa-comments text-lg text-[#EE4D2D]"></i><span className="text-[8px] font-bold">愛聊</span>
+                      </button>
+                  )}
                </>
             )}
 

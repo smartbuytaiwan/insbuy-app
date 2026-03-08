@@ -37,6 +37,26 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
   // 檢舉相關 State
   const [showReportModal, setShowReportModal] = useState(false);
 
+  // ★ 新增：關注商品相關 State 與 Logic
+  const [isProductSaved, setIsProductSaved] = useState(false);
+  const storageKey = currentUser ? `insbuy_saved_products_${currentUser.id}` : 'insbuy_saved_products_guest';
+
+  useEffect(() => {
+    const savedIds = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    setIsProductSaved(savedIds.includes(product.id));
+  }, [product.id, currentUser]);
+
+  const handleToggleSaveProduct = () => {
+    let savedIds = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    if (isProductSaved) {
+        savedIds = savedIds.filter((id: string) => id !== product.id);
+    } else {
+        savedIds.unshift(product.id);
+    }
+    localStorage.setItem(storageKey, JSON.stringify(savedIds));
+    setIsProductSaved(!isProductSaved);
+  };
+
 // ==========================================
   // 分潤系統：解析網址 ?ref=... 並記錄點擊
   // ==========================================
@@ -388,7 +408,11 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
             <div className="flex-1">
               <div className="flex justify-between items-start gap-4">
                   <h1 className="text-2xl font-black text-slate-800 mb-2 leading-tight">{product.name}</h1>
-                  <div className="flex gap-2">
+                  <div className="flex gap-1 md:gap-2">
+                     {/* ★ 新增：關注商品 (愛心) 按鈕 */}
+                     <button onClick={handleToggleSaveProduct} className={`transition p-2 rounded-full hover:bg-slate-50 ${isProductSaved ? 'text-[#EE4D2D]' : 'text-slate-400 hover:text-[#EE4D2D]'}`} title={isProductSaved ? "取消關注" : "關注商品"}>
+                        <i className={`${isProductSaved ? 'fa-solid' : 'fa-regular'} fa-heart text-xl`}></i>
+                     </button>
                      <button onClick={() => setShowReportModal(true)} className="text-slate-400 hover:text-red-500 transition p-2 rounded-full hover:bg-slate-50" title="檢舉商品">
                         <i className="fa-solid fa-flag text-xl"></i>
                      </button>

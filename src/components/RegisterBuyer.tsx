@@ -65,8 +65,8 @@ const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // ★ 修改：加入密碼強度檢查 (至少8碼，含英數)
-    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@$!%*?&]{8,}$/;
+    // ★ 修復：放寬特殊符號限制，支援 Apple 自動生成的密碼 (包含連字號 - 等)
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
     if (!passwordRegex.test(formData.password)) {
         alert('為確保帳號安全，密碼需符合以下規則：\n\n1. 長度至少 8 碼\n2. 必須包含「英文」與「數字」');
         return;
@@ -119,7 +119,7 @@ const RegisterBuyer: React.FC<RegisterBuyerProps> = ({ onComplete, onShowTerms, 
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           <InputField label="真實姓名" name="name" icon="fa-user" placeholder="請輸入中文姓名" value={formData.name} onChange={handleChange} />
-          <InputField label="手機號碼 (登入帳號)" name="phone" icon="fa-mobile-screen" placeholder="0912-345-678" value={formData.phone} onChange={handleChange} />
+          <InputField label="手機號碼" name="phone" icon="fa-mobile-screen" placeholder="0912-345-678" value={formData.phone} onChange={handleChange} />
           
           {/* ★ 修改：獨立的 Gmail 驗證區塊 */}
           <div className="space-y-1">

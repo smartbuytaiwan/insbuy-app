@@ -64,10 +64,11 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
 
   const getMyId = () => {
     if (!currentUser) return '';
-    if (currentUser.role === 'ADMIN') return 'ADMIN';
-    return currentUser.id; // ★ 永遠以最底層的帳號 ID 進行收發，避免對話分裂
+    // ★ 核心修復：不再強制所有 ADMIN 都回傳 'ADMIN'
+    // 因為 App.tsx 已經會根據「管理員愛聊」或「商家愛聊」傳入正確的 currentUser 物件
+    // 若為管理員愛聊，currentUser.id 本身就會是 'ADMIN'；若為商家愛聊，就會是你真實的帳號 ID
+    return currentUser.id; 
   };
-
   // 讀取/儲存 ChatMetadata
   useEffect(() => {
     if (!currentUser) return;
@@ -474,7 +475,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
         <div className="p-4 border-b font-bold text-slate-700 flex justify-between items-center bg-slate-50 sticky top-0 z-10 shrink-0 h-16">
             <span className="flex items-center gap-2">
                 <i className="fa-regular fa-comments"></i> 
-                {readOnly ? '歷史紀錄' : '訊息列表'}
+                {/* ★ 修復：明確顯示當前是哪個身分的愛聊，防呆設計 */}
+                {readOnly ? '歷史紀錄' : (currentUser.id === 'ADMIN' ? '管理員愛聊 (系統)' : '商家愛聊 (客服)')}
             </span>
             <span className="text-[10px] bg-slate-200 px-2 py-1 rounded-full text-slate-600 font-bold">{contacts.length}</span>
         </div>
@@ -568,8 +570,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
                 <div className="w-9 h-9 rounded-full bg-slate-100 overflow-hidden border border-slate-200 mr-3">
                     <img src={activeUser.logo || 'https://placehold.co/100'} className="w-full h-full object-cover" />
                 </div>
-                <div className="flex-1">
-                    <div className="text-sm md:text-base text-slate-800">{activeUser.shop_name || activeUser.name}</div>
+                {/* ★ 修復：加入 min-w-0 與 truncate，避免名字過長把畫面撐開 */}
+                <div className="flex-1 min-w-0">
+                    <div className="text-sm md:text-base text-slate-800 truncate">{activeUser.shop_name || activeUser.name}</div>
                     <div className="text-[10px] text-green-500 flex items-center gap-1">
                         <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div> 線上
                     </div>
@@ -671,7 +674,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
                             <img src={activeUser.logo || 'https://placehold.co/100'} className="w-full h-full object-cover" />
                         </div>
                     )}
-                    <div className={`max-w-[75%] md:max-w-[60%] p-3 rounded-2xl text-sm shadow-sm whitespace-pre-wrap leading-relaxed ${
+                    {/* ★ 修復：加入 break-words 解決連續無空白的文字撐破對話框的問題 */}
+                    <div className={`max-w-[75%] md:max-w-[60%] p-3 rounded-2xl text-sm shadow-sm whitespace-pre-wrap break-words leading-relaxed ${
                         isLegacySystem ? 'bg-black/5 text-slate-500 text-xs py-1 px-4 rounded-full border border-slate-200/50 my-2' : 
                         isMe ? 'bg-[#EE4D2D] text-white rounded-br-none' : 
                         'bg-white border border-slate-200 text-slate-700 rounded-bl-none'

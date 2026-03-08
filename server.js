@@ -463,6 +463,24 @@ app.get('/api/orders', async (req, res) => {
 app.use('/api/google', googleRoutes);
 
 
+// ★ 新增：處理前端結帳送出的訂單，解決 404 Not Found 無法結帳問題
+app.post('/api/orders', async (req, res) => {
+  try {
+    // 確保訂單有唯一 ID 與建立時間 (若前端有傳則用前端的，沒有則後端自動生成)
+    const orderData = {
+        ...req.body,
+        id: req.body.id || `ord-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        created_at: req.body.created_at || new Date().toISOString()
+    };
+    const newOrder = new Order(orderData);
+    await newOrder.save();
+    res.json(newOrder);
+  } catch (e) {
+    console.error("Order creation error:", e);
+    res.status(500).json({ message: 'Create order failed', error: e.message });
+  }
+});
+
 app.patch('/api/orders/:id/status', async (req, res) => {
   const order = await Order.findOneAndUpdate({ id: req.params.id }, req.body, { new: true });
   res.json(order);

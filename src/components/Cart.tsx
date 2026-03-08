@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { CartItem, User } from '../types';
+import { CartItem, User, View, Product } from '../types'; // ★ 補上 View 與 Product 型別
 import API from '../api';
 
 interface CartProps {
   items: CartItem[];
   allUsers?: User[];
+  onNavigate: (newView: View, product?: Product, targetId?: string) => void; // ★ 補上 onNavigate 屬性
   onUpdateQty: (idx: number, newQty: number) => void;
   onRemove: (idx: number) => void;
   onCheckout: (selectedItems: CartItem[]) => void;
@@ -12,7 +13,7 @@ interface CartProps {
   onCancel: () => void; // ★ 新增：返回上一步的功能
 }
 
-const Cart: React.FC<CartProps> = ({ items, allUsers, onUpdateQty, onRemove, onCheckout, onClear, onCancel }) => {
+const Cart: React.FC<CartProps> = ({ items, allUsers, onNavigate, onUpdateQty, onRemove, onCheckout, onClear, onCancel }) => {
   // 記錄被勾選的商品索引 (使用 Set 結構方便查找)
   const [checkedIndices, setCheckedIndices] = useState<Set<number>>(new Set());
 
@@ -212,7 +213,13 @@ const Cart: React.FC<CartProps> = ({ items, allUsers, onUpdateQty, onRemove, onC
                       onChange={() => handleCheckShop(shopId, group.originalIndices)}
                    />
                    <i className="fa-solid fa-store text-slate-400"></i>
-                   <span className="font-bold text-slate-700">{shopName}</span>
+                   {/* ★ 修復：讓賣場名稱可以點擊跳轉 */}
+                   <span 
+                      className="font-bold text-slate-700 cursor-pointer hover:text-[#EE4D2D] transition flex items-center gap-1"
+                      onClick={() => onNavigate(View.SHOP, undefined, shopId)}
+                   >
+                      {shopName} <i className="fa-solid fa-chevron-right text-[10px] opacity-50 mt-0.5"></i>
+                   </span>
                 </div>
                 
                 <div className="p-4 space-y-6 bg-white">
@@ -226,30 +233,45 @@ const Cart: React.FC<CartProps> = ({ items, allUsers, onUpdateQty, onRemove, onC
                       const displayVariant = item.selectedVariant || (item as any).variantName;
 
                       return (
-                        <div key={localIdx} className="flex gap-4 items-center">
+                        <div key={localIdx} className="flex gap-3 md:gap-4 items-start md:items-center relative py-2 md:py-0">
                             {/* 商品勾選框 */}
                             <input 
                                 type="checkbox" 
-                                className="w-5 h-5 accent-[#EE4D2D] cursor-pointer shrink-0"
+                                className="w-5 h-5 accent-[#EE4D2D] cursor-pointer shrink-0 mt-3 md:mt-0"
                                 checked={isChecked}
                                 onChange={() => handleCheckItem(globalIdx, shopId)}
                             />
 
-                            <div className="w-16 h-16 md:w-20 md:h-20 bg-slate-50 rounded-xl overflow-hidden shrink-0 border border-slate-100">
+                            {/* ★ 修復：圖片可點擊跳轉商品頁 */}
+                            <div 
+                                className="w-20 h-20 md:w-20 md:h-20 bg-slate-50 rounded-xl overflow-hidden shrink-0 border border-slate-100 cursor-pointer hover:opacity-80 transition"
+                                onClick={() => onNavigate(View.PRODUCT, item as unknown as Product)}
+                            >
                                 <img src={displayImage} alt={item.name} className="w-full h-full object-cover" />
                             </div>
-                            <div className="flex-1 min-w-0">
-                                <h3 className="font-bold text-slate-700 truncate text-sm md:text-base">{item.name}</h3>
-                                <div className="text-[10px] md:text-xs text-slate-400 mt-1">{displayVariant ? `規格: ${displayVariant}` : '單一規格'}</div>
-                                <div className="text-xs md:text-sm font-black text-[#EE4D2D] mt-1">${item.finalPrice.toLocaleString()}</div>
-                            </div>
-                            <div className="flex flex-col items-end gap-2 md:gap-3 shrink-0">
-                                <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden h-7 md:h-8">
-                                    <button onClick={() => onUpdateQty(globalIdx, item.qty - 1)} className="w-7 md:w-8 h-full bg-slate-50 hover:bg-slate-100 border-r font-black text-slate-400">-</button>
-                                    <span className="w-8 md:w-10 text-center text-xs md:text-sm font-black text-slate-700">{item.qty}</span>
-                                    <button onClick={() => onUpdateQty(globalIdx, item.qty + 1)} className="w-7 md:w-8 h-full bg-slate-50 hover:bg-slate-100 border-l font-black text-slate-400">+</button>
+
+                            {/* ★ 修復：手機版排版防壓縮，允許文字換行，並將控制項改為底部對齊 */}
+                            <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-center justify-between gap-2">
+                                <div 
+                                    className="flex-1 min-w-0 cursor-pointer group"
+                                    onClick={() => onNavigate(View.PRODUCT, item as unknown as Product)}
+                                >
+                                    <h3 className="font-bold text-slate-700 text-sm md:text-base line-clamp-2 md:truncate group-hover:text-[#EE4D2D] transition">{item.name}</h3>
+                                    <div className="text-[10px] md:text-xs text-slate-400 mt-1 line-clamp-1">{displayVariant ? `規格: ${displayVariant}` : '單一規格'}</div>
+                                    <div className="text-sm md:text-sm font-black text-[#EE4D2D] mt-1 md:hidden">${item.finalPrice.toLocaleString()}</div>
                                 </div>
-                                <button onClick={() => onRemove(globalIdx)} className="text-red-500 text-[10px] md:text-xs font-bold hover:underline">移除</button>
+                                
+                                <div className="flex items-center justify-between md:flex-col md:items-end gap-3 md:gap-3 shrink-0 w-full md:w-auto mt-1 md:mt-0">
+                                    <div className="text-sm font-black text-[#EE4D2D] hidden md:block">${item.finalPrice.toLocaleString()}</div>
+                                    <div className="flex items-center gap-3 md:gap-2 justify-end w-full md:w-auto">
+                                        <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden h-8">
+                                            <button onClick={() => onUpdateQty(globalIdx, item.qty - 1)} className="w-8 h-full bg-slate-50 hover:bg-slate-100 border-r font-black text-slate-400">-</button>
+                                            <span className="w-10 text-center text-sm font-black text-slate-700">{item.qty}</span>
+                                            <button onClick={() => onUpdateQty(globalIdx, item.qty + 1)} className="w-8 h-full bg-slate-50 hover:bg-slate-100 border-l font-black text-slate-400">+</button>
+                                        </div>
+                                        <button onClick={() => onRemove(globalIdx)} className="text-red-500 text-xs font-bold hover:underline shrink-0">移除</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                       );

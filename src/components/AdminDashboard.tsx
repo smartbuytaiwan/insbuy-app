@@ -943,7 +943,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
     if (!receiverId) receiverId = order.receiver_phone;
 
     try {
-      const finalSenderId = user.role === 'ADMIN' ? 'ADMIN' : user.id;
+      // ★ 核心修復 3：商家出貨的通知，必須用「商家的真實 ID」發送！
+      // 這樣買家收到通知後按回覆，訊息才會正確跑到你的「商家愛聊」！
+      const finalSenderId = (user.role === 'ADMIN' && order.shop_id === 'SYSTEM') ? 'ADMIN' : user.id;
 
       await API.sendMessage({
         senderId: finalSenderId, 

@@ -43,8 +43,8 @@ const RegisterSeller: React.FC<RegisterSellerProps> = ({ onComplete, onShowTerms
   const handleSubmit = () => {
     if (!form.name || !form.phone || !form.password || !form.shop_name) return alert('請填寫必填欄位');
     
-    // 密碼強度檢查
-    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@$!%*?&]{8,}$/;
+    // ★ 修復：放寬特殊符號限制，支援 Apple 自動生成的密碼 (包含連字號 - 等)
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
     if (!passwordRegex.test(form.password)) {
         return alert('為消除瀏覽器安全警告，請設定更安全的密碼：\n\n1. 長度至少 8 碼\n2. 必須包含「英文」與「數字」\n3. 請勿使用連續數字或常見密碼');
     }
@@ -115,7 +115,7 @@ const RegisterSeller: React.FC<RegisterSellerProps> = ({ onComplete, onShowTerms
                     />
                  </div>
                  <div>
-                    <label className="text-xs font-bold text-slate-500 mb-1 block">手機號碼 (帳號) <span className="text-red-500">*</span></label>
+                    <label className="text-xs font-bold text-slate-500 mb-1 block">手機號碼<span className="text-red-500">*</span></label>
                     <input 
                       type="text" 
                       className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-4 outline-none focus:border-[#EE4D2D] transition"

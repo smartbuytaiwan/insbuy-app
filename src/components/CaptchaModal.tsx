@@ -26,15 +26,40 @@ const CaptchaModal = ({ onVerify, onCancel }: { onVerify: () => void, onCancel: 
         ctx.fillStyle = '#334155';
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'center';
-        // 加入干擾線
-        for(let i=0; i<5; i++) {
-           ctx.strokeStyle = `rgba(0,0,0,0.1)`;
-           ctx.beginPath();
-           ctx.moveTo(Math.random()*120, Math.random()*40);
-           ctx.lineTo(Math.random()*120, Math.random()*40);
-           ctx.stroke();
+        // ★ 修復：加入複雜的干擾線與雜訊點，並旋轉扭曲文字防 AI 破解
+        // 1. 加入干擾點
+        for (let i = 0; i < 30; i++) {
+          ctx.fillStyle = `rgba(0,0,0, ${Math.random() * 0.2})`;
+          ctx.beginPath();
+          ctx.arc(Math.random() * 120, Math.random() * 40, Math.random() * 2, 0, Math.PI * 2);
+          ctx.fill();
         }
-        ctx.fillText(code, 60, 20);
+        
+        // 2. 加入隨機曲線干擾線
+        for (let i = 0; i < 4; i++) {
+          ctx.strokeStyle = `rgba(${Math.floor(Math.random()*150)}, ${Math.floor(Math.random()*150)}, ${Math.floor(Math.random()*150)}, 0.4)`;
+          ctx.lineWidth = Math.random() * 2 + 1;
+          ctx.beginPath();
+          ctx.moveTo(Math.random() * 30, Math.random() * 40);
+          ctx.bezierCurveTo(Math.random() * 60, Math.random() * 40, Math.random() * 90, Math.random() * 40, Math.random() * 30 + 90, Math.random() * 40);
+          ctx.stroke();
+        }
+
+        // 3. 繪製扭曲旋轉且顏色隨機的文字
+        const charWidth = 120 / (code.length + 1);
+        for (let i = 0; i < code.length; i++) {
+          const char = code[i];
+          const x = charWidth * (i + 1);
+          const y = 20 + (Math.random() * 6 - 3); 
+          const rot = (Math.random() - 0.5) * 0.5;
+
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(rot);
+          ctx.fillStyle = `rgb(${Math.floor(Math.random()*100)}, ${Math.floor(Math.random()*100)}, ${Math.floor(Math.random()*100)})`;
+          ctx.fillText(char, 0, 0);
+          ctx.restore();
+        }
       }
     }
   }, [code]);
