@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Booking, Service, Staff } from '../types';
 import { BookingAPI } from '../api';
 
-// 修正時區偏差的日期轉換工具
 const getLocalDateString = (d: Date) => {
   const tzOffset = d.getTimezoneOffset() * 60000;
   return new Date(d.getTime() - tzOffset).toISOString().split('T')[0];
@@ -11,7 +10,6 @@ const getLocalDateString = (d: Date) => {
 export default function BookingCalendar({ shopId }: { shopId: string }) {
   const todayDate = new Date();
   
-  // --- 狀態管理 ---
   const [viewMode, setViewMode] = useState<'TODAY' | 'TOMORROW' | 'DAY_AFTER' | 'WEEK' | 'MONTH' | 'CUSTOM' | 'HISTORY'>('TODAY');
   const [dateRange, setDateRange] = useState({ 
     start: getLocalDateString(todayDate), 
@@ -22,7 +20,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
   const [dayDisplayMode, setDayDisplayMode] = useState<'CHART' | 'DETAIL'>('CHART'); 
   const statusMap: any = { PENDING: '待確認', CONFIRMED: '已確認', COMPLETED: '已完成', CANCELLED: '已取消', NO_SHOW: '爽約' }; 
   
-  // ★ 新增：資料過濾模式 (預約排程 / 歷史紀錄 / 取消紀錄)
   const [bookingFilter, setBookingFilter] = useState<'ACTIVE' | 'HISTORY' | 'CANCELLED'>('ACTIVE');
 
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -109,9 +106,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
     } catch (e) { alert('更新失敗'); }
   };
 
-  // ========================================================
-  // ★ 核心狀態與資料過濾 (依據三大頁籤過濾資料)
-  // ========================================================
   const filteredBookings = useMemo(() => {
       return bookings.filter(b => {
           if (bookingFilter === 'ACTIVE') return ['PENDING', 'CONFIRMED'].includes(b.status);
@@ -127,9 +121,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
       return filteredBookings.reduce((sum, b) => sum + (b.payable_amount || 0), 0);
   }, [filteredBookings]);
 
-  // ========================================================
-  // 多日月曆/週曆 (Calendar Grid) 演算法與每日金額計算
-  // ========================================================
   const calendarDays = useMemo(() => {
     if (isSingleDay) return [];
     const days = [];
@@ -154,7 +145,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
   return (
     <div className="space-y-4 animate-fade-in w-full max-w-full overflow-hidden">
       
-      {/* ★ 新增：三大資料分類頁籤 */}
       <div className="flex gap-2 mb-2 bg-white p-1 rounded-xl shadow-sm border border-slate-200 w-full md:w-auto overflow-x-auto no-scrollbar">
         {[
           { id: 'ACTIVE', label: '預約排程', icon: 'fa-calendar-check' },
@@ -171,10 +161,8 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
         ))}
       </div>
 
-      {/* 頂部快捷控制列 */}
       <div className="bg-white p-3 md:p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <div className="flex flex-col gap-3 w-full xl:w-auto">
-          {/* 日期快捷鍵 */}
           <div className="flex gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-100 overflow-x-auto no-scrollbar w-full xl:w-auto">
             {[
               { id: 'TODAY', label: '今日' }, { id: 'TOMORROW', label: '明日' }, { id: 'DAY_AFTER', label: '後天' },
@@ -189,7 +177,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
             ))}
           </div>
           
-          {/* ★ 新增：指定月份快速選擇器 */}
           {viewMode === 'MONTH' && (
             <div className="flex items-center bg-slate-50 p-1.5 rounded-xl border border-slate-200 w-fit">
                <input 
@@ -233,9 +220,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
       {isLoading ? (
         <div className="py-20 text-center text-slate-400 font-bold animate-pulse bg-white rounded-xl">載入資料中...</div>
       ) : isSingleDay ? (
-        /* =========================================================
-           [單日模式] - 支援 圖表 / 詳細資訊 切換
-           ========================================================= */
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col animate-fade-in">
           <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50 gap-3">
             <div className="flex items-center gap-3">
@@ -244,7 +228,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
                  共 {filteredBookings.length} 筆 / 總金額 <span className="text-[#EE4D2D]">${singleDayTotalAmount.toLocaleString()}</span>
               </span>
             </div>
-            {/* 取消紀錄強制使用條列式，其他可用圖表切換 */}
             {bookingFilter !== 'CANCELLED' && (
                <div className="flex bg-white rounded-lg p-1 border border-slate-200 shadow-sm w-full md:w-auto">
                   <button onClick={() => setDayDisplayMode('CHART')} className={`flex-1 md:flex-none px-4 py-1.5 text-xs font-bold rounded-md transition ${dayDisplayMode === 'CHART' ? 'bg-purple-100 text-purple-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}><i className="fa-solid fa-chart-gantt mr-1"></i>圖表視圖</button>
@@ -255,7 +238,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
           
           {(dayDisplayMode === 'CHART' && bookingFilter !== 'CANCELLED') && (
              <div className="flex w-full overflow-x-auto relative custom-scrollbar border-b border-slate-100">
-                {/* 左側：垂直時間軸 */}
                 <div className="w-16 shrink-0 bg-white border-r border-slate-200 sticky left-0 z-20 flex flex-col shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
                    <div className="h-14 border-b border-slate-200 bg-slate-50"></div>
                    {(() => {
@@ -288,9 +270,7 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
                    })()}
                 </div>
 
-                {/* 右側：員工直行 */}
                 <div className="flex flex-1 min-w-max relative bg-slate-50/30">
-                   {/* 頂部員工表頭 */}
                    <div className="absolute top-0 left-0 right-0 h-14 flex border-b border-slate-200 bg-slate-50 z-30">
                      {staffList.map(staff => (
                        <div key={staff.id} className="flex-1 min-w-[140px] border-r border-slate-200 flex flex-col items-center justify-center gap-1 p-1">
@@ -302,7 +282,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
                      ))}
                    </div>
                    
-                   {/* 垂直時間網格與預約區塊 */}
                    {(() => {
                      let minHour = hideOffTime ? 9 : 0;
                      let maxHour = hideOffTime ? 21 : 23;
@@ -364,7 +343,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
                                   </div>
                                 ))}
 
-                                {/* ★ 修改：套用過濾後的預約資料 */}
                                 {filteredBookings.filter(b => b.staff_id === staff.id).map(b => {
                                    const start = new Date(b.start_time);
                                    const end = new Date(b.end_time);
@@ -395,7 +373,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
              </div>
           )}
 
-          {/* ★ 新增：詳細資料視圖 / 取消紀錄條列式 (顯示過濾後的資料與金額) */}
           {(dayDisplayMode === 'DETAIL' || bookingFilter === 'CANCELLED') && (
              <div className="p-4 space-y-3 bg-slate-50/50 border-b border-slate-100 flex-1 overflow-y-auto custom-scrollbar max-h-[500px]">
                 {filteredBookings.length === 0 ? (
@@ -444,12 +421,12 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
           )}
         </div>
       ) : (
-        /* =========================================================
-           [多日模式] - Inline 風格的月曆/週曆彙整網格 (Calendar Grid)
-           ========================================================= */
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
           <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-             <h3 className="font-black text-lg text-slate-800"><i className="fa-regular fa-calendar-days text-purple-600 mr-2"></i>預約總覽 ({dateRange.start} ~ {dateRange.end})</h3>
+             <h3 className="font-black text-lg text-slate-800">
+                <i className={`fa-solid mr-2 ${bookingFilter === 'ACTIVE' ? 'fa-calendar-days text-[#EE4D2D]' : bookingFilter === 'HISTORY' ? 'fa-clock-rotate-left text-purple-600' : 'fa-ban text-red-500'}`}></i>
+                {bookingFilter === 'ACTIVE' ? '預約排程' : bookingFilter === 'HISTORY' ? '歷史紀錄' : '取消與爽約'}總覽 ({dateRange.start} ~ {dateRange.end})
+             </h3>
           </div>
           
           <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-100 text-slate-500 text-xs font-bold text-center">
@@ -501,7 +478,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
         </div>
       )}
 
-      {/* 手動新增預約 Modal (保留不變) */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center p-4 backdrop-blur-sm">
           <form onSubmit={handleManualAdd} className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 animate-fade-in-up flex flex-col max-h-[90vh]">
@@ -549,9 +525,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
         </div>
       )}
 
-      {/* =========================================================
-         ★ 新增：預約詳細資訊 Modal (點擊卡片彈出)
-         ========================================================= */}
       {selectedBooking && (
         <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 animate-fade-in-up relative">
@@ -593,7 +566,6 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
                 <span className="font-bold text-slate-800">{selectedBooking.staff_id ? staffList.find(s => s.id === selectedBooking.staff_id)?.name : '不指定'}</span>
               </div>
               
-              {/* ★ 新增：預約單號、建立時間、付款狀態與總金額 */}
               <div className="border-t border-slate-100 pt-3 mt-3 space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-bold text-slate-400">預約單號</span>
@@ -615,6 +587,7 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
                        <button onClick={async () => {
                            if(window.confirm('確定要將此預約改為「已付款」嗎？')) {
                                try {
+                                   // ★ 唯一的一處替換在這裡：
                                    await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/update-status/${selectedBooking.id}`, { 
                                        method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ deposit_status: 'PAID' }) 
                                    });

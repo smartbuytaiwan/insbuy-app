@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DaySchedule } from '../types';
-import { uploadImageToSupabase } from '../../supabaseClient'; // ★ 引入上傳圖片功能
+import { uploadImageToSupabase } from '../../supabaseClient'; 
 
 const defaultDay = (): DaySchedule => ({ isOpen: true, open: '10:00', close: '21:00', breakStart: '', breakEnd: '', slot_interval: 30, disabled_slots: [] });
 const closedDay = (): DaySchedule => ({ isOpen: false, open: '', close: '', breakStart: '', breakEnd: '', slot_interval: 30, disabled_slots: [] });
@@ -20,15 +20,13 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
   const [specialDateForm, setSpecialDateForm] = useState<DaySchedule>(defaultDay());
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  // ★ 新增：派單規則狀態與員工名單
   const [autoAssignRule, setAutoAssignRule] = useState('LEAST_BOOKINGS');
   const [priorityStaffId, setPriorityStaffId] = useState('');
   const [staffList, setStaffList] = useState<any[]>([]);
 
-  // ★ 新增：品牌首頁自訂設定狀態
   const [storefrontForm, setStorefrontForm] = useState({
      storefront_name: '',
-     storefront_avatar: '', // ★ 新增：大頭照
+     storefront_avatar: '', 
      storefront_banner: '',
      storefront_address: '',
      storefront_notices: '✦ 工作室可攜伴(但勿催促⚠️)\n✦ 操作時間約 2.5 - 4 小時請保留時間\n✦ 取消/改期請於 2 天前告知，臨時改期下次預約須先付訂金，無故取消將列入黑名單'
@@ -37,7 +35,6 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
 
-  // ★ 新增：處理圖片上傳
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'banner') => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -63,6 +60,7 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
   };
 
   useEffect(() => {
+    // ★ 第一處替換
     fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/settings/${shopId}`)
       .then(res => res.json())
       .then(data => {
@@ -76,14 +74,12 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
              data.closed_dates.forEach((d: string) => { if (!sd[d]) sd[d] = closedDay(); });
           }
           setSpecialDates(sd);
-          // ★ 讀取派單規則
           if (data.auto_assign_rule) setAutoAssignRule(data.auto_assign_rule);
           if (data.priority_staff_id) setPriorityStaffId(data.priority_staff_id);
           
-          // ★ 讀取首頁設定
           setStorefrontForm({
              storefront_name: data.storefront_name || '',
-             storefront_avatar: data.storefront_avatar || '', // ★ 讀取大頭照
+             storefront_avatar: data.storefront_avatar || '', 
              storefront_banner: data.storefront_banner || '',
              storefront_address: data.storefront_address || '',
              storefront_notices: data.storefront_notices || '✦ 工作室可攜伴(但勿催促⚠️)\n✦ 操作時間約 2.5 - 4 小時請保留時間\n✦ 取消/改期請於 2 天前告知，臨時改期下次預約須先付訂金，無故取消將列入黑名單'
@@ -91,7 +87,7 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
         }
       }).catch(console.error);
 
-    // 抓取員工名單供優先派發選單使用
+    // ★ 第二處替換
     fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/staff/${shopId}`)
        .then(res => res.json())
        .then(data => setStaffList(data || []));
@@ -100,29 +96,28 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // ★ 核心修復：將前端統整的 specialDates 拆分為「特規營業日(Object)」與「公休日(Array)」
       const finalSpecialDates: Record<string, DaySchedule> = {};
       const finalClosedDates: string[] = [];
       
       Object.keys(specialDates).forEach(date => {
         if (specialDates[date].isOpen) {
-          finalSpecialDates[date] = specialDates[date]; // 有營業的特規日
+          finalSpecialDates[date] = specialDates[date]; 
         } else {
-          finalClosedDates.push(date); // 標記為公休的日子，只抽出日期字串
+          finalClosedDates.push(date); 
         }
       });
 
+      // ★ 第三處替換
       await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/settings/${shopId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ 
            weekly_schedule: weeklySchedule, 
-           special_dates: finalSpecialDates,         // ★ 只傳入有營業的特規日
-           closed_dates: finalClosedDates,           // ★ 將公休日期抽出為專屬陣列傳給後端
-           auto_assign_rule: autoAssignRule,         // ★ 儲存派單規則
-           priority_staff_id: priorityStaffId,       // ★ 儲存優先員工
-           // ★ 儲存首頁設定
+           special_dates: finalSpecialDates,         
+           closed_dates: finalClosedDates,           
+           auto_assign_rule: autoAssignRule,         
+           priority_staff_id: priorityStaffId,       
            storefront_name: storefrontForm.storefront_name,
-           storefront_avatar: storefrontForm.storefront_avatar, // ★ 儲存大頭照
+           storefront_avatar: storefrontForm.storefront_avatar, 
            storefront_banner: storefrontForm.storefront_banner,
            storefront_address: storefrontForm.storefront_address,
            storefront_notices: storefrontForm.storefront_notices
@@ -144,7 +139,6 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
     setSpecialDateForm(defaultDay());
   };
 
-  // 渲染動態時段開關 UI
   const renderSlotManager = (setting: DaySchedule, dateOrId: string, isSpecial: boolean) => {
     if (!setting.isOpen || !setting.open || !setting.close) return null;
     const slots = [];

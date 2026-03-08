@@ -96,8 +96,9 @@ export default function BrandBookingStorefront(props: Props) {
         const [srvRes, stfRes, storeRes, planRes] = await Promise.all([
           BookingAPI.getServices(shopId),
           BookingAPI.getStaff(shopId),
-          // ★ 修正：改用動態 API 網址，解決正式機抓不到資料的問題
+          // ★ 修正：直接用 fetch 呼叫 API，解決前台抓不到資料的問題
           fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/settings/${shopId}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+          // ★ 抓取上架的方案 (若API未實作則從 localStorage 讀取備用)
           fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/voucher-plans/${shopId}`).then(r => r.ok ? r.json() : []).catch(() => {
               const local = localStorage.getItem(`insbuy_voucher_plans_${shopId}`);
               return local ? JSON.parse(local) : [];
@@ -147,8 +148,7 @@ export default function BrandBookingStorefront(props: Props) {
       
       // ★ 核心升級：為了支援「跨夜排班」(例如營業到凌晨2點)，我們直接抓取所有預約單在前端精準運算
       const allBookings = await BookingAPI.getBookings(shopId) || [];
-      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api';
-      const settingsRes = await fetch(`${API_URL}/booking/settings/${shopId}`);
+      const settingsRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/settings/${shopId}`);
       const storeSetting = settingsRes.ok ? await settingsRes.json() : null;
 
       const finalMinutesNeeded = (selectedService?.duration_minutes || 0) + (selectedService?.buffer_minutes || 0) + addOnMinutes; 
@@ -376,8 +376,7 @@ export default function BrandBookingStorefront(props: Props) {
       if (purchasingPlan.type === 'WALLET') {
           setWalletBalance(prev => prev + purchasingPlan.value);
       } else {
-          const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api';
-          fetch(`${API_URL}/booking/vouchers/buyer/${currentUser.id}`).then(r => r.json()).then(res => setUserVouchers(res || [])).catch(()=>{});
+          fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/vouchers/buyer/${currentUser.id}`).then(r => r.json()).then(res => setUserVouchers(res || [])).catch(()=>{});
       }
       setPurchasingPlan(null);
   };
@@ -961,32 +960,8 @@ export default function BrandBookingStorefront(props: Props) {
                 </div>
                 )}
 
-                {/* 儲值金付款 */}
-                <div className={`border rounded-xl transition ${paymentMethod === 'WALLET' ? 'border-[#EE4D2D] bg-[#FFF4F2]' : 'border-slate-200'}`}>
-                  <label className="flex items-center gap-3 p-3 cursor-pointer">
-                    <input type="radio" name="payment" value="WALLET" checked={paymentMethod === 'WALLET'} onChange={() => setPaymentMethod('WALLET')} className="w-4 h-4 accent-[#EE4D2D]" />
-                    <div className="flex-1 flex justify-between items-center">
-                       <span className="font-bold text-slate-700 text-sm">儲值金錢包扣抵</span>
-                       <span className="text-xs font-bold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">餘額: ${walletBalance.toLocaleString()}</span>
-                    </div>
-                  </label>
-                  {paymentMethod === 'WALLET' && (
-                     <div className="px-4 pb-4 pt-1 animate-fade-in">
-                        {walletBalance >= ((selectedService?.price || 0) + selectedAddons.reduce((s, a) => s + a.price, 0)) ? (
-                           <div className="text-xs text-green-600 font-bold bg-green-50 p-2 rounded border border-green-100"><i className="fa-solid fa-check-circle mr-1"></i>餘額充足，將直接全額扣抵</div>
-                        ) : (
-                           <div className="text-xs text-red-500 bg-red-50 p-2 rounded border border-red-100 flex items-center justify-between">
-                              <span><i className="fa-solid fa-triangle-exclamation mr-1"></i>餘額不足，請先購買儲值方案</span>
-                              <button onClick={() => {
-                                  const walletPlans = plans.filter(p => p.type === 'WALLET');
-                                  if(walletPlans.length > 0) setPurchasingPlan(walletPlans[0]);
-                                  else alert('商家目前無開放儲值方案');
-                              }} className="bg-[#EE4D2D] text-white px-3 py-1.5 rounded shadow-sm hover:bg-[#d73211] font-bold">點此儲值</button>
-                           </div>
-                        )}
-                     </div>
-                  )}
-                </div>
+              
+                
               </div>
             </div>
 
