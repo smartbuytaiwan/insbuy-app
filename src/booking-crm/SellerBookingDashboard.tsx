@@ -9,13 +9,17 @@ import PaymentDiscountSettings from './components/PaymentDiscountSettings'; // �
 
 type TabType = 'calendar' | 'services' | 'staff' | 'resources' | 'vouchers' | 'crm' | 'settings' | 'finance'; // ★ 修正：補上 finance 型別
 
-const SellerBookingDashboard: React.FC = () => {
+interface Props {
+  shopId?: string; // ★ 新增：允許從外部傳入 shopId，確保管理員身份精準同步
+}
+
+const SellerBookingDashboard: React.FC<Props> = ({ shopId: propShopId }) => {
   const [activeTab, setActiveTab] = useState<TabType>('calendar');
 
-  // 安全地從 localStorage 取得登入者的 shopId
+  // ★ 核心修復：優先使用外部傳入的 shopId，確保 Admin 的資料能正確對應到前台
   const userStr = localStorage.getItem('insbuy_user');
   const user = userStr ? JSON.parse(userStr) : null;
-  const shopId = user?.shop_id || user?.id || '';
+  const shopId = propShopId || user?.shop_id || user?.id || '';
 
   const tabs = [
     { id: 'calendar', label: '預約行事曆', icon: 'fa-calendar-days' },

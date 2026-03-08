@@ -1299,9 +1299,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
            </div>
         )}
 
-       {/* ★ 新增：預約系統後台 Tab */}
+       {/* ★ 新增：預約系統後台 Tab (傳入 shopId 確保管理員身分完美對齊) */}
         {activeTab === 'seller_booking' && (
-           <SellerBookingDashboard />
+           <SellerBookingDashboard shopId={shopId} />
         )}
 
         {/* Overview Tab */}
