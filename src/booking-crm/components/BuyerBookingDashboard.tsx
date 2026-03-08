@@ -11,8 +11,34 @@ interface Props {
 export default function BuyerBookingDashboard({ currentUser, onNavigate }: Props) {
   const [stats, setStats] = useState({ bookings: 0, vouchers: 0, wallet: 0, points: 0 });
   
-  // ★ 新增：控制當前顯示畫面的 State
-  const [currentView, setCurrentView] = useState<'HOME' | 'BOOKINGS' | 'VOUCHERS'>('HOME');
+  // ★ 升級：將目前畫面綁定到網址的 URL Parameter，支援瀏覽器「上一頁」
+  const getViewFromUrl = () => {
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get('tab');
+    if (viewParam === 'BOOKINGS' || viewParam === 'VOUCHERS') return viewParam;
+    return 'HOME';
+  };
+
+  const [currentView, setCurrentViewState] = useState<'HOME' | 'BOOKINGS' | 'VOUCHERS'>(getViewFromUrl());
+
+  useEffect(() => {
+    const handlePopState = () => setCurrentViewState(getViewFromUrl() as any);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const setCurrentView = (newView: 'HOME' | 'BOOKINGS' | 'VOUCHERS') => {
+    setCurrentViewState(newView);
+    const url = new URL(window.location.href);
+    if (newView === 'HOME') url.searchParams.delete('tab');
+    else url.searchParams.set('tab', newView);
+    window.history.pushState({}, '', url.toString());
+  };
+
+  // 當按下返回鍵時，直接呼叫瀏覽器回退
+  const handleBackToHome = () => {
+     window.history.back();
+  };
   const [bookingList, setBookingList] = useState<any[]>([]);
   const [voucherList, setVoucherList] = useState<any[]>([]);
 
@@ -38,8 +64,8 @@ export default function BuyerBookingDashboard({ currentUser, onNavigate }: Props
   }, [currentUser]);
 
   // ★ 新增：切換子頁面渲染
-  if (currentView === 'BOOKINGS') return <BuyerBookingsView bookings={bookingList} onBack={() => setCurrentView('HOME')} />;
-  if (currentView === 'VOUCHERS') return <BuyerVouchersView vouchers={voucherList} currentUser={currentUser} onBack={() => setCurrentView('HOME')} onRefresh={fetchBuyerData} />;
+  if (currentView === 'BOOKINGS') return <BuyerBookingsView bookings={bookingList} onBack={handleBackToHome} />;
+  if (currentView === 'VOUCHERS') return <BuyerVouchersView vouchers={voucherList} currentUser={currentUser} onBack={handleBackToHome} onRefresh={fetchBuyerData} />;
 
   return (
     <div className="w-full bg-[#F5F5F5] min-h-screen relative flex justify-center animate-fade-in">

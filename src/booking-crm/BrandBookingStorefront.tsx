@@ -15,8 +15,39 @@ export default function BrandBookingStorefront(props: Props) {
   const shopId = props.shopId || props.sellerId || props.storeId || '';
   const { currentUser, onNavigate, onNavigateBack } = props;
 
-  // 流程改為 0~4 (0: 品牌主頁, 1: 服務, 2: 加購, 3: 員工與時間, 4: 確認)
-  const [step, setStep] = useState<0 | 1 | 2 | 3 | 4>(0);
+  // ★ 升級：將流程步驟與網址的 URL Parameter 綁定，完美支援瀏覽器「上一頁」按鈕！
+  const getStepFromUrl = (): 0 | 1 | 2 | 3 | 4 => {
+    const params = new URLSearchParams(window.location.search);
+    const stepParam = parseInt(params.get('step') || '0', 10);
+    return (isNaN(stepParam) || stepParam < 0 || stepParam > 4) ? 0 : (stepParam as any);
+  };
+
+  const [step, setStepState] = useState<0 | 1 | 2 | 3 | 4>(getStepFromUrl());
+
+  // 監聽網址變化 (當使用者按下瀏覽器的上一頁時觸發)
+  useEffect(() => {
+    const handlePopState = () => {
+      setStepState(getStepFromUrl());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // 覆寫 setStep 函數，讓它同時改變狀態並推入歷史紀錄
+  const setStep = (newStepOrUpdater: any) => {
+    const nextStep = typeof newStepOrUpdater === 'function' ? newStepOrUpdater(step) : newStepOrUpdater;
+    setStepState(nextStep);
+    
+    // 將新的步驟寫入網址，推入歷史紀錄
+    const url = new URL(window.location.href);
+    if (nextStep === 0) {
+       url.searchParams.delete('step');
+    } else {
+       url.searchParams.set('step', nextStep.toString());
+    }
+    window.history.pushState({}, '', url.toString());
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const [services, setServices] = useState<Service[]>([]);
   const [staffList, setStaffList] = useState<Staff[]>([]);
@@ -304,20 +335,21 @@ export default function BrandBookingStorefront(props: Props) {
       onNavigate('AUTH');
       return;
     }
-    // ★ 進入結帳頁面前，確保預設的付款方式是該服務有開放的
     if (step === 3 && selectedService) {
        const allowed = selectedService.allowed_payment_methods || ['PAY_ON_SITE', 'FULL', 'VOUCHER', 'WALLET'];
        if (!allowed.includes(paymentMethod) && allowed.length > 0) {
-           setPaymentMethod(allowed[0]); // 自動選取第一個可用的方式
+           setPaymentMethod(allowed[0]); 
        }
     }
-    setStep(prev => Math.min(prev + 1, 4) as any);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setStep((prev: number) => Math.min(prev + 1, 4));
   };
 
   const handlePrevStep = () => {
-    setStep(prev => Math.max(prev - 1, 0) as any);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // ★ 修正：當按下上一步時，不是用 pushState，而是直接呼叫瀏覽器的回退，
+    // 這樣才能真正消除歷史紀錄的堆疊，不會讓客人按不出去！
+    if (step > 0) {
+       window.history.back();
+    }
   };
 
   const toggleAddon = (addon: any) => {
