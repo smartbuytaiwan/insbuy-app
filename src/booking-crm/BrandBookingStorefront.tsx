@@ -82,8 +82,9 @@ export default function BrandBookingStorefront(props: Props) {
   // 1. 抓取使用者資產 (票券與錢包)
   useEffect(() => {
     if (currentUser?.id) {
-       fetch(`http://127.0.0.1:3001/api/booking/vouchers/buyer/${currentUser.id}`).then(r => r.json()).then(res => setUserVouchers(res || [])).catch(()=>{});
-       fetch(`http://127.0.0.1:3001/api/booking/wallet/buyer/${currentUser.id}`).then(r => r.json()).then(res => setWalletBalance(res?.total_balance || 0)).catch(()=>{});
+       const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api';
+       fetch(`${API_URL}/booking/vouchers/buyer/${currentUser.id}`).then(r => r.json()).then(res => setUserVouchers(res || [])).catch(()=>{});
+       fetch(`${API_URL}/booking/wallet/buyer/${currentUser.id}`).then(r => r.json()).then(res => setWalletBalance(res?.total_balance || 0)).catch(()=>{});
     }
   }, [currentUser]);
 
@@ -95,10 +96,9 @@ export default function BrandBookingStorefront(props: Props) {
         const [srvRes, stfRes, storeRes, planRes] = await Promise.all([
           BookingAPI.getServices(shopId),
           BookingAPI.getStaff(shopId),
-          // ★ 修正：直接用 fetch 呼叫 API，解決前台抓不到資料的問題
-          fetch(`http://127.0.0.1:3001/api/booking/settings/${shopId}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-          // ★ 抓取上架的方案 (若API未實作則從 localStorage 讀取備用)
-          fetch(`http://127.0.0.1:3001/api/booking/voucher-plans/${shopId}`).then(r => r.ok ? r.json() : []).catch(() => {
+          // ★ 修正：改用動態 API 網址，解決正式機抓不到資料的問題
+          fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/settings/${shopId}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+          fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/voucher-plans/${shopId}`).then(r => r.ok ? r.json() : []).catch(() => {
               const local = localStorage.getItem(`insbuy_voucher_plans_${shopId}`);
               return local ? JSON.parse(local) : [];
           })
@@ -147,7 +147,8 @@ export default function BrandBookingStorefront(props: Props) {
       
       // ★ 核心升級：為了支援「跨夜排班」(例如營業到凌晨2點)，我們直接抓取所有預約單在前端精準運算
       const allBookings = await BookingAPI.getBookings(shopId) || [];
-      const settingsRes = await fetch(`http://127.0.0.1:3001/api/booking/settings/${shopId}`);
+      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api';
+      const settingsRes = await fetch(`${API_URL}/booking/settings/${shopId}`);
       const storeSetting = settingsRes.ok ? await settingsRes.json() : null;
 
       const finalMinutesNeeded = (selectedService?.duration_minutes || 0) + (selectedService?.buffer_minutes || 0) + addOnMinutes; 
@@ -375,7 +376,8 @@ export default function BrandBookingStorefront(props: Props) {
       if (purchasingPlan.type === 'WALLET') {
           setWalletBalance(prev => prev + purchasingPlan.value);
       } else {
-          fetch(`http://127.0.0.1:3001/api/booking/vouchers/buyer/${currentUser.id}`).then(r => r.json()).then(res => setUserVouchers(res || [])).catch(()=>{});
+          const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api';
+          fetch(`${API_URL}/booking/vouchers/buyer/${currentUser.id}`).then(r => r.json()).then(res => setUserVouchers(res || [])).catch(()=>{});
       }
       setPurchasingPlan(null);
   };

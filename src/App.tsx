@@ -203,7 +203,7 @@ const App: React.FC = () => {
         API.getPermissions().then(setPermissions).catch(console.error);
         API.getOrders().then(setOrders).catch(console.error);
 
-        fetch('http://127.0.0.1:3001/api/categories?shop_id=SYSTEM')
+        fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/categories?shop_id=SYSTEM`)
            .then(res => res.json())
            .then(sysCats => {
                if (Array.isArray(sysCats) && sysCats.length > 0) {
@@ -985,7 +985,7 @@ const App: React.FC = () => {
                 onUpdateSystemCategories={async (newCats) => { 
                    setSystemCategories(newCats as Category[]);
                    try {
-                       await fetch('http://127.0.0.1:3001/api/categories/bulk', {
+                       await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/categories/bulk`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ categories: newCats, shopId: 'SYSTEM' })

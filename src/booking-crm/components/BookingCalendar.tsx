@@ -615,7 +615,7 @@ export default function BookingCalendar({ shopId }: { shopId: string }) {
                        <button onClick={async () => {
                            if(window.confirm('確定要將此預約改為「已付款」嗎？')) {
                                try {
-                                   await fetch(`http://127.0.0.1:3001/api/booking/update-status/${selectedBooking.id}`, { 
+                                   await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/update-status/${selectedBooking.id}`, { 
                                        method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ deposit_status: 'PAID' }) 
                                    });
                                    setSelectedBooking({...selectedBooking, deposit_status: 'PAID'});

@@ -63,7 +63,7 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
   };
 
   useEffect(() => {
-    fetch(`http://127.0.0.1:3001/api/booking/settings/${shopId}`)
+    fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/settings/${shopId}`)
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -92,7 +92,7 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
       }).catch(console.error);
 
     // 抓取員工名單供優先派發選單使用
-    fetch(`http://127.0.0.1:3001/api/booking/staff/${shopId}`)
+    fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/staff/${shopId}`)
        .then(res => res.json())
        .then(data => setStaffList(data || []));
   }, [shopId]);
@@ -112,7 +112,7 @@ export default function StoreSettingManagement({ shopId }: { shopId: string }) {
         }
       });
 
-      await fetch(`http://127.0.0.1:3001/api/booking/settings/${shopId}`, {
+      await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api'}/booking/settings/${shopId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ 
            weekly_schedule: weeklySchedule, 
