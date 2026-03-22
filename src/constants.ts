@@ -48,6 +48,7 @@ export const SHIPPING_PRESETS = [
 
 export const PAYMENT_OPTIONS = [
   { value: 'BANK', label: '銀行匯款' },
+  { value: 'ONLINE', label: '線上金流結帳' },
   { value: 'COD', label: '貨到付款' },
   { value: 'CASH', label: '面交/現金付款' }
 ];

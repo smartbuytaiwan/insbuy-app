@@ -169,6 +169,13 @@ export interface User {
   has_excellent_badge?: boolean; // ★ 新增：優良商家標章
   excellent_badge_expire_at?: string; // ★ 新增：優良標章到期日
   google_map_url?: string;
+  payment_settings?: {
+    newebpay_merchant_id?: string;
+    newebpay_hash_key?: string;
+    newebpay_hash_iv?: string;
+    bank_info?: BankInfo;
+    pickup_address?: string;
+  };
   line_url?: string;
   facebook_url?: string;
   instagram_url?: string;
@@ -225,6 +232,9 @@ export interface SiteSettings {
   announcementActive: boolean;
   registrationEnabled?: boolean;
   antiScamMessage?: string;
+  // ★ 新增：全站金流選項總開關
+  enable_online_payment?: boolean; 
+  enable_cod?: boolean; // ★ 新增：貨到付款獨立開關
 }
 
 export interface Report {

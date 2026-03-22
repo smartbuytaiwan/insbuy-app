@@ -5,6 +5,7 @@ import { TAIWAN_BANKS, COMMON_ORIGINS, TAIWAN_DISTRICTS, SHIPPING_PRESETS, PAYME
 
 interface AdminProductFormProps {
     shopId: string;
+    siteSettings?: any;
     sellerConfig: any;
     products: Product[];
     onUpdateProducts: (products: Product[]) => void;
@@ -22,18 +23,15 @@ interface AdminProductFormProps {
 }
 
 const AdminProductForm: React.FC<AdminProductFormProps> = ({
-    shopId, sellerConfig, products, onUpdateProducts, systemCategories, categories,
-    form, setForm, editingId, setEditingId, getInitialForm, setActiveTab, setShowMobileMenu, setGlobalSearchId, setCropModal
+    shopId, siteSettings, sellerConfig, products, onUpdateProducts, systemCategories, categories,
+    form, setForm, editingId, setEditingId, getInitialForm, setActiveTab, setShowMobileMenu, setGlobalSearchId, setCropModal
 }) => {
     // === 表單專屬的 Local State ===
-    const [drafts, setDrafts] = useState<{id:string, name:string, text:string}[]>(() => {
-        try { return JSON.parse(localStorage.getItem('insbuy_desc_drafts') || '[]'); } catch { return []; }
+    const [fullDrafts, setFullDrafts] = useState<{id:string, name:string, data:Partial<Product>}[]>(() => {
+        try { return JSON.parse(localStorage.getItem('insbuy_product_drafts') || '[]'); } catch { return []; }
     });
-    const [selectedDraftId, setSelectedDraftId] = useState<string>('');
     const [seoInputValue, setSeoInputValue] = useState('');
-    const [isHtmlMode, setIsHtmlMode] = useState(false); 
-    const [saveBank, setSaveBank] = useState(!!localStorage.getItem('insbuy_saved_bank'));
-    const [isCustomBank, setIsCustomBank] = useState(false);
+    const [isHtmlMode, setIsHtmlMode] = useState(false);
     const [selectedMainCat, setSelectedMainCat] = useState<string>('');
     const [selectedSubCat, setSelectedSubCat] = useState<string>('');
     const [selectedShopMainCat, setSelectedShopMainCat] = useState<string>('');
@@ -42,6 +40,21 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
     const [originDistrictSelect, setOriginDistrictSelect] = useState('');
     const [originManual, setOriginManual] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // ★ 新增：快速發佈、驗證錯誤、草稿彈窗狀態
+    const [isQuickPublish, setIsQuickPublish] = useState(false);
+    const [validationErrors, setValidationErrors] = useState<string[]>([]);
+    const [showDraftModal, setShowDraftModal] = useState(false);
+
+    // ★ 新增：離開提醒與運費預設值狀態
+    const [showLeavePrompt, setShowLeavePrompt] = useState(false);
+    const [pendingTab, setPendingTab] = useState<string | null>(null); // ★ 用來記憶準備要跳轉的畫面
+    const [showPresetModal, setShowPresetModal] = useState(false);
+    const [shippingPresets, setShippingPresets] = useState<{fees: number[], qtys: number[], thresholds: number[]}>(() => {
+        try { return JSON.parse(localStorage.getItem('insbuy_shipping_presets') || '{"fees":[],"qtys":[],"thresholds":[]}'); }
+        catch { return {fees:[], qtys:[], thresholds:[]}; }
+    });
+    const [presetTemp, setPresetTemp] = useState({...shippingPresets});
 
     // === 初始化與重置邏輯 ===
     useEffect(() => {
@@ -66,12 +79,23 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                         }
                     }
                 } catch (e) { console.error('Draft parsing error', e); }
+            } else {
+                // ★ 新增：如果沒有草稿，載入最後一次記憶的運送與付款方式
+                try {
+                    const rememberedShipping = localStorage.getItem('insbuy_remembered_shipping');
+                    const rememberedPayment = localStorage.getItem('insbuy_remembered_payment');
+                    if (rememberedShipping || rememberedPayment) {
+                        setForm(prev => ({
+                            ...prev,
+                            ...(rememberedShipping ? { shipping_rules: JSON.parse(rememberedShipping) } : {}),
+                            ...(rememberedPayment ? { payment_methods: JSON.parse(rememberedPayment) } : {})
+                        }));
+                    }
+                } catch(e) { console.error('Load remembered settings error', e); }
             }
             setOriginSelect('台北市');
             setOriginDistrictSelect('');
             setOriginManual('');
-            setSelectedDraftId('');
-            setIsCustomBank(false);
         } else {
             const p = products.find(i => i.id === editingId);
             if(p) setSeoInputValue(p.keywords?.join(', ') || '');
@@ -85,6 +109,35 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
         }
     }, [form, editingId]);
 
+    // ★ 攔截外部 Sidebar 點擊跳轉與瀏覽器關閉
+    useEffect(() => {
+        const isDirty = !editingId && form && Object.keys(form).length > 0 && (form.name || form.images?.length || form.price);
+        
+        // 1. 攔截側邊欄 (配合 AdminDashboard 內的修改)
+        if (isDirty) {
+            (window as any).__insbuy_attempt_leave = (tabId: string) => {
+                setPendingTab(tabId);
+                setShowLeavePrompt(true);
+            };
+        } else {
+            delete (window as any).__insbuy_attempt_leave;
+        }
+
+        // 2. 攔截瀏覽器關閉分頁或重整
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (isDirty) {
+                e.preventDefault();
+                e.returnValue = ''; 
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        
+        return () => { 
+            delete (window as any).__insbuy_attempt_leave; 
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [form, editingId]);
+
     const resetForm = () => {
         sessionStorage.removeItem('insbuy_new_product_draft');
         setForm(getInitialForm());
@@ -95,27 +148,64 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
     };
 
     // === 表單操作函式 ===
-    const handleSaveDraft = () => {
-        if(!form.description?.trim()) return alert('請先在商品描述框內填寫內容，才能儲存為草稿！');
-        if(drafts.length >= sellerConfig.max_drafts) return alert(`會員等級限制：\n您最多只能儲存 ${sellerConfig.max_drafts} 組草稿。\n請先刪除舊草稿或升級會員等級！`);
-        const draftName = prompt('請為這個草稿命名 (例如：衣服公版說明)：');
-        if(!draftName) return;
-        const newDrafts = [...drafts, { id: Date.now().toString(), name: draftName, text: form.description }];
-        setDrafts(newDrafts);
-        localStorage.setItem('insbuy_desc_drafts', JSON.stringify(newDrafts));
-        alert('草稿儲存成功！');
+    const handleSaveFullDraft = (silent = false) => {
+        const draftName = form.name?.trim() || prompt('商品名稱尚未填寫，請為這個草稿自訂一個名稱：');
+        if(!draftName) {
+            if(!silent) alert('必須提供名稱才能儲存草稿！');
+            return false;
+        }
+        if(fullDrafts.length >= sellerConfig.max_drafts) {
+            if(!silent) alert(`會員等級限制：您最多只能儲存 ${sellerConfig.max_drafts} 組草稿。請先刪除舊草稿或升級會員等級！`);
+            return false;
+        }
+        
+        const newDrafts = [...fullDrafts, { id: Date.now().toString(), name: draftName, data: form }];
+        setFullDrafts(newDrafts);
+        localStorage.setItem('insbuy_product_drafts', JSON.stringify(newDrafts));
+        if(!silent) alert('商品草稿儲存成功！');
+        return true;
     };
 
-    const applyDraft = (id: string) => {
-        const draft = drafts.find(d => d.id === id);
-        if(draft) setForm({...form, description: form.description ? form.description + '\n\n' + draft.text : draft.text});
+    // ★ 離開前確認攔截邏輯
+    const handleAttemptLeave = () => {
+        if (!editingId && form && Object.keys(form).length > 0 && (form.name || form.images?.length || form.price)) {
+            setShowLeavePrompt(true);
+        } else {
+            resetForm();
+        }
+    };
+    
+    const handleConfirmLeave = () => {
+        setShowLeavePrompt(false);
+        resetForm();
+        if (pendingTab) setActiveTab(pendingTab);
     };
 
-    const deleteDraft = (id: string) => {
-        if(!confirm('確定要刪除此草稿嗎？')) return;
-        const newDrafts = drafts.filter(d => d.id !== id);
-        setDrafts(newDrafts);
-        localStorage.setItem('insbuy_desc_drafts', JSON.stringify(newDrafts));
+    const handleLeaveAndSaveDraft = () => {
+        const saved = handleSaveFullDraft(true);
+        if(saved) {
+            setShowLeavePrompt(false);
+            resetForm();
+            if (pendingTab) setActiveTab(pendingTab);
+        }
+    };
+
+    const applyFullDraft = (id: string) => {
+        const draft = fullDrafts.find(d => d.id === id);
+        if(draft) {
+            if(confirm(`確定要載入草稿「${draft.name}」嗎？目前的輸入將被覆蓋。`)) {
+                setForm(draft.data);
+                setShowDraftModal(false);
+            }
+        }
+    };
+
+    const deleteFullDraft = (id: string) => {
+        if(confirm('確定要刪除這筆草稿嗎？刪除後無法復原。')) {
+            const newDrafts = fullDrafts.filter(d => d.id !== id);
+            setFullDrafts(newDrafts);
+            localStorage.setItem('insbuy_product_drafts', JSON.stringify(newDrafts));
+        }
     };
 
     const addVariant = () => {
@@ -148,7 +238,9 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
             alert(`運送方式「${name}」已存在，請勿重複新增。`);
             return;
         }
-        const newRule: ShippingRule = { name, fee: '' as any, free_threshold: 0, limit_qty: 0, pickup_address: '' };
+        // ★ 判斷是否為面交/自取，自動帶入 0 元運費
+        const isMeetup = name.includes('面交') || name.includes('自取');
+        const newRule: ShippingRule = { name, fee: isMeetup ? 0 : ('' as any), free_threshold: 0, limit_qty: 0, pickup_address: '' };
         setForm(prev => ({ ...prev, shipping_rules: [...(prev.shipping_rules || []), newRule] }));
     };
 
@@ -281,14 +373,34 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
     };
 
     const handleSaveProduct = async () => {
-        if (!form.name || !form.price) return alert('請填寫商品名稱與價格');
-        if (form.product_type === 'PHYSICAL') {
-            if (!form.shipping_rules || form.shipping_rules.length === 0) {
-                if(!confirm('您尚未設定任何運送方式，確定要發布嗎？')) return;
-            } else if (form.shipping_rules.some(r => r.fee === '' as any || r.fee === undefined || isNaN(r.fee))) {
-                return alert('請完整填寫各運送方式的「單趟運費」金額！');
+        // ★ 新增：必填欄位驗證邏輯與發光提示
+        const errors: string[] = [];
+        const missingNames: string[] = [];
+
+        if (!form.name?.trim()) { errors.push('name'); missingNames.push('商品名稱'); }
+        if (!form.description?.trim() && !form.custom_html?.trim()) { errors.push('description'); missingNames.push('商品描述'); }
+        if (!form.images || form.images.length === 0) { errors.push('images'); missingNames.push('商品圖片'); }
+        if (!form.shipping_rules || form.shipping_rules.length === 0) { errors.push('shipping_rules'); missingNames.push('提供買家的運送方式'); }
+        if (!form.payment_methods || form.payment_methods.length === 0) { errors.push('payment_methods'); missingNames.push('支援的付款方式'); }
+        
+        if (!form.variants || form.variants.length === 0 || form.variants.some(v => isNaN(v.price) || v.price < 0)) {
+            errors.push('variants'); missingNames.push('規格與定價(請確保價格正確)');
+        } else if (form.product_type === 'PHYSICAL' && form.shipping_rules && form.shipping_rules.length > 0) {
+            if (form.shipping_rules.some(r => r.fee === '' as any || r.fee === undefined || isNaN(r.fee))) {
+                errors.push('shipping_rules_fee'); missingNames.push('運送方式的「單趟運費」金額');
             }
         }
+
+        if (errors.length > 0) {
+            setValidationErrors(errors);
+            alert(`無法發布！請完成以下必填欄位：\n\n${missingNames.map(n => `- ${n}`).join('\n')}`);
+            window.scrollTo({ top: 0, behavior: 'smooth' }); // 自動滾動至頂部方便買家查看發光欄位
+            return;
+        }
+        setValidationErrors([]); // 驗證通過，清空錯誤
+
+        // 系統自動判斷最低定價作為主要顯示價格
+        const minPrice = Math.min(...form.variants.map(v => v.price));
 
         if (form.status === 'OPEN') {
             const currentActiveProducts = products.filter(p => p.shop_id === shopId && p.status === 'OPEN');
@@ -301,20 +413,17 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
             }
         }
 
-        if (saveBank && form.bank_info) localStorage.setItem('insbuy_saved_bank', JSON.stringify(form.bank_info));
-        else if (!saveBank) localStorage.removeItem('insbuy_saved_bank');
-
         let finalOrigin = originSelect;
         if (originSelect === '手動填寫') finalOrigin = originManual;
         else if (originDistrictSelect) finalOrigin = `${originSelect}${originDistrictSelect}`;
 
         const generatedId = editingId || `p-${Date.now()}`;
         let initialLogs: any[] = form.stock_logs || [];
-        // ★ 新增：如果是第一次建立商品，自動為有庫存的規格產生第一筆「建立商品初始庫存」的會計日誌
+        
         if (!editingId && form.variants) {
             form.variants.forEach((v, idx) => {
                 if (v.stock > 0) {
-                    const vCost = v.cost || 0; // 統一以規格的獨立成本為主
+                    const vCost = v.cost || 0;
                     initialLogs.push({
                         id: `log-init-${Date.now()}-${idx}`,
                         variant_name: v.name || '單一規格',
@@ -328,7 +437,7 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
         }
 
         const productData: Product = {
-            ...getInitialForm(), ...form, shipping_origin: finalOrigin, 
+            ...getInitialForm(), ...form, price: minPrice, shipping_origin: finalOrigin, 
             id: generatedId, shop_id: shopId, category_id: form.category_ids?.[0] || '',
             total_stock: form.variants?.reduce((sum, v) => sum + v.stock, 0) || 0,
             stock_logs: initialLogs
@@ -342,6 +451,11 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                 await API.createProduct(productData);
                 onUpdateProducts([productData, ...products]);
             }
+
+            // ★ 新增：發佈成功時，記憶本次使用的運送與付款方式
+            localStorage.setItem('insbuy_remembered_shipping', JSON.stringify(form.shipping_rules || []));
+            localStorage.setItem('insbuy_remembered_payment', JSON.stringify(form.payment_methods || []));
+
             sessionStorage.removeItem('insbuy_new_product_draft'); // 成功發布後清除草稿
             resetForm();
             alert(editingId ? '商品修改成功！' : '商品已成功發布！');
@@ -353,24 +467,41 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
 
     return (
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 md:p-8">
-            <h2 className="text-2xl font-black text-slate-800 mb-8 border-l-4 border-[#EE4D2D] pl-4">
-               {editingId ? '編輯商品資訊' : '發布新的商品'}
-            </h2>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                    <h2 className="text-2xl font-black text-slate-800 border-l-4 border-[#EE4D2D] pl-4">
+                       {editingId ? '編輯商品資訊' : '發布新的商品'}
+                    </h2>
+                    {/* ★ 新增：快速發佈切換按鈕 */}
+                    <label className="flex items-center gap-2 cursor-pointer bg-orange-50 px-3 py-1.5 rounded-full border border-orange-200 hover:bg-orange-100 transition shadow-sm">
+                        <div className="relative">
+                            <input type="checkbox" className="sr-only" checked={isQuickPublish} onChange={e => setIsQuickPublish(e.target.checked)} />
+                            <div className={`block w-10 h-6 rounded-full transition-colors ${isQuickPublish ? 'bg-[#EE4D2D]' : 'bg-slate-300'}`}></div>
+                            <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${isQuickPublish ? 'transform translate-x-4' : ''}`}></div>
+                        </div>
+                        <span className="text-sm font-black text-[#EE4D2D]"><i className="fa-solid fa-bolt mr-1"></i>快速發佈模式</span>
+                    </label>
+                </div>
+                {!editingId && (
+                    <button onClick={() => setShowDraftModal(true)} className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 transition shadow-sm">
+                        <span className="text-sm font-bold text-slate-600"><i className="fa-solid fa-file-pen mr-1"></i>編輯草稿 ({fullDrafts.length})</span>
+                    </button>
+                )}
+            </div>
             <div className="max-w-3xl space-y-10">
                 {/* Step 1. 基本資訊 */}
                 <section className="space-y-6">
                     <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest border-b pb-2">Step 1. 商品基本資訊</div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="md:col-span-2">
-                            <label className="text-xs font-bold text-slate-500 mb-2 block">商品名稱</label>
-                            <input 
+                            <label className="text-xs font-bold text-slate-500 mb-2 flex items-center gap-1">商品名稱 <span className="text-[#EE4D2D] bg-red-50 px-1.5 py-0.5 rounded text-[10px]">(必填)</span></label>
+                            <input
                                 type="text" 
-                                className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm outline-none focus:border-[#EE4D2D]" 
+                                className={`w-full h-12 border rounded-2xl px-5 text-sm outline-none transition-all ${validationErrors.includes('name') ? 'border-red-500 ring-2 ring-red-200 shadow-[0_0_8px_rgba(239,68,68,0.4)] bg-red-50/30' : 'border-slate-200 focus:border-[#EE4D2D]'}`} 
                                 value={form.name || ''} 
                                 onChange={e => {
                                     const newName = e.target.value;
                                     setForm(prev => {
-                                        // ★ SEO標題連動：如果seo_title是空的，或目前剛好等於先前的name，就自動跟隨輸入變動
                                         const shouldSyncSeoTitle = !prev.seo_title || prev.seo_title === prev.name;
                                         return { 
                                             ...prev, 
@@ -382,34 +513,85 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                                 placeholder="請輸入商品名稱" 
                             />
                         </div>
-                        <div className="w-full">
-                            <label className="text-xs font-bold text-slate-500 mb-2 block">團購基礎價</label>
-                            <input type="number" className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm font-black text-[#EE4D2D]" value={form.price || ''} onChange={e => setForm({...form, price: parseInt(e.target.value) || 0})} placeholder="NT$" />
+
+                        {/* ★ 已整合至 Step 1 的規格區塊 */}
+                        <div className={`md:col-span-2 bg-slate-50 p-5 rounded-2xl border transition-all ${validationErrors.includes('variants') ? 'border-red-500 ring-2 ring-red-200 shadow-[0_0_8px_rgba(239,68,68,0.4)]' : 'border-slate-200'}`}>
+                            <div className="flex justify-between items-center mb-4">
+                                <label className="text-sm font-bold text-slate-700 flex items-center gap-2"><i className="fa-solid fa-list-ul text-[#EE4D2D]"></i> 規格與定價</label>
+                                <button type="button" onClick={addVariant} className="text-[#EE4D2D] text-xs font-bold bg-orange-50 px-3 py-1 rounded-full hover:bg-orange-100 transition"><i className="fa-solid fa-plus mr-1"></i>新增規格</button>
+                            </div>
+                            <div className="space-y-3">
+                                {form.variants?.map((v, i) => (
+                                    <div key={i} className="flex flex-col md:flex-row gap-3 items-end bg-white p-4 rounded-xl border border-slate-100 relative shadow-sm">
+                                        <div className="w-full md:flex-1"><label className="text-xs font-bold text-slate-500 mb-1 block">規格名稱 (如: 紅色 M)</label><input type="text" className="w-full border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.name} onChange={e => updateVariant(i, 'name', e.target.value)} onFocus={(e) => { if(v.name === '單一規格') updateVariant(i, 'name', ''); else e.target.select(); }} onBlur={() => { if(!v.name || v.name.trim() === '') updateVariant(i, 'name', '單一規格'); }} placeholder="單一規格" /></div>
+                                        <div className="w-full md:flex-1">
+                                            <label className="text-xs font-bold text-slate-500 mb-1 block">售價 (全額 NT$)</label>
+                                            <input type="number" className="w-full border border-slate-200 rounded-lg p-2.5 text-sm font-black text-[#EE4D2D] outline-none focus:border-[#EE4D2D]" value={v.price.toString() === '0' && v.price !== 0 ? '' : v.price.toString().replace(/^0+/, '') || '0'} onChange={e => updateVariant(i, 'price', e.target.value === '' ? 0 : parseInt(e.target.value, 10))} onFocus={e => e.target.select()} placeholder="0" />
+                                        </div>
+                                        <div className="w-full md:flex-[0.8]">
+                                            <label className="text-xs font-bold text-slate-500 mb-1 block">庫存數量</label>
+                                            <input type="number" className="w-full border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.stock === ('' as any) ? '' : v.stock.toString().replace(/^0+/, '') || '0'} onChange={e => updateVariant(i, 'stock', e.target.value === '' ? ('' as any) : parseInt(e.target.value, 10))} onFocus={(e) => { if(v.stock === 100) updateVariant(i, 'stock', '' as any); else e.target.select(); }} onBlur={() => { if(v.stock === ('' as any) || isNaN(v.stock)) updateVariant(i, 'stock', 100); }} placeholder="100" />
+                                        </div>
+                                        <div className="w-full md:flex-[0.8]">
+                                            <label className="text-xs font-bold text-slate-500 mb-1 block">單件成本</label>
+                                            <input type="number" className="w-full border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.cost === undefined ? '' : v.cost} onChange={e => updateVariant(i, 'cost', e.target.value === '' ? undefined : parseInt(e.target.value, 10))} placeholder="選填" onFocus={e => e.target.select()} />
+                                        </div>
+                                        {form.variants && form.variants.length > 1 && <button type="button" onClick={() => removeVariant(i)} className="absolute top-2 right-2 md:static md:w-auto p-2 text-slate-300 hover:text-red-500 rounded-lg transition"><i className="fa-solid fa-trash-can"></i></button>}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                        <div className="w-full md:col-span-2">
-                            <label className="text-xs font-bold text-slate-500 mb-2 block">原價 (選填，將顯示為刪除線)</label>
-                            <input type="number" className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm outline-none focus:border-slate-400" value={form.original_price || ''} onChange={e => setForm({...form, original_price: parseInt(e.target.value) || 0})} placeholder="NT$" />
-                        </div>
-                        
-                        <div className="md:col-span-2 bg-orange-50/50 p-5 rounded-2xl border border-orange-100 mt-2">
-                            <label className={`flex items-center gap-2 w-fit mb-4 ${sellerConfig.can_use_preorder ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
-                               onClick={(e) => {
-                                   if (!sellerConfig.can_use_preorder) { e.preventDefault(); alert('會員等級限制：\n您目前的會員等級無法使用「商品預購模式」。\n請升級會員解鎖此功能！'); }
-                               }}>
-                                <input type="checkbox" checked={(form as any).is_preorder || false} onChange={e => { if (sellerConfig.can_use_preorder) { setForm({...form, is_preorder: e.target.checked} as any); } }} className={`w-5 h-5 accent-[#EE4D2D] ${!sellerConfig.can_use_preorder && 'pointer-events-none'}`} />
-                                <span className="text-sm font-black text-[#EE4D2D]"><i className="fa-solid fa-fire mr-1"></i> 開啟商品預購模式 {!sellerConfig.can_use_preorder && '(會員等級限制)'}</span>
-                            </label>
-                            {(form as any).is_preorder && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in-up">
-                                    <div><label className="text-xs font-bold text-slate-600 mb-2 block">預購結束日期</label><input type="date" className="w-full h-12 border border-orange-200 rounded-xl px-4 text-sm outline-none focus:border-[#EE4D2D] bg-white" value={(form as any).preorder_end_date || ''} onChange={e => setForm({...form, preorder_end_date: e.target.value} as any)} /></div>
-                                    <div><label className="text-xs font-bold text-slate-600 mb-2 block">預計到貨日期</label><input type="date" className="w-full h-12 border border-orange-200 rounded-xl px-4 text-sm outline-none focus:border-[#EE4D2D] bg-white" value={(form as any).preorder_arrival_date || ''} onChange={e => setForm({...form, preorder_arrival_date: e.target.value} as any)} /></div>
+
+                        {!isQuickPublish && (
+                            <>
+                                <div className="w-full md:col-span-2 animate-fade-in-up">
+                                    <label className="text-xs font-bold text-slate-500 mb-2 block">原價 (選填，將在首頁顯示為刪除線，並自動計算折數吸引購買)</label>
+                                    <input type="number" className="w-full h-12 border border-slate-200 rounded-2xl px-5 text-sm outline-none focus:border-slate-400" value={form.original_price || ''} onChange={e => setForm({...form, original_price: parseInt(e.target.value) || 0})} placeholder="請輸入商品原價 NT$" />
                                 </div>
-                            )}
-                        </div>
+                                
+                                <div className="md:col-span-2 mt-2 animate-fade-in-up">
+                                    <label className="text-xs font-bold text-slate-500 mb-2 block">特殊銷售模式選項</label>
+                                    <div className="bg-orange-50/50 p-5 rounded-2xl border border-orange-100 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* 預購模式 */}
+                                        <div>
+                                            <label className={`flex items-center gap-2 w-fit mb-4 ${sellerConfig.can_use_preorder ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+                                               onClick={(e) => {
+                                                   if (!sellerConfig.can_use_preorder) { e.preventDefault(); alert('會員等級限制：\n您目前的會員等級無法使用「商品預購模式」。\n請升級會員解鎖此功能！'); }
+                                               }}>
+                                                <input type="checkbox" checked={(form as any).is_preorder || false} onChange={e => { if (sellerConfig.can_use_preorder) { setForm({...form, is_preorder: e.target.checked} as any); } }} className={`w-5 h-5 accent-[#EE4D2D] ${!sellerConfig.can_use_preorder && 'pointer-events-none'}`} />
+                                                <span className="text-sm font-black text-[#EE4D2D]"><i className="fa-solid fa-fire mr-1"></i> 開啟商品預購模式 {!sellerConfig.can_use_preorder && '(會員等級限制)'}</span>
+                                            </label>
+                                            {(form as any).is_preorder && (
+                                                <div className="flex flex-col gap-4 animate-fade-in-up">
+                                                    <div><label className="text-xs font-bold text-slate-600 mb-2 block">預購結束日期</label><input type="date" className="w-full h-12 border border-orange-200 rounded-xl px-4 text-sm outline-none focus:border-[#EE4D2D] bg-white" value={(form as any).preorder_end_date || ''} onChange={e => setForm({...form, preorder_end_date: e.target.value} as any)} /></div>
+                                                    <div><label className="text-xs font-bold text-slate-600 mb-2 block">預計到貨日期</label><input type="date" className="w-full h-12 border border-orange-200 rounded-xl px-4 text-sm outline-none focus:border-[#EE4D2D] bg-white" value={(form as any).preorder_arrival_date || ''} onChange={e => setForm({...form, preorder_arrival_date: e.target.value} as any)} /></div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* 隱藏銷售 */}
+                                        <div>
+                                            <label className="flex items-center gap-2 cursor-pointer w-fit mb-4">
+                                                <input type="checkbox" checked={(form as any).is_hidden || false} onChange={e => setForm({...form, is_hidden: e.target.checked} as any)} className="w-5 h-5 accent-[#EE4D2D]" />
+                                                <span className="text-sm font-black text-[#EE4D2D]"><i className="fa-solid fa-link-slash mr-1"></i> 隱藏銷售 (專屬連結)</span>
+                                            </label>
+                                            {(form as any).is_hidden && (
+                                                <div className="flex flex-col gap-4 animate-fade-in-up">
+                                                    <div>
+                                                        <label className="text-xs font-bold text-slate-600 mb-2 block">設定頁面密碼</label>
+                                                        <input type="text" className="w-full h-12 border border-orange-200 rounded-xl px-4 text-sm outline-none focus:border-[#EE4D2D] bg-white" value={(form as any).view_password || ''} onChange={e => setForm({...form, view_password: e.target.value} as any)} placeholder="買家需輸入才可查看" />
+                                                    </div>
+                                                    <div className="text-xs text-slate-500 bg-white/60 p-3 rounded-lg border border-orange-100">開啟後將不在賣場顯示，僅能透過專屬連結購買。</div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
 
                         <div className="md:col-span-2">
                             <div className="flex justify-between items-center mb-2">
-                                <label className="text-xs font-bold text-slate-500 block">商品描述</label>
+                                <label className="text-xs font-bold text-slate-500 flex items-center gap-1">商品描述 <span className="text-[#EE4D2D] bg-red-50 px-1.5 py-0.5 rounded text-[10px]">(必填)</span></label>
                                 <button type="button" onClick={() => setIsHtmlMode(!isHtmlMode)} className="text-xs text-blue-500 font-bold hover:underline flex items-center gap-1">
                                     <i className="fa-solid fa-code"></i> {isHtmlMode ? '切換回一般文字模式' : '切換 HTML 原始碼模式'}
                                 </button>
@@ -422,29 +604,17 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                                             <i className="fa-solid fa-wand-magic-sparkles"></i> 自動產生排版範本
                                         </button>
                                     </div>
-                                    <textarea className="w-full h-64 border border-slate-200 rounded-2xl p-5 text-sm outline-none focus:border-[#EE4D2D] resize-y font-mono bg-slate-800 text-green-400" value={form.custom_html || ''} onChange={e => setForm({...form, custom_html: e.target.value})} placeholder="請在此貼上或撰寫您的 HTML 程式碼..."></textarea>
+                                    <textarea className={`w-full h-64 border rounded-2xl p-5 text-sm outline-none resize-y font-mono bg-slate-800 text-green-400 transition-all ${validationErrors.includes('description') ? 'border-red-500 ring-2 ring-red-200 shadow-[0_0_8px_rgba(239,68,68,0.4)]' : 'border-slate-200 focus:border-[#EE4D2D]'}`} value={form.custom_html || ''} onChange={e => setForm({...form, custom_html: e.target.value})} placeholder="請在此貼上或撰寫您的 HTML 程式碼..."></textarea>
                                 </div>
                             ) : (
-                                <textarea className="w-full h-40 border border-slate-200 rounded-2xl p-5 text-sm outline-none focus:border-[#EE4D2D] resize-none" value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="詳細介紹您的商品特色、尺寸、材質等資訊..."></textarea>
+                                <textarea className={`w-full h-40 border rounded-2xl p-5 text-sm outline-none resize-none transition-all ${validationErrors.includes('description') ? 'border-red-500 ring-2 ring-red-200 shadow-[0_0_8px_rgba(239,68,68,0.4)] bg-red-50/30' : 'border-slate-200 focus:border-[#EE4D2D]'}`} value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="詳細介紹您的商品特色、尺寸、材質等資訊..."></textarea>
                             )}
                             
-                            <div className="mt-3 flex flex-col md:flex-row items-start md:items-center gap-3 bg-slate-50 p-3 md:p-4 rounded-xl border border-slate-100">
-                               <button onClick={handleSaveDraft} className="w-full md:w-auto text-sm bg-slate-800 text-white h-12 px-4 rounded-xl hover:bg-slate-700 transition font-bold shadow-sm whitespace-nowrap shrink-0"><i className="fa-solid fa-save mr-1"></i>存為草稿</button>
-                               <div className="w-full md:flex-1 flex gap-2 items-center">
-                                   <select className="flex-1 h-12 px-4 border border-slate-200 rounded-xl text-base outline-none focus:border-[#EE4D2D] bg-white cursor-pointer min-w-0 font-bold text-slate-700" value={selectedDraftId} onChange={e => setSelectedDraftId(e.target.value)}>
-                                       <option value="" disabled hidden className="text-base">-- 選擇已儲存的草稿 --</option>
-                                       {drafts.length === 0 && <option value="none" disabled className="text-base">尚未建立草稿</option>}
-                                       {drafts.map(d => <option key={d.id} value={d.id} className="text-base">{d.name}</option>)}
-                                   </select>
-                                   <button onClick={() => { if(selectedDraftId) applyDraft(selectedDraftId); else alert('請先選擇草稿'); }} className="text-sm bg-blue-50 text-blue-600 h-12 px-4 rounded-xl font-bold hover:bg-blue-100 transition shrink-0 border border-blue-100 shadow-sm">帶入</button>
-                                   <button onClick={() => { if(selectedDraftId) { deleteDraft(selectedDraftId); setSelectedDraftId(''); } else alert('請先選擇草稿'); }} className="text-sm bg-red-50 text-red-500 h-12 px-4 rounded-xl font-bold hover:bg-red-100 transition shrink-0 border border-red-100 shadow-sm">刪除</button>
-                               </div>
                             </div>
-                        </div>
                         
                         <div className="md:col-span-2">
-                            <label className="text-xs font-bold text-slate-500 mb-2 block">商品圖片 (最多可上傳多張圖片，建議 1:1 比例) <span className="text-[#EE4D2D]">(單張限制 1MB)</span></label>
-                            <div className="flex flex-wrap gap-4">
+                            <label className="text-xs font-bold text-slate-500 mb-2 flex items-center flex-wrap gap-1">商品圖片 (最多可上傳多張圖片，建議 1:1 比例) <span className="text-[#EE4D2D]">(單張限制 1MB)</span> <span className="text-[#EE4D2D] bg-red-50 px-1.5 py-0.5 rounded text-[10px]">(必填)</span></label>
+                            <div className={`flex flex-wrap gap-4 p-2 rounded-xl transition-all ${validationErrors.includes('images') ? 'border border-red-500 ring-2 ring-red-200 shadow-[0_0_8px_rgba(239,68,68,0.4)] bg-red-50/30' : ''}`}>
                                 {form.images?.map((img, i) => (
                                 <div key={i} className="w-24 h-24 border rounded-xl overflow-hidden relative group bg-slate-100 cursor-pointer" onClick={() => setCropModal({ isOpen: true, src: img, editIndex: i })}>
                                     <img src={img} className="w-full h-full object-cover group-hover:opacity-80 transition" alt="Product" />
@@ -469,7 +639,8 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                 </section>
 
                 {/* Step 2. 分類設定 */}
-                <section className="space-y-6">
+                {!isQuickPublish && (
+                <section className="space-y-6 animate-fade-in-up">
                     <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest border-b pb-2">Step 2. 商品分類設定</div>
                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-4">
                         <div className="flex flex-wrap gap-2">
@@ -523,47 +694,28 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                         </div>
                     </div>
                 </section>
+                )}
 
-                {/* Step 3. 規格與庫存 */}
-                <section className="space-y-4">
-                    <div className="flex justify-between items-center border-b pb-2">
-                        <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest">Step 3. 規格與庫存</div>
-                        <button onClick={addVariant} className="text-[#EE4D2D] text-xs font-bold bg-orange-50 px-3 py-1 rounded-full hover:bg-orange-100 transition"><i className="fa-solid fa-plus mr-1"></i>新增規格</button>
-                    </div>
-                    <div className="space-y-3">
-                        {form.variants?.map((v, i) => (
-                            <div key={i} className="flex flex-col md:flex-row gap-4 items-end bg-slate-50 p-4 md:p-5 rounded-2xl border border-slate-200 relative">
-                                <div className="w-full md:flex-1"><label className="text-xs font-bold text-slate-500 mb-1 block">規格名稱 (如: 紅色 M)</label><input type="text" className="w-full border border-slate-200 rounded-lg p-3 text-sm md:text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.name} onChange={e => updateVariant(i, 'name', e.target.value)} /></div>
-                                <div className="w-full md:flex-1">
-                                    <label className="text-xs font-bold text-slate-500 mb-1 block">附加價格 (+NT$)</label>
-                                    <input type="number" className="w-full border border-slate-200 rounded-lg p-3 text-sm md:text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.price.toString() === '0' && v.price !== 0 ? '' : v.price.toString().replace(/^0+/, '') || '0'} onChange={e => updateVariant(i, 'price', e.target.value === '' ? 0 : parseInt(e.target.value, 10))} onFocus={e => e.target.select()} />
-                                </div>
-                                <div className="w-full md:flex-1">
-                                    <label className="text-xs font-bold text-slate-500 mb-1 block">庫存數量</label>
-                                    <input type="number" className="w-full border border-slate-200 rounded-lg p-3 text-sm md:text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.stock.toString() === '0' && v.stock !== 0 ? '' : v.stock.toString().replace(/^0+/, '') || '0'} onChange={e => updateVariant(i, 'stock', e.target.value === '' ? 0 : parseInt(e.target.value, 10))} onFocus={e => e.target.select()} />
-                                </div>
-                                {/* ★ 新增：規格獨立成本輸入框 */}
-                                <div className="w-full md:flex-1">
-                                    <label className="text-xs font-bold text-slate-500 mb-1 block">單件成本</label>
-                                    <input type="number" className="w-full border border-slate-200 rounded-lg p-3 text-sm md:text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={v.cost === undefined ? '' : v.cost} onChange={e => updateVariant(i, 'cost', e.target.value === '' ? undefined : parseInt(e.target.value, 10))} placeholder="未填則預設同主成本" onFocus={e => e.target.select()} />
-                                </div>
-                                {form.variants && form.variants.length > 1 && <button onClick={() => removeVariant(i)} className="absolute top-2 right-2 md:static md:w-auto p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"><i className="fa-solid fa-trash-can text-lg"></i></button>}
-                            </div>
-                        ))}
-                    </div>
-                </section>
+                {/* Step 3 已整合至 Step 1 */}
 
-                {/* Step 4. 運送與付款設定 */}
+                {/* Step 3. 運送與付款設定 */}
                 <section className="space-y-6">
-                    <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest border-b pb-2">Step 4. 運送與付款設定</div>
+                    <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest border-b pb-2 flex justify-between items-center">
+                        <span>Step 3. 運送與付款設定(必填)</span>
+                        <button type="button" onClick={() => { setPresetTemp({...shippingPresets}); setShowPresetModal(true); }} className="text-xs font-bold text-blue-500 hover:text-blue-600 bg-blue-50 px-3 py-1 rounded-full"><i className="fa-solid fa-gear mr-1"></i>編輯運費選項</button>
+                    </div>
                     <div className="grid grid-cols-1 gap-8">
-                        <div className="space-y-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                            <label className="text-sm font-bold text-slate-700 flex items-center gap-2"><i className="fa-solid fa-truck text-[#EE4D2D]"></i> 提供買家的運送方式</label>
+                        <div className={`space-y-4 bg-white p-5 rounded-2xl border shadow-sm transition-all ${validationErrors.includes('shipping_rules') || validationErrors.includes('shipping_rules_fee') ? 'border-red-500 ring-2 ring-red-200 shadow-[0_0_8px_rgba(239,68,68,0.4)] bg-red-50/30' : 'border-slate-200'}`}>
+                            <label className="text-sm font-bold text-slate-700 flex items-center gap-2"><i className="fa-solid fa-truck text-[#EE4D2D]"></i> 提供買家的運送方式 <span className="text-[#EE4D2D] bg-red-50 px-1.5 py-0.5 rounded text-[10px] ml-1">(必填)</span></label>
                             <div className="flex flex-wrap gap-2 mb-4">
                                 {SHIPPING_PRESETS.map(preset => <button key={preset.name} onClick={() => addShippingRule(preset.name)} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-full transition">+ {preset.name}</button>)}
                                 <button onClick={() => addShippingRule()} className="text-xs bg-orange-50 text-[#EE4D2D] font-bold px-3 py-1.5 rounded-full hover:bg-orange-100 transition border border-orange-200">+ 自訂運送</button>
                             </div>
                             <div className="space-y-3">
+                                {/* ★ 自動注入使用者設定的下拉清單資料 */}
+                                <datalist id="preset-fees">{shippingPresets.fees.map(v => <option key={`fee-${v}`} value={v} />)}</datalist>
+                                <datalist id="preset-qtys">{shippingPresets.qtys.map(v => <option key={`qty-${v}`} value={v} />)}</datalist>
+                                <datalist id="preset-thresholds">{shippingPresets.thresholds.map(v => <option key={`threshold-${v}`} value={v} />)}</datalist>
                                 {form.shipping_rules?.map((rule, i) => (
                                     <div key={i} className="flex flex-col gap-3 bg-slate-50 p-4 rounded-xl border border-slate-100 relative">
                                         <div className="flex justify-between items-center gap-4">
@@ -571,9 +723,9 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                                             <button onClick={() => removeShippingRule(i)} className="text-red-400 hover:text-red-600 p-2 shrink-0"><i className="fa-solid fa-trash-can text-sm"></i></button>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                            <div><label className="text-[10px] text-slate-500 font-bold mb-1 block">單趟運費</label><div className="flex items-center gap-2"><span className="text-xs text-slate-500 font-bold">$</span><input type="number" className="flex-1 border border-slate-200 rounded-lg p-2 text-sm" value={rule.fee === undefined ? '' : rule.fee} onChange={e => updateShippingRule(i, 'fee', e.target.value === '' ? '' : parseInt(e.target.value))} placeholder="金額" /></div></div>
-                                            <div><label className="text-[10px] text-slate-500 font-bold mb-1 block">每滿幾件加收一次運費</label><input type="number" className="w-full border border-slate-200 rounded-lg p-2 text-sm" value={rule.limit_qty === 0 ? '' : rule.limit_qty} onChange={e => updateShippingRule(i, 'limit_qty', e.target.value === '' ? 0 : parseInt(e.target.value))} placeholder="例: 4 (留空=不限)" /></div>
-                                            <div><label className="text-[10px] text-slate-500 font-bold mb-1 block">滿多少金額免運</label><div className="flex items-center gap-2"><span className="text-xs text-slate-500 font-bold">$</span><input type="number" className="flex-1 border border-slate-200 rounded-lg p-2 text-sm" value={rule.free_threshold === 0 ? '' : rule.free_threshold} onChange={e => updateShippingRule(i, 'free_threshold', e.target.value === '' ? 0 : parseInt(e.target.value))} placeholder="例: 1000 (留空=無)" /></div></div>
+                                            <div><label className="text-[10px] text-slate-500 font-bold mb-1 block">單趟運費</label><div className="flex items-center gap-2"><span className="text-xs text-slate-500 font-bold">$</span><input type="number" list="preset-fees" className="flex-1 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-[#EE4D2D]" value={rule.fee === undefined ? '' : rule.fee} onChange={e => updateShippingRule(i, 'fee', e.target.value === '' ? '' : parseInt(e.target.value))} placeholder="金額" /></div></div>
+                                            <div><label className="text-[10px] text-slate-500 font-bold mb-1 block">每滿幾件加收一次運費</label><input type="number" list="preset-qtys" className="w-full border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-[#EE4D2D]" value={rule.limit_qty === 0 ? '' : rule.limit_qty} onChange={e => updateShippingRule(i, 'limit_qty', e.target.value === '' ? 0 : parseInt(e.target.value))} placeholder="例: 4 (留空=不限)" /></div>
+                                            <div><label className="text-[10px] text-slate-500 font-bold mb-1 block">滿多少金額免運</label><div className="flex items-center gap-2"><span className="text-xs text-slate-500 font-bold">$</span><input type="number" list="preset-thresholds" className="flex-1 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-[#EE4D2D]" value={rule.free_threshold === 0 ? '' : rule.free_threshold} onChange={e => updateShippingRule(i, 'free_threshold', e.target.value === '' ? 0 : parseInt(e.target.value))} placeholder="例: 1000 (留空=無)" /></div></div>
                                         </div>
                                         {(rule.name.includes('面交') || rule.name.includes('自取')) && (
                                             <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col md:flex-row gap-4 items-center bg-white p-3 rounded-lg shadow-sm">
@@ -601,10 +753,15 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                             </div>
                         </div>
 
-                        <div className="space-y-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                            <label className="text-sm font-bold text-slate-700 flex items-center gap-2"><i className="fa-solid fa-credit-card text-[#EE4D2D]"></i> 支援的付款方式</label>
+                        <div className={`space-y-4 bg-white p-5 rounded-2xl border shadow-sm transition-all ${validationErrors.includes('payment_methods') ? 'border-red-500 ring-2 ring-red-200 shadow-[0_0_8px_rgba(239,68,68,0.4)] bg-red-50/30' : 'border-slate-200'}`}>
+                            <label className="text-sm font-bold text-slate-700 flex items-center gap-2"><i className="fa-solid fa-credit-card text-[#EE4D2D]"></i> 支援的付款方式 <span className="text-[#EE4D2D] bg-red-50 px-1.5 py-0.5 rounded text-[10px] ml-1">(必填)</span></label>
                             <div className="flex flex-wrap gap-4">
-                                {PAYMENT_OPTIONS.map(opt => (
+                                {PAYMENT_OPTIONS.filter(opt => {
+                                    // ★ 分別判斷線上金流與貨到付款的開關狀態
+                                    if (siteSettings?.enable_online_payment === false && opt.value === 'ONLINE') return false;
+                                    if (siteSettings?.enable_cod === false && opt.value === 'COD') return false;
+                                    return true;
+                                }).map(opt => (
                                     <label key={opt.value} className="flex items-center gap-2 cursor-pointer bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 hover:border-[#EE4D2D] transition">
                                         <input type="checkbox" className="w-4 h-4 accent-[#EE4D2D]" checked={form.payment_methods?.includes(opt.value)}
                                             onChange={(e) => {
@@ -616,42 +773,20 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                                 ))}
                             </div>
                             
-                            {form.payment_methods?.includes('BANK') && (
-                                <div className="mt-4 p-5 border border-[#EE4D2D] bg-orange-50/30 rounded-2xl space-y-4 animate-fade-in">
-                                    <div className="text-sm font-black text-[#EE4D2D]">銀行匯款帳戶設定</div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="text-xs font-bold text-slate-600 block mb-1">收款銀行</label>
-                                            {isCustomBank ? (
-                                                <div className="flex gap-2 items-center">
-                                                    <input type="text" className="w-20 h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" placeholder="代碼" value={form.bank_info?.bank_code} onChange={e => setForm({...form, bank_info: {...form.bank_info!, bank_code: e.target.value}})} />
-                                                    <input type="text" className="flex-1 h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" placeholder="自訂銀行名稱" value={form.bank_info?.bank_name} onChange={e => setForm({...form, bank_info: {...form.bank_info!, bank_name: e.target.value}})} />
-                                                    <button onClick={() => setIsCustomBank(false)} className="text-sm font-bold text-blue-500 hover:underline shrink-0 p-2">返回選單</button>
-                                                </div>
-                                            ) : (
-                                                <select className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer" value={form.bank_info?.bank_code} onChange={e => {
-                                                    if(e.target.value === 'custom') { setIsCustomBank(true); return; }
-                                                    const bank = TAIWAN_BANKS.find(b => b.code === e.target.value);
-                                                    if(bank) setForm({...form, bank_info: {...form.bank_info!, bank_code: bank.code, bank_name: bank.name}});
-                                                }}>
-                                                    {TAIWAN_BANKS.map(b => <option key={b.code} value={b.code} className="text-base">{b.code} - {b.name}</option>)}
-                                                    <option value="custom" className="text-base">+ 其他銀行 (手動輸入)</option>
-                                                </select>
-                                            )}
-                                        </div>
-                                        <div><label className="text-xs font-bold text-slate-600 block mb-1">戶名</label><input type="text" className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D]" value={form.bank_info?.account_name} onChange={e => setForm({...form, bank_info: {...form.bank_info!, account_name: e.target.value}})} placeholder="請輸入戶名" /></div>
-                                        <div className="md:col-span-2"><label className="text-xs font-bold text-slate-600 block mb-1">匯款帳號</label><input type="text" className="w-full h-12 px-4 border border-slate-200 rounded-xl text-base font-bold text-slate-700 outline-none focus:border-[#EE4D2D] font-mono tracking-widest" value={form.bank_info?.account_number} onChange={e => setForm({...form, bank_info: {...form.bank_info!, account_number: e.target.value.replace(/\D/g, '')}})} placeholder="請輸入純數字帳號" /></div>
-                                    </div>
-                                    <label className="flex items-center gap-2 mt-2 cursor-pointer w-fit"><input type="checkbox" checked={saveBank} onChange={e => setSaveBank(e.target.checked)} className="w-4 h-4 accent-[#EE4D2D]" /><span className="text-xs font-bold text-slate-600">記住此帳號作為未來預設收款帳戶</span></label>
+                            <div className="mt-4 p-4 bg-orange-50 rounded-xl border border-orange-100 flex items-start gap-3">
+                                <i className="fa-solid fa-circle-info text-[#EE4D2D] mt-0.5"></i>
+                                <div className="text-sm text-slate-700 font-bold">
+                                    買家結帳時，系統將自動帶入您在左側選單「金物流設定」中所配置的銀行帳戶、面交地址與藍新金流設定。
                                 </div>
-                            )}
+                            </div>
                         </div>
                     </div>
                 </section>
 
-                {/* Step 5. 其他進階設定 */}
-                <section className="space-y-6">
-                    <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest border-b pb-2">Step 5. 其他進階設定 (選填)</div>
+                {/* Step 4. 其他進階設定 */}
+                {!isQuickPublish && (
+                <section className="space-y-6 animate-fade-in-up">
+                    <div className="text-sm font-black text-[#EE4D2D] uppercase tracking-widest border-b pb-2">Step 4. 其他進階設定 (選填)</div>
                     <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-6">
                         <div>
                             <div className="flex justify-between items-center mb-3">
@@ -696,21 +831,7 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                             </div>
                         </div>
 
-                        <div className="border-t border-slate-200 pt-6 mb-6">
-                            <label className="text-xs font-bold text-slate-600 mb-2 flex justify-between"><span>隱藏銷售 (專屬連結)</span><span className="text-slate-400 font-normal">開啟後將不在賣場顯示，僅能透過專屬連結購買</span></label>
-                            <div className="flex flex-col md:flex-row items-start md:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                                <label className="flex items-center gap-2 cursor-pointer shrink-0">
-                                    <input type="checkbox" checked={(form as any).is_hidden || false} onChange={e => setForm({...form, is_hidden: e.target.checked} as any)} className="w-5 h-5 accent-[#EE4D2D]" />
-                                    <span className="text-sm font-bold text-slate-700">開啟隱藏銷售</span>
-                                </label>
-                                {(form as any).is_hidden && (
-                                    <div className="w-full flex-1 flex flex-col md:flex-row md:items-center gap-2 border-t md:border-t-0 border-slate-100 pt-3 md:pt-0 mt-1 md:mt-0">
-                                        <span className="text-xs font-bold text-slate-500 shrink-0">設定頁面密碼:</span>
-                                        <input type="text" className="flex-1 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-[#EE4D2D]" value={(form as any).view_password || ''} onChange={e => setForm({...form, view_password: e.target.value} as any)} placeholder="輸入密碼 (買家需輸入才可查看)" />
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                        {/* 隱藏銷售區塊已移至上方特殊銷售模式選項 */}
 
                         <div className="border-t border-slate-200 pt-6">
                             <label className="text-xs font-bold text-slate-600 mb-2 flex justify-between"><span>SEO 搜尋關鍵字 (用逗號隔開)</span><span className="text-slate-400 font-normal">買家搜尋時更容易找到您的商品</span></label>
@@ -739,14 +860,154 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                         </div>
                     </div>
                 </section>
+                )}
 
                 {/* 底部按鈕區 */}
                 <div className="flex flex-col md:flex-row gap-4 pt-10 border-t border-slate-200 pb-20">
-                  <button onClick={resetForm} className="w-full md:flex-1 h-14 rounded-2xl font-bold text-slate-500 border-2 border-slate-200 hover:bg-slate-50 transition">取消返回</button>
-                  <button onClick={handleSaveProduct} className="w-full md:flex-[2] h-14 primary-gradient text-white rounded-2xl font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all text-lg">
+                  <button onClick={handleAttemptLeave} className="w-full md:w-1/4 h-14 rounded-2xl font-bold text-slate-500 border-2 border-slate-200 hover:bg-slate-50 transition shadow-sm">取消返回</button>
+                  <button onClick={() => handleSaveFullDraft(false)} className="w-full md:w-1/4 h-14 rounded-2xl font-bold text-[#EE4D2D] border-2 border-[#EE4D2D] hover:bg-orange-50 transition shadow-sm bg-white">儲存為草稿</button>
+                  <button onClick={handleSaveProduct} className="w-full md:flex-1 h-14 primary-gradient text-white rounded-2xl font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all text-lg">
                       {editingId ? '確認儲存修改' : '確認發布並開始團購'}
                   </button>
                 </div>
+                
+                {/* 編輯草稿彈窗 Modal */}
+                {showDraftModal && (
+                    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-fade-in-up max-h-[80vh] flex flex-col">
+                            <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3 shrink-0">
+                                <h3 className="font-black text-xl text-slate-800"><i className="fa-solid fa-file-pen text-slate-500 mr-2"></i>草稿管理 ({fullDrafts.length})</h3>
+                                <button onClick={() => setShowDraftModal(false)} className="text-slate-400 hover:text-red-500"><i className="fa-solid fa-xmark text-xl"></i></button>
+                            </div>
+                            <div className="overflow-y-auto custom-scrollbar flex-1 pr-2 space-y-3">
+                                {fullDrafts.length === 0 ? (
+                                    <div className="text-center text-slate-400 py-10 font-bold">
+                                        <i className="fa-solid fa-box-open text-4xl mb-3 opacity-20 block"></i>
+                                        目前尚無儲存的草稿
+                                    </div>
+                                ) : (
+                                    fullDrafts.map(d => (
+                                        <div key={d.id} className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-100 hover:border-blue-200 transition gap-4">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-sm font-bold text-slate-700 truncate mb-1">{d.name || '未命名草稿'}</div>
+                                                <div className="text-[10px] text-slate-400 font-mono"><i className="fa-regular fa-clock mr-1"></i>儲存時間: {new Date(parseInt(d.id)).toLocaleString()}</div>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <button type="button" onClick={() => applyFullDraft(d.id)} className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition shadow-sm">載入編輯</button>
+                                                <button type="button" onClick={() => deleteFullDraft(d.id)} className="px-3 py-1.5 bg-red-50 text-red-500 rounded-lg text-xs font-bold hover:bg-red-100 transition shadow-sm"><i className="fa-solid fa-trash-can"></i></button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                            <button type="button" onClick={() => setShowDraftModal(false)} className="w-full mt-4 bg-slate-100 text-slate-600 py-3 rounded-xl font-bold hover:bg-slate-200 transition shrink-0">關閉</button>
+                        </div>
+                    </div>
+                )}
+
+                {/* ★ 離開前確認彈窗 Modal */}
+                {showLeavePrompt && (
+                    <div className="fixed inset-0 bg-black/60 z-[110] flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl animate-fade-in-up text-center">
+                            <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                                <i className="fa-solid fa-triangle-exclamation"></i>
+                            </div>
+                            <h3 className="font-black text-xl text-slate-800 mb-2">確定要離開嗎？</h3>
+                            <p className="text-slate-500 text-sm mb-8">您的商品尚未發佈或儲存，離開將會遺失目前填寫的內容喔！</p>
+                            <div className="flex flex-col gap-3">
+                                <button onClick={handleLeaveAndSaveDraft} className="w-full bg-[#EE4D2D] text-white py-3 rounded-xl font-bold shadow-md hover:bg-[#d73211] transition">先儲存為草稿</button>
+                                <button onClick={handleConfirmLeave} className="w-full bg-slate-100 text-slate-600 py-3 rounded-xl font-bold hover:bg-slate-200 transition">不儲存，確認離開</button>
+                                <button onClick={() => setShowLeavePrompt(false)} className="w-full text-slate-400 py-2 text-sm font-bold hover:text-slate-600 transition underline">取消</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ★ 編輯運費預設值 Modal */}
+                {showPresetModal && (
+                    <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl animate-fade-in-up max-h-[90vh] flex flex-col">
+                            <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3 shrink-0">
+                                <h3 className="font-black text-lg text-slate-800"><i className="fa-solid fa-gear text-blue-500 mr-2"></i>管理運費下拉選項</h3>
+                                <button onClick={() => setShowPresetModal(false)} className="text-slate-400 hover:text-red-500"><i className="fa-solid fa-xmark text-xl"></i></button>
+                            </div>
+                            <div className="overflow-y-auto custom-scrollbar flex-1 pr-2 space-y-6">
+                                {/* 單趟運費 */}
+                                <div>
+                                    <label className="text-sm font-bold text-slate-600 mb-2 block">常用單趟運費</label>
+                                    <div className="flex gap-2 mb-2">
+                                        <input type="number" id="new-fee" className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" placeholder="輸入金額" />
+                                        <button onClick={() => {
+                                            const val = parseInt((document.getElementById('new-fee') as HTMLInputElement).value);
+                                            if(!isNaN(val) && !presetTemp.fees.includes(val)) {
+                                                setPresetTemp(prev => ({...prev, fees: [...prev.fees, val]}));
+                                                (document.getElementById('new-fee') as HTMLInputElement).value = '';
+                                            }
+                                        }} className="bg-blue-50 text-blue-600 font-bold px-4 rounded-lg text-sm hover:bg-blue-100">新增</button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {presetTemp.fees.map(v => (
+                                            <span key={v} className="bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-2 border border-slate-200">
+                                                ${v} <button onClick={() => setPresetTemp(prev => ({...prev, fees: prev.fees.filter(x => x !== v)}))} className="text-slate-400 hover:text-red-500"><i className="fa-solid fa-xmark"></i></button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                                {/* 滿件數 */}
+                                <div>
+                                    <label className="text-sm font-bold text-slate-600 mb-2 block">常用滿件加收數量</label>
+                                    <div className="flex gap-2 mb-2">
+                                        <input type="number" id="new-qty" className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" placeholder="輸入件數" />
+                                        <button onClick={() => {
+                                            const val = parseInt((document.getElementById('new-qty') as HTMLInputElement).value);
+                                            if(!isNaN(val) && !presetTemp.qtys.includes(val)) {
+                                                setPresetTemp(prev => ({...prev, qtys: [...prev.qtys, val]}));
+                                                (document.getElementById('new-qty') as HTMLInputElement).value = '';
+                                            }
+                                        }} className="bg-blue-50 text-blue-600 font-bold px-4 rounded-lg text-sm hover:bg-blue-100">新增</button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {presetTemp.qtys.map(v => (
+                                            <span key={v} className="bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-2 border border-slate-200">
+                                                {v} 件 <button onClick={() => setPresetTemp(prev => ({...prev, qtys: prev.qtys.filter(x => x !== v)}))} className="text-slate-400 hover:text-red-500"><i className="fa-solid fa-xmark"></i></button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                                {/* 滿額免運 */}
+                                <div>
+                                    <label className="text-sm font-bold text-slate-600 mb-2 block">常用滿額免運門檻</label>
+                                    <div className="flex gap-2 mb-2">
+                                        <input type="number" id="new-threshold" className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" placeholder="輸入金額" />
+                                        <button onClick={() => {
+                                            const val = parseInt((document.getElementById('new-threshold') as HTMLInputElement).value);
+                                            if(!isNaN(val) && !presetTemp.thresholds.includes(val)) {
+                                                setPresetTemp(prev => ({...prev, thresholds: [...prev.thresholds, val]}));
+                                                (document.getElementById('new-threshold') as HTMLInputElement).value = '';
+                                            }
+                                        }} className="bg-blue-50 text-blue-600 font-bold px-4 rounded-lg text-sm hover:bg-blue-100">新增</button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {presetTemp.thresholds.map(v => (
+                                            <span key={v} className="bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-2 border border-slate-200">
+                                                ${v} <button onClick={() => setPresetTemp(prev => ({...prev, thresholds: prev.thresholds.filter(x => x !== v)}))} className="text-slate-400 hover:text-red-500"><i className="fa-solid fa-xmark"></i></button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex gap-3 mt-4 shrink-0 border-t border-slate-100 pt-4">
+                                <button onClick={() => setShowPresetModal(false)} className="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl font-bold hover:bg-slate-200 transition">取消</button>
+                                <button onClick={() => {
+                                    setShippingPresets(presetTemp);
+                                    localStorage.setItem('insbuy_shipping_presets', JSON.stringify(presetTemp));
+                                    setShowPresetModal(false);
+                                }} className="flex-1 bg-blue-500 text-white py-3 rounded-xl font-bold hover:bg-blue-600 transition shadow-sm">儲存設定</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
             </div>
         </div>
     );

@@ -37,6 +37,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
   // 設定預設選中的付款方式
   const getDefaultPaymentMethod = () => {
     if (allowedPaymentMethods.includes('BANK')) return 'TRANSFER';
+    if (allowedPaymentMethods.includes('ONLINE')) return 'ONLINE';
     if (allowedPaymentMethods.includes('COD') && !isDigitalOrder) return 'COD';
     if (allowedPaymentMethods.includes('CASH')) return 'CASH';
     return 'TRANSFER'; // Fallback
@@ -47,7 +48,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
     phone: user?.phone || '',
     method: isDigitalOrder ? '電子傳輸' : availableRules[0]?.name || '',
     store: isDigitalOrder ? '線上' : '',
-    payment_method: getDefaultPaymentMethod() as 'TRANSFER' | 'COD' | 'CASH', 
+    payment_method: getDefaultPaymentMethod() as 'TRANSFER' | 'ONLINE' | 'COD' | 'CASH', 
     payment_note: '',
     pickup_datetime: '' // ★ 新增：買家選擇的面交時間
   });
@@ -56,6 +57,27 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
   const [remarks, setRemarks] = useState('');
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false); // ★ 新增：防止連點雙重送出的狀態
+  
+  // ★ 新增：即時取得賣家全域金物流設定
+  const [sellerPaymentSettings, setSellerPaymentSettings] = useState<any>(null);
+
+  useEffect(() => {
+      const fetchSellerInfo = async () => {
+          if (cart.length > 0) {
+              try {
+                  const users = await API.getUsers();
+                  const seller = users.find(u => u.shop_id === cart[0].shop_id || u.id === cart[0].shop_id);
+                  if (seller?.payment_settings) {
+                      setSellerPaymentSettings(seller.payment_settings);
+                  }
+              } catch (e) {
+                  console.error('無法取得賣家金物流設定', e);
+              }
+          }
+      };
+      fetchSellerInfo();
+  }, [cart]);
+
 // ==========================================
   // 分潤系統：計算邏輯
   // ==========================================
@@ -104,6 +126,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
     setForm(prev => {
         let isValid = false;
         if (prev.payment_method === 'TRANSFER' && allowedPaymentMethods.includes('BANK')) isValid = true;
+        else if (prev.payment_method === 'ONLINE' && allowedPaymentMethods.includes('ONLINE')) isValid = true;
         else if (prev.payment_method === 'COD' && allowedPaymentMethods.includes('COD') && !isDigitalOrder) isValid = true;
         else if (prev.payment_method === 'CASH' && allowedPaymentMethods.includes('CASH')) isValid = true;
 
@@ -139,11 +162,12 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
 
   const currentRule = useMemo(() => availableRules.find(r => r.name === form.method) || availableRules[0], [form.method, availableRules]);
 
-  const sellerBankInfo: BankInfo = cart[0]?.bank_info || {
-    bank_name: '中國信託',
-    bank_code: '822',
-    account_name: '拍拍購科技股份有限公司',
-    account_number: '901540123456'
+  // ★ 優先使用左側選單「金物流設定」的全域銀行帳戶
+  const sellerBankInfo: BankInfo = sellerPaymentSettings?.bank_info || cart[0]?.bank_info || {
+    bank_name: '尚未設定',
+    bank_code: '000',
+    account_name: '賣家尚未設定，請先與賣家確認',
+    account_number: '0000000000'
   };
 
   // ★ 修改為 async 以便支援行事曆 API 寫入
@@ -318,10 +342,14 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
             </div>
             
             <div className="pt-2">
-              {/* ★ 新增：面交/自取地址提示 */}
-              {currentRule?.pickup_address && (
-                <div className="mb-3 p-4 bg-orange-50 border border-orange-100 rounded-2xl text-[11px] font-black text-[#EE4D2D] flex items-center gap-2 animate-fade-in">
-                  <i className="fa-solid fa-location-dot"></i> 取貨地點：{currentRule.pickup_address}
+              {/* ★ 新增：面交/自取地址提示 (優先抓取賣家全域設定) */}
+              {(form.method.includes('面交') || form.method.includes('自取') || form.method.includes('取貨')) && (sellerPaymentSettings?.pickup_address || currentRule?.pickup_address) && (
+                <div className="mb-3 p-4 bg-orange-50 border border-orange-100 rounded-2xl text-[#EE4D2D] flex items-start gap-3 animate-fade-in shadow-sm">
+                  <i className="fa-solid fa-map-location-dot text-xl mt-0.5"></i>
+                  <div>
+                      <div className="text-xs font-black text-orange-800 mb-1 opacity-80">賣家指定的面交/取貨地點</div>
+                      <div className="text-sm font-bold whitespace-pre-wrap leading-relaxed">{sellerPaymentSettings?.pickup_address || currentRule?.pickup_address}</div>
+                  </div>
                 </div>
               )}
 
@@ -416,6 +444,15 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
             </button>
           )}
           
+          {allowedPaymentMethods.includes('ONLINE') && (
+            <button 
+              onClick={() => setForm({...form, payment_method: 'ONLINE'})} 
+              className={`flex-1 min-w-[120px] py-4 border-2 rounded-2xl font-black flex items-center justify-center gap-2 transition-all ${form.payment_method === 'ONLINE' ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D] shadow-md' : 'border-slate-50 text-slate-400'}`}
+            >
+              <i className="fa-solid fa-credit-card"></i> 線上結帳
+            </button>
+          )}
+
           {allowedPaymentMethods.includes('COD') && !isDigitalOrder && (
             <button 
               onClick={() => setForm({...form, payment_method: 'COD'})} 
@@ -449,6 +486,18 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">請填寫您的匯款帳號末五碼：</label>
               <input type="text" maxLength={5} placeholder="共 5 位數字" className="w-full h-12 bg-white border border-slate-200 rounded-2xl px-4 text-center font-mono tracking-widest text-lg outline-none focus:border-[#EE4D2D]" value={form.payment_note} onChange={e => setForm({...form, payment_note: e.target.value.replace(/\D/g, '')})} />
             </div>
+          </div>
+        )}
+
+        {form.payment_method === 'ONLINE' && (
+          <div className="bg-blue-50 border border-blue-100 p-6 rounded-3xl animate-scale-up space-y-4">
+             <h3 className="font-black text-blue-700 flex items-center gap-2">
+               <i className="fa-solid fa-credit-card"></i> 選擇線上金流結帳
+             </h3>
+             <p className="text-sm text-blue-600 font-bold leading-relaxed">
+               提交訂單後，系統將自動引導您至藍新金流 (NewebPay) 安全加密頁面完成線上刷卡或繳費。<br/>
+               <span className="text-xs opacity-80">保障您的交易安全。</span>
+             </p>
           </div>
         )}
 

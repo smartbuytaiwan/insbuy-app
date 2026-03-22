@@ -19,6 +19,7 @@ import BuyerBookingDashboard from '../booking-crm/components/BuyerBookingDashboa
 import AdminAnnouncement from './AdminAnnouncement'; // ★ 新增：引入全站公告後台管理元件
 import AdminReports from './AdminReports'; // ★ 新增：引入全站檢舉審核面板
 import SellerBookingDashboard from '../booking-crm/SellerBookingDashboard'; // ★ 新增：引入預約系統後台元件
+import PaymentSettings from './PaymentSettings'; // ★ 新增：引入金物流設定元件
 
 
 interface AdminDashboardProps {
@@ -152,8 +153,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
       };
   }, [activePermissions, user.level]);
 
-  // ★ 修正：加入 'buying_bookings' 型別
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'products' | 'create' | 'categories' | 'settings' | 'affiliate' | 'customers' | 'system_cats' | 'buying_account' | 'buying_orders' | 'buying_reports' | 'buying_bookings' | 'reports' | 'announcement' | 'seller_booking'>('overview');
+  // ★ 修正：加入 'payment_settings' 型別
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'products' | 'create' | 'categories' | 'settings' | 'payment_settings' | 'affiliate' | 'customers' | 'system_cats' | 'buying_account' | 'buying_orders' | 'buying_reports' | 'buying_bookings' | 'reports' | 'announcement' | 'seller_booking'>('overview');
   const [showMobileMenu, setShowMobileMenu] = useState(true);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -856,13 +857,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   };
 
   const getInitialForm = (): Partial<Product> => {
-    const savedBank = localStorage.getItem('insbuy_saved_bank');
-    let bankInfo: BankInfo | undefined = undefined;
-    if (savedBank) {
-      bankInfo = JSON.parse(savedBank);
-    } else {
-      bankInfo = { bank_name: '臺灣銀行', bank_code: '004', account_name: '', account_number: '' };
-    }
     return {
       name: '',
       category_ids: [],
@@ -875,8 +869,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
       digital_files: [],
       variants: [{ name: '單一規格', price: 0, stock: 100 }],
       shipping_rules: [],
-      payment_methods: ['BANK', 'COD', 'CASH'], 
-      bank_info: bankInfo,
+      payment_methods: ['BANK', 'ONLINE', 'COD', 'CASH'],
       questions: [],
       origin: '台灣',
       shipping_origin: '台北市', 
@@ -1139,6 +1132,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
         { id: 'affiliate', icon: 'fa-bullhorn', label: '網紅分潤設定' },
         ...(user.role === 'ADMIN' ? [{ id: 'announcement', icon: 'fa-bell', label: '全站公告設定' }] : []),
         { id: 'create', icon: 'fa-plus-circle', label: editingId ? '編輯商品' : '新增商品' },
+        { id: 'payment_settings', icon: 'fa-money-check-dollar', label: '金物流設定' },
       ]
     },
     {
@@ -1174,6 +1168,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
                   <button 
                     key={item.id}
                     onClick={() => { 
+                      // ★ 新增：攔截側邊欄切換，並喚醒 AdminProductForm 的未儲存警告
+                      if ((window as any).__insbuy_attempt_leave && activeTab === 'create' && item.id !== 'create') {
+                          (window as any).__insbuy_attempt_leave(item.id);
+                          return;
+                      }
+
                       if (item.id === 'customers' && !sellerConfig.can_view_stats && user.role !== 'ADMIN') {
                           alert('【會員等級限制】\n您目前的會員等級無法使用「客戶管理系統」。\n請升級您的會員等級以解鎖此強大功能！');
                           return;
@@ -1226,7 +1226,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
                ].map(item => (
                  <button 
                    key={item.id}
-                   onClick={() => handleTabChange(item.id as any)}
+                   onClick={() => {
+                       // ★ 新增：攔截側邊欄切換，並喚醒 AdminProductForm 的未儲存警告
+                       if ((window as any).__insbuy_attempt_leave && activeTab === 'create' && item.id !== 'create') {
+                           (window as any).__insbuy_attempt_leave(item.id);
+                           return;
+                       }
+                       handleTabChange(item.id as any);
+                   }}
                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === item.id ? 'bg-[#EE4D2D] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                  >
                    <i className={`fa-solid ${item.icon} w-5`}></i>
@@ -1320,6 +1327,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
 
         {/* Categories, System Cats, Settings Tabs */}
         {activeTab === 'settings' && <ShopSettings user={user} permissions={permissions} onUpdateUser={onUpdateUser} />}
+        
+        {/* ★ 新增：金物流設定 (加入 siteSettings 控制開關) */}
+        {activeTab === 'payment_settings' && <PaymentSettings currentUser={user} onUpdateUser={onUpdateUser} siteSettings={siteSettings} />}
         
         {/* ★ 新增：全站公告設定畫面渲染 */}
         {activeTab === 'announcement' && user.role === 'ADMIN' && (
@@ -1617,6 +1627,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
            <AdminProductForm
               shopId={shopId}
               sellerConfig={sellerConfig}
+              siteSettings={siteSettings} // ★ 將全站設定傳入，供商品表單過濾付款選項
               products={products}
               onUpdateProducts={onUpdateProducts}
               systemCategories={systemCategories}

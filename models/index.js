@@ -48,6 +48,19 @@ const userSchema = new mongoose.Schema({
   folders: { type: Array, default: [] },
   is_suspended: { type: Boolean, default: false },
   google_map_url: String,
+  // ★ 新增：金物流設定與藍新串接資料
+  payment_settings: {
+    newebpay_merchant_id: String,
+    newebpay_hash_key: String,
+    newebpay_hash_iv: String,
+    bank_info: {
+      bank_name: String,
+      bank_code: String,
+      account_name: String,
+      account_number: String
+    },
+    pickup_address: String
+  },
   line_url: String,
   facebook_url: String,
   instagram_url: String,
@@ -160,7 +173,10 @@ const settingSchema = new mongoose.Schema({
   announcementImage: String,
   announcementActive: Boolean,
   registrationEnabled: { type: Boolean, default: true }, 
-  antiScamMessage: String
+  antiScamMessage: String,
+  // ★ 新增：將金流與付款選項的開關加入資料庫欄位，並預設為開啟
+  enable_online_payment: { type: Boolean, default: true },
+  enable_cod: { type: Boolean, default: true }
 });
 
 const permissionSchema = new mongoose.Schema({

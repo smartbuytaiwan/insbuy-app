@@ -9,6 +9,8 @@ const AdminAnnouncement: React.FC<Props> = ({ siteSettings, onUpdateSiteSettings
   const [active, setActive] = useState(siteSettings?.announcementActive || false);
   const [image, setImage] = useState(siteSettings?.announcementImage || '');
   const [showPreview, setShowPreview] = useState(false);
+  // ★ 新增：金流開關的本地狀態 (預設為 true 以防舊資料出錯)
+  const [enablePayment, setEnablePayment] = useState(siteSettings?.enable_online_payment ?? true);
   const editorRef = useRef<HTMLDivElement>(null);
 
   // 初始化編輯器內容
@@ -30,9 +32,10 @@ const AdminAnnouncement: React.FC<Props> = ({ siteSettings, onUpdateSiteSettings
       ...siteSettings,
       announcementActive: active,
       announcementImage: image,
-      announcement: content
+      announcement: content,
+      enable_online_payment: enablePayment // ★ 儲存時一併更新金流開關
     });
-    alert('全站公告設定已成功儲存！');
+    alert('全站設定已成功儲存！');
   };
 
   return (
@@ -42,13 +45,33 @@ const AdminAnnouncement: React.FC<Props> = ({ siteSettings, onUpdateSiteSettings
       </h2>
 
       <div className="space-y-6 max-w-3xl">
-        {/* 啟用開關 */}
-        <div className="flex items-center gap-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" className="sr-only peer" checked={active} onChange={(e) => setActive(e.target.checked)} />
-            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#EE4D2D]"></div>
-          </label>
-          <span className="font-bold text-slate-700">啟用「每日首次進入」彈窗公告</span>
+        {/* ★ 新增：進階系統開關區域 */}
+        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-5">
+            <h3 className="font-black text-slate-800 border-b border-slate-200 pb-3 mb-4"><i className="fa-solid fa-sliders mr-2"></i>全站系統開關</h3>
+            
+            {/* 原本的彈窗開關 */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <div className="font-bold text-slate-700">啟用「每日首次進入」彈窗公告</div>
+                    <div className="text-xs text-slate-500 mt-1">開啟後，所有使用者每天第一次進入首頁時都會看到此公告。</div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input type="checkbox" className="sr-only peer" checked={active} onChange={(e) => setActive(e.target.checked)} />
+                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#EE4D2D]"></div>
+                </label>
+            </div>
+
+            {/* 新增：金流系統開關 */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+                <div>
+                    <div className="font-bold text-slate-700">開放「藍新金流」與線上付款設定</div>
+                    <div className="text-xs text-slate-500 mt-1 text-red-500 font-bold">關閉時，商家無法設定藍新金流 API，上架商品時也無法勾選線上金流與貨到付款。</div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input type="checkbox" className="sr-only peer" checked={enablePayment} onChange={(e) => setEnablePayment(e.target.checked)} />
+                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                </label>
+            </div>
         </div>
 
         {/* 圖片連結 */}

@@ -200,7 +200,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
       ...product,
       qty: finalQty,
       selectedVariant: selectedVariant.name,
-      finalPrice: product.price + selectedVariant.price,
+      finalPrice: selectedVariant ? selectedVariant.price : product.price,
       isReviewed: false
     });
     return true; 
@@ -262,7 +262,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
     }
   };
 
-  const finalPrice = product.price + (selectedVariant?.price || 0);
+  const finalPrice = selectedVariant ? selectedVariant.price : product.price;
   const isVideo = (src: string) => src?.startsWith('data:video') || src?.endsWith('.mp4');
 
   // ★ 安全防護：過濾商品描述與評價中的 XSS 語法與競品導外連結
@@ -456,7 +456,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
                    </div>
                    {product.original_price > finalPrice && (
                      <span className="text-slate-400 line-through text-sm font-bold pb-2">
-                       NT${product.original_price + (selectedVariant?.price || 0)}
+                       NT${product.original_price}
                      </span>
                    )}
                  </div>
@@ -492,7 +492,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
                          onClick={() => setSelectedVariant(v)}
                          className={`px-6 py-2 rounded-xl text-sm font-bold border-2 transition ${selectedVariant?.name === v.name ? 'border-[#EE4D2D] text-[#EE4D2D] bg-[#FFEEEC]' : 'border-slate-100 text-slate-600 hover:border-slate-300'}`}
                        >
-                         {v.name} {v.price > 0 && `(+$${v.price})`}
+                         {v.name} {v.price > 0 && `($${v.price})`}
                        </button>
                      ))}
                    </div>

@@ -767,6 +767,38 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                 </div>
             </div>
 
+            {/* ★ 新增：金物流系統全域開關 */}
+            <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 flex flex-col gap-4 animate-fade-in-up">
+                <h4 className="font-bold text-slate-700 flex items-center gap-2 mb-2">
+                    <i className="fa-solid fa-money-check-dollar text-blue-500"></i>
+                    全站金流與付款選項控制
+                </h4>
+                
+                {/* 藍新金流開關 */}
+                <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-100 shadow-sm">
+                    <div>
+                        <div className="font-bold text-slate-700 text-sm">開放「線上金流結帳 (藍新 API)」</div>
+                        <div className="text-xs text-slate-500 mt-1">關閉時，商家無法設定藍新金流 API，上架商品時也無法勾選線上金流。</div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input type="checkbox" className="sr-only peer" checked={settingsForm.enable_online_payment ?? true} onChange={(e) => setSettingsForm({...settingsForm, enable_online_payment: e.target.checked})} />
+                        <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                    </label>
+                </div>
+
+                {/* 貨到付款開關 */}
+                <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-100 shadow-sm">
+                    <div>
+                        <div className="font-bold text-slate-700 text-sm">開放「貨到付款」</div>
+                        <div className="text-xs text-slate-500 mt-1">關閉時，商家上架商品時無法勾選貨到付款選項。</div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input type="checkbox" className="sr-only peer" checked={settingsForm.enable_cod ?? true} onChange={(e) => setSettingsForm({...settingsForm, enable_cod: e.target.checked})} />
+                        <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                </div>
+            </div>
+
             {websiteSettingType === 'ANNOUNCEMENT' && (
                <div className="space-y-4 animate-fade-in">
                   <div className="flex items-center gap-2 mb-2">
