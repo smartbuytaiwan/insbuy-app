@@ -624,24 +624,25 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
                     <span className="flex items-center gap-1"><i className="fa-regular fa-clock text-green-400"></i> {shopStats?.joinTime || '近期'}加入</span>
                  </div>
               </div>
-              <div className="flex gap-3">
+              {/* ★ 修正 6：確保按鈕容器為橫向(flex-row)，並加上 whitespace-nowrap 讓中文字絕對不換行 */}
+              <div className="flex flex-row flex-wrap justify-center md:justify-start gap-2 w-full md:w-auto">
                  <button 
                    onClick={() => seller && onFollowShop(seller.shop_id || seller.id)}
-                   className={`px-6 py-2 rounded-lg font-bold border transition ${isFollowing ? 'border-slate-200 text-slate-400 bg-slate-100' : 'border-[#EE4D2D] text-[#EE4D2D] bg-white hover:bg-orange-50'}`}
+                   className={`flex-1 md:flex-none px-4 py-2 text-sm whitespace-nowrap rounded-lg font-bold border transition ${isFollowing ? 'border-slate-200 text-slate-400 bg-slate-100' : 'border-[#EE4D2D] text-[#EE4D2D] bg-white hover:bg-orange-50'}`}
                  >
                    {isFollowing ? '已關注' : '+ 關注'}
                  </button>
                  <button 
                    onClick={() => seller && onNavigate(View.SHOP, undefined, seller.shop_id || seller.id)}
-                   className="px-6 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg font-bold hover:bg-slate-50 transition flex items-center gap-2"
+                   className="flex-1 md:flex-none px-4 py-2 text-sm whitespace-nowrap bg-white border border-slate-300 text-slate-700 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-1.5"
                  >
                    <i className="fa-solid fa-store"></i> 逛逛賣場
                  </button>
                  <button 
                     onClick={() => seller && onNavigate(View.CHAT, product, seller.shop_id || seller.id)}
-                    className="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700 transition"
+                    className="flex-1 md:flex-none px-4 py-2 text-sm whitespace-nowrap bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700 transition flex items-center justify-center gap-1.5"
                  >
-                    愛聊
+                    <i className="fa-regular fa-comments"></i> 愛聊
                  </button>
               </div>
            </div>

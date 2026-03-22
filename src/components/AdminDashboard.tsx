@@ -149,7 +149,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
           max_drafts: 3,
           can_view_stats: false,
           can_edit_banner: false,
-          can_edit_logo: false
+          can_edit_logo: false,
+          can_use_calendar: false, // ★ 新增保底預設值
+          can_use_booking: false   // ★ 新增保底預設值
       };
   }, [activePermissions, user.level]);
 
@@ -1135,12 +1137,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
         { id: 'payment_settings', icon: 'fa-money-check-dollar', label: '金物流設定' },
       ]
     },
-    {
+    // ★ 判斷是否有預約系統權限，才顯示左側的 CRM 選單
+    ...(sellerConfig.can_use_booking ? [{
       title: '預約與 CRM 管理',
       items: [
         { id: 'seller_booking', icon: 'fa-calendar-days', label: '預約與 CRM 專區' }
       ]
-    }
+    }] : [])
   ];
   
 

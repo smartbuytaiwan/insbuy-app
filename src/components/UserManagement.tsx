@@ -270,9 +270,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
         discount_rate: 1,
         can_use_preorder: false,
         max_drafts: permissionType === 'SELLER' ? 3 : 0,
-        can_view_stats: false,
-        can_edit_banner: false,
-        can_edit_logo: false
+      can_view_stats: false,
+      can_edit_banner: false,
+      can_edit_logo: false,
+      can_use_calendar: false, // ★ 新增：預設不開啟行事曆
+      can_use_booking: false   // ★ 新增：預設不開啟預約系統
     };
     onUpdatePermissions([...permissions, newLevelConfig]);
     setEditingLevelKey(`${permissionType}-${newLevelNum}`);
@@ -797,6 +799,18 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                         <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
                     </label>
                 </div>
+                
+                {/* 品牌預約系統開關 */}
+                <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-100 shadow-sm mt-4">
+                    <div>
+                        <div className="font-bold text-slate-700 text-sm">開放「品牌預約系統」</div>
+                        <div className="text-xs text-slate-500 mt-1">關閉時，商家賣場首頁將隱藏「品牌預約系統」按鈕，買家無法進行預約。</div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input type="checkbox" className="sr-only peer" checked={settingsForm.enable_booking ?? true} onChange={(e) => setSettingsForm({...settingsForm, enable_booking: e.target.checked})} />
+                        <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
+                    </label>
+                </div>
             </div>
 
             {websiteSettingType === 'ANNOUNCEMENT' && (
@@ -890,6 +904,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                  <th className="border border-slate-300 px-2 py-2 w-20 text-center">看統計</th>
                  <th className="border border-slate-300 px-2 py-2 w-20 text-center">改封面</th>
                  <th className="border border-slate-300 px-2 py-2 w-20 text-center">改Logo</th>
+                 <th className="border border-slate-300 px-2 py-2 w-16 text-center">行事曆</th>
+                 <th className="border border-slate-300 px-2 py-2 w-20 text-center">預約系統</th>
                  <th className="border border-slate-300 px-4 py-2 w-24 text-center">操作</th>
                </tr>
              </thead>
@@ -935,6 +951,12 @@ const UserManagement: React.FC<UserManagementProps> = ({ currentUser, users, ord
                       </td>
                       <td className="border border-slate-300 px-2 py-2 text-center">
                          {isEditing ? <input type="checkbox" checked={!!permissionForm.can_edit_logo} onChange={e => setPermissionForm({...permissionForm, can_edit_logo: e.target.checked})} /> : (p.can_edit_logo ? '✅' : '❌')}
+                      </td>
+                      <td className="border border-slate-300 px-2 py-2 text-center">
+                         {isEditing ? <input type="checkbox" checked={!!permissionForm.can_use_calendar} onChange={e => setPermissionForm({...permissionForm, can_use_calendar: e.target.checked})} /> : (p.can_use_calendar ? '✅' : '❌')}
+                      </td>
+                      <td className="border border-slate-300 px-2 py-2 text-center">
+                         {isEditing ? <input type="checkbox" checked={!!permissionForm.can_use_booking} onChange={e => setPermissionForm({...permissionForm, can_use_booking: e.target.checked})} /> : (p.can_use_booking ? '✅' : '❌')}
                       </td>
                       <td className="border border-slate-300 px-2 py-2 text-center">
                          {isEditing ? (

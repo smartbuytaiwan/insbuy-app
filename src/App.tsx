@@ -825,13 +825,14 @@ const App: React.FC = () => {
          onShowHelp={() => setModalContent({ title: '幫助中心', content: siteSettings.helpCenter || '暫無內容' })} 
          onSearch={handleSearch}
          onReset={() => setShopRefreshKey(prev => prev + 1)} 
+         permissions={permissions} // ★ 新增：傳遞權限設定給 Header
       />
 
       <main className="container mx-auto px-4 pt-2 pb-8 md:py-8 flex-1 max-w-7xl w-full overflow-hidden">
         {/* 取消了 isDataLoaded 的等待畫面，直接渲染內容 */}
         <>{view === 'PRIVACY' as any && <PrivacyPolicy siteSettings={siteSettings} />}
             {view === 'TERMS' as any && <TermsOfService siteSettings={siteSettings} />}
-            {view === View.SHOP && <Shop key={currentShopId || `home-${shopRefreshKey}`} products={filteredProducts} categories={categories.filter(c => currentShopId ? c.shop_id === currentShopId : true)} systemCategories={systemCategories} currentShop={currentShop || undefined} currentUser={user} orders={orders} allSellers={allUsers.filter(u => u.role === 'SELLER')} searchQuery={appliedSearch} onOpenProduct={(p) => navigateTo(View.PRODUCT, p)} onFollowShop={handleFollowShop} onNavigate={navigateTo} />}
+            {view === View.SHOP && <Shop key={currentShopId || `home-${shopRefreshKey}`} products={filteredProducts} categories={categories.filter(c => currentShopId ? c.shop_id === currentShopId : true)} systemCategories={systemCategories} currentShop={currentShop || undefined} currentUser={user} orders={orders} allSellers={allUsers.filter(u => u.role === 'SELLER')} searchQuery={appliedSearch} siteSettings={siteSettings} permissions={permissions} onOpenProduct={(p) => navigateTo(View.PRODUCT, p)} onFollowShop={handleFollowShop} onNavigate={navigateTo} />}
             
             {view === View.PRODUCT && selectedProduct && (
                 <ProductDetail 

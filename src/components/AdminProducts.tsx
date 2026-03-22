@@ -204,40 +204,44 @@ const AdminProducts: React.FC<AdminProductsProps> = ({
                    <i className="fa-solid fa-chart-pie text-xl text-[#EE4D2D]"></i>
                    <h2 className="text-lg font-black text-slate-800">已勾選商品財務總覽</h2>
                </div>
-               <div className="flex flex-col md:flex-row items-start md:items-center gap-3 w-full md:w-auto">
-                   <div className="flex gap-2 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">
+               <div className="flex flex-col md:flex-row items-start md:items-center gap-3 w-full md:w-auto min-w-0">
+                   <div className="flex gap-2 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0 shrink-0">
                        <button onClick={() => setQuickRange(-1)} className={`px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap transition ${!reportRange.start ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>全部</button>
                        <button onClick={() => setQuickRange(0)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg whitespace-nowrap transition">今日</button>
                        <button onClick={() => setQuickRange(1)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg whitespace-nowrap transition">昨日</button>
                        <button onClick={() => setQuickRange(7)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg whitespace-nowrap transition">近 7 天</button>
                        <button onClick={() => setQuickRange(30)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg whitespace-nowrap transition">近 30 天</button>
                    </div>
-                   <div className="flex items-center gap-2 text-sm bg-slate-50 p-1.5 rounded-xl border border-slate-200 w-full md:w-auto">
-                       <input type="date" value={reportRange.start} onChange={e => setReportRange({...reportRange, start: e.target.value})} className="flex-1 bg-transparent border-none outline-none text-slate-700 font-bold px-1 text-xs" />
-                       <span className="text-slate-300">-</span>
-                       <input type="date" value={reportRange.end} onChange={e => setReportRange({...reportRange, end: e.target.value})} className="flex-1 bg-transparent border-none outline-none text-slate-700 font-bold px-1 text-xs" />
+                   <div className="flex items-center gap-1 md:gap-2 text-sm bg-slate-50 p-1.5 md:p-2 rounded-xl border border-slate-200 w-full md:w-auto min-w-0">
+                       <input type="date" value={reportRange.start} onChange={e => setReportRange({...reportRange, start: e.target.value})} className="flex-1 min-w-0 bg-transparent border-none outline-none text-slate-700 font-bold px-1 text-[10px] md:text-xs" />
+                       <span className="text-slate-300 shrink-0">-</span>
+                       <input type="date" value={reportRange.end} onChange={e => setReportRange({...reportRange, end: e.target.value})} className="flex-1 min-w-0 bg-transparent border-none outline-none text-slate-700 font-bold px-1 text-[10px] md:text-xs" />
                    </div>
                </div>
            </div>
 
-           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-               <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                   <div className="text-xs font-bold text-slate-500 mb-1">總已實現收入</div>
-                   <div className="text-xl font-black text-slate-800">${Number(aggStats.totalRevenue.toFixed(1)).toLocaleString()}</div>
+           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+               <div className="bg-slate-50 rounded-xl md:rounded-2xl p-2.5 md:p-4 border border-slate-100 flex flex-col justify-center">
+                   <div className="text-[10px] md:text-xs font-bold text-slate-500 mb-0.5 whitespace-nowrap tracking-tighter">總已實現收入</div>
+                   <div className="text-sm md:text-xl font-black text-slate-800 break-words leading-tight">${Number(aggStats.totalRevenue.toFixed(1)).toLocaleString()}</div>
                </div>
-               <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 relative">
-                   <div className="text-xs font-bold text-slate-500 mb-1">總已實現成本</div>
-                   <div className="text-xl font-black text-slate-800">${Number(aggStats.totalCost.toFixed(1)).toLocaleString()}</div>
-                   <div className="absolute top-4 right-4 text-[10px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">成本率 {aggStats.costRate.toFixed(1)}%</div>
+               <div className="bg-slate-50 rounded-xl md:rounded-2xl p-2.5 md:p-4 border border-slate-100 flex flex-col justify-center relative">
+                   <div className="flex flex-col gap-0.5 mb-0.5">
+                       <span className="text-[10px] md:text-xs font-bold text-slate-500 whitespace-nowrap tracking-tighter">總已實現成本</span>
+                       <span className="text-[8px] md:text-[10px] font-bold bg-slate-200 text-slate-600 w-fit px-1 py-0.5 rounded whitespace-nowrap tracking-tighter">成本率 {aggStats.costRate.toFixed(1)}%</span>
+                   </div>
+                   <div className="text-sm md:text-xl font-black text-slate-800 break-words leading-tight">${Number(aggStats.totalCost.toFixed(1)).toLocaleString()}</div>
                </div>
-               <div className="bg-green-50 rounded-2xl p-4 border border-green-100 relative">
-                   <div className="text-xs font-bold text-green-600 mb-1">總已實現利潤</div>
-                   <div className="text-xl font-black text-green-700">${Number(aggStats.totalProfit.toFixed(1)).toLocaleString()}</div>
-                   <div className="absolute top-4 right-4 text-[10px] font-bold bg-green-200 text-green-700 px-1.5 py-0.5 rounded">利潤率 {aggStats.profitMargin.toFixed(1)}%</div>
+               <div className="bg-green-50 rounded-xl md:rounded-2xl p-2.5 md:p-4 border border-green-100 flex flex-col justify-center relative">
+                   <div className="flex flex-col gap-0.5 mb-0.5">
+                       <span className="text-[10px] md:text-xs font-bold text-green-600 whitespace-nowrap tracking-tighter">總已實現利潤</span>
+                       <span className="text-[8px] md:text-[10px] font-bold bg-green-200 text-green-700 w-fit px-1 py-0.5 rounded whitespace-nowrap tracking-tighter">利潤率 {aggStats.profitMargin.toFixed(1)}%</span>
+                   </div>
+                   <div className="text-sm md:text-xl font-black text-green-700 break-words leading-tight">${Number(aggStats.totalProfit.toFixed(1)).toLocaleString()}</div>
                </div>
-               <div className="bg-blue-50 rounded-2xl p-4 border border-blue-100">
-                   <div className="text-xs font-bold text-blue-600 mb-1">目前總庫存成本</div>
-                   <div className="text-xl font-black text-blue-700">${Number(aggStats.currentStockValue.toFixed(1)).toLocaleString()}</div>
+               <div className="bg-blue-50 rounded-xl md:rounded-2xl p-2.5 md:p-4 border border-blue-100 flex flex-col justify-center">
+                   <div className="text-[10px] md:text-xs font-bold text-blue-600 mb-0.5 whitespace-nowrap tracking-tighter">目前總庫存成本</div>
+                   <div className="text-sm md:text-xl font-black text-blue-700 break-words leading-tight">${Number(aggStats.currentStockValue.toFixed(1)).toLocaleString()}</div>
                </div>
            </div>
        </div>
@@ -335,49 +339,51 @@ const AdminProducts: React.FC<AdminProductsProps> = ({
                                  
                                  return (
                                      <div key={vIdx} className="flex flex-col bg-white border border-slate-200 rounded-lg p-2 md:p-3 text-xs gap-2 shadow-sm relative">
-                                         <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                                             <span className="text-slate-800 font-bold truncate pr-2 flex-1" title={vName}>{vName}</span>
-                                             <div className="flex items-center gap-2 shrink-0">
-                                                 <span className={`font-mono font-bold px-2 py-0.5 rounded text-[10px] ${v.stock <= 5 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-600'}`}>
+                                         {/* ★ 修正：讓按鈕自動換行 */}
+                                         <div className="flex flex-col md:flex-row md:justify-between items-start md:items-center border-b border-slate-100 pb-2 gap-2">
+                                             <div className="flex items-center justify-between w-full md:w-auto">
+                                                 <span className="text-slate-800 font-bold truncate pr-2 flex-1" title={vName}>{vName}</span>
+                                                 <span className={`font-mono font-bold px-2 py-0.5 rounded text-[10px] shrink-0 ${v.stock <= 5 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-600'}`}>
                                                      庫存: {v.stock}
                                                  </span>
+                                             </div>
+                                             <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto justify-end">
                                                  <span className="text-[10px] text-slate-500 font-bold bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 hidden md:block">
                                                      總成本: ${Number((v.stock * vCost).toFixed(1)).toLocaleString()}
                                                  </span>
                                                  <button 
                                                      onClick={() => setShowSalesForProduct({product: p, variantName: vName, buyers: vStats.buyers})} 
-                                                     className="font-black text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded hover:bg-blue-600 hover:text-white transition shadow-sm flex items-center gap-1 text-[10px]"
+                                                     className="flex-1 md:flex-none justify-center font-black text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1.5 rounded hover:bg-blue-600 hover:text-white transition shadow-sm flex items-center gap-1 text-[10px]"
                                                  >
-                                                     <i className="fa-solid fa-chart-line"></i>銷量: {vStats.salesQty}
+                                                     <i className="fa-solid fa-chart-line"></i> 銷量: {vStats.salesQty}
                                                  </button>
-                                                 {/* ★ 新增：專屬此規格的盤點補貨按鈕 */}
                                                  <button 
                                                      onClick={() => setRestockData({product: p, variantIndex: vIdx})} 
-                                                     className="font-black text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded hover:bg-green-600 hover:text-white transition shadow-sm flex items-center gap-1 text-[10px]"
+                                                     className="flex-1 md:flex-none justify-center font-black text-green-600 bg-green-50 border border-green-200 px-2 py-1.5 rounded hover:bg-green-600 hover:text-white transition shadow-sm flex items-center gap-1 text-[10px]"
                                                  >
-                                                     <i className="fa-solid fa-boxes-stacked"></i>盤點補貨
+                                                     <i className="fa-solid fa-boxes-stacked"></i> 盤點補貨
                                                  </button>
                                              </div>
                                          </div>
-                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-1 md:gap-2 text-[10px] md:text-xs">
-                                             <div className="bg-slate-50 p-1.5 rounded flex flex-col">
-                                                 <span className="text-slate-400">已實現收入</span>
-                                                 <span className="font-black text-slate-700">${Number(vStats.realizedRevenue.toFixed(1)).toLocaleString()}</span>
+                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 md:gap-2 text-[9px] md:text-xs min-w-0">
+                                             <div className="bg-slate-50 p-1.5 md:p-2 rounded flex flex-col min-w-0 justify-center">
+                                                 <span className="text-slate-400 whitespace-nowrap tracking-tighter">已實現收入</span>
+                                                 <span className="font-black text-slate-700 break-words mt-0.5 leading-tight">${Number(vStats.realizedRevenue.toFixed(1)).toLocaleString()}</span>
                                              </div>
-                                             <div className="bg-slate-50 p-1.5 rounded flex flex-col">
-                                                 <span className="text-slate-400">已實現成本</span>
-                                                 <span className="font-black text-slate-700">
-                                                     ${Number(vStats.realizedCost.toFixed(1)).toLocaleString()} 
-                                                     <span className="text-[9px] text-slate-400 ml-1 font-normal">({vStats.costRate.toFixed(1)}%)</span>
+                                             <div className="bg-slate-50 p-1.5 md:p-2 rounded flex flex-col min-w-0 justify-center relative">
+                                                 <span className="text-slate-400 whitespace-nowrap tracking-tighter flex items-center gap-1">
+                                                     已實現成本
+                                                     <span className="text-[7px] md:text-[9px] bg-slate-200 text-slate-500 px-1 py-[1px] rounded whitespace-nowrap">率 {vStats.costRate.toFixed(0)}%</span>
                                                  </span>
+                                                 <span className="font-black text-slate-700 break-words mt-0.5 leading-tight">${Number(vStats.realizedCost.toFixed(1)).toLocaleString()}</span>
                                              </div>
-                                             <div className="bg-green-50 border border-green-100 p-1.5 rounded flex flex-col">
-                                                 <span className="text-green-600">已實現利潤</span>
-                                                 <span className="font-black text-green-700">${Number(vStats.profit.toFixed(1)).toLocaleString()}</span>
+                                             <div className="bg-green-50 border border-green-100 p-1.5 md:p-2 rounded flex flex-col min-w-0 justify-center">
+                                                 <span className="text-green-600 whitespace-nowrap tracking-tighter">已實現利潤</span>
+                                                 <span className="font-black text-green-700 break-words mt-0.5 leading-tight">${Number(vStats.profit.toFixed(1)).toLocaleString()}</span>
                                              </div>
-                                             <div className="bg-green-50 border border-green-100 p-1.5 rounded flex flex-col">
-                                                 <span className="text-green-600">總利潤率</span>
-                                                 <span className="font-black text-green-700">{vStats.profitMargin.toFixed(1)}%</span>
+                                             <div className="bg-green-50 border border-green-100 p-1.5 md:p-2 rounded flex flex-col min-w-0 justify-center">
+                                                 <span className="text-green-600 whitespace-nowrap tracking-tighter">總利潤率</span>
+                                                 <span className="font-black text-green-700 break-words mt-0.5 leading-tight">{vStats.profitMargin.toFixed(1)}%</span>
                                              </div>
                                          </div>
                                      </div>

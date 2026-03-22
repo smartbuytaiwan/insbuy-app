@@ -176,7 +176,8 @@ const settingSchema = new mongoose.Schema({
   antiScamMessage: String,
   // ★ 新增：將金流與付款選項的開關加入資料庫欄位，並預設為開啟
   enable_online_payment: { type: Boolean, default: true },
-  enable_cod: { type: Boolean, default: true }
+  enable_cod: { type: Boolean, default: true },
+  enable_booking: { type: Boolean, default: true } // ★ 新增：預約系統開關
 });
 
 const permissionSchema = new mongoose.Schema({
@@ -193,7 +194,9 @@ const permissionSchema = new mongoose.Schema({
   max_drafts: Number,
   can_view_stats: Boolean,
   can_edit_banner: Boolean,
-  can_edit_logo: Boolean
+  can_edit_logo: Boolean,
+  can_use_calendar: { type: Boolean, default: false }, // ★ 新增：行事曆權限
+  can_use_booking: { type: Boolean, default: false }   // ★ 新增：預約系統權限
 });
 
 const reportSchema = new mongoose.Schema({

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Product, Category, User, View, Order } from '../types';
+import { Product, Category, User, View, Order, LevelConfig } from '../types'; // ★ 加入 LevelConfig
 import API from '../api';
 import LazyImage from './LazyImage'; // ★ 新增：引入圖片懶加載與骨架屏元件
 import ReportModal from './ReportModal'; // ★ 新增：引入共用檢舉元件
@@ -13,6 +13,8 @@ interface ShopProps {
   orders?: Order[]; // 接收訂單以計算銷量
   allSellers?: User[]; // 新增：接收賣家列表以計算等級加權
   searchQuery?: string; // 接收全域搜尋字串，用於自動解除熱銷鎖定
+  siteSettings?: any; 
+  permissions?: LevelConfig[]; // ★ 新增：接收權限設定
   onOpenProduct: (product: Product) => void;
   onFollowShop: (shopId: string) => void;
   onNavigate?: (view: View, product?: Product, targetId?: string) => void; 
@@ -29,6 +31,8 @@ const Shop: React.FC<ShopProps> = ({
   currentUser, 
   orders = [],
   allSellers = [],
+  siteSettings, 
+  permissions, // ★ 解構出權限設定
   onOpenProduct, 
   onFollowShop,
   onNavigate,
@@ -546,13 +550,15 @@ const Shop: React.FC<ShopProps> = ({
                   <button onClick={handleShareShop} className="flex-auto md:flex-none px-3 py-2 text-xs md:text-sm bg-white border border-slate-200 text-slate-600 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-1.5 whitespace-nowrap"><i className="fa-solid fa-share-nodes"></i> 分享</button>
                   <button onClick={() => setIsReportingShop(true)} className="flex-auto md:flex-none px-3 py-2 bg-white border border-red-200 text-red-500 rounded-lg font-bold hover:bg-red-50 transition text-xs flex items-center justify-center gap-1.5 whitespace-nowrap"><i className="fa-solid fa-triangle-exclamation"></i> 檢舉</button>
                   
-                  {/* ★ 新增：品牌預約系統按鈕 (特別用不同的顏色強調) */}
-                  <button 
-                    onClick={() => onNavigate && onNavigate(View.BRAND_BOOKING, undefined, currentShop.shop_id || currentShop.id)} 
-                    className="flex-auto md:flex-none px-3 py-2 text-xs md:text-sm bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition flex items-center justify-center gap-1.5 whitespace-nowrap shadow-sm border border-purple-700"
-                  >
-                    <i className="fa-solid fa-calendar-check"></i> 品牌預約系統
-                  </button>
+                  {/* ★ 新增：品牌預約系統按鈕 (受全站設定與商家等級權限雙重控制) */}
+                  {(siteSettings?.enable_booking !== false) && (currentShop.role === 'ADMIN' || permissions?.find(p => p.target_role === currentShop.role && p.level === currentShop.level)?.can_use_booking) && (
+                      <button 
+                        onClick={() => onNavigate && onNavigate(View.BRAND_BOOKING, undefined, currentShop.shop_id || currentShop.id)} 
+                        className="flex-auto md:flex-none px-3 py-2 text-xs md:text-sm bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition flex items-center justify-center gap-1.5 whitespace-nowrap shadow-sm border border-purple-700"
+                      >
+                        <i className="fa-solid fa-calendar-check"></i> 品牌預約系統
+                      </button>
+                  )}
                 </div>
               </div>
             </div>

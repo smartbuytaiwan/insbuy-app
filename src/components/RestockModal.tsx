@@ -212,9 +212,10 @@ const RestockModal: React.FC<RestockModalProps> = ({ product, variantIndex, allO
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
                                     <label className="text-xs font-bold text-slate-500 block mb-2">1. 異動類型與數量</label>
-                                    <div className="flex items-center gap-2">
+                                    {/* ★ 修正 3 & 4：改為 flex-wrap 並設定 min-w 確保在小螢幕自動換行，不會超出邊界 */}
+                                    <div className="flex flex-wrap items-center gap-2">
                                         <select 
-                                            className="h-12 border border-slate-200 rounded-xl px-3 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer font-bold text-slate-700 w-1/3"
+                                            className="h-12 border border-slate-200 rounded-xl px-3 outline-none focus:border-[#EE4D2D] bg-white cursor-pointer font-bold text-slate-700 flex-1 min-w-[120px]"
                                             value={type}
                                             onChange={(e) => setType(e.target.value as any)}
                                         >
@@ -223,7 +224,7 @@ const RestockModal: React.FC<RestockModalProps> = ({ product, variantIndex, allO
                                         </select>
                                         <input 
                                             type="number" 
-                                            className="h-12 flex-1 border border-slate-200 rounded-xl px-4 outline-none focus:border-[#EE4D2D] font-black text-slate-700"
+                                            className="h-12 flex-[2] min-w-[150px] border border-slate-200 rounded-xl px-4 outline-none focus:border-[#EE4D2D] font-black text-slate-700"
                                             placeholder="輸入數量"
                                             value={amount}
                                             onChange={(e) => setAmount(e.target.value === '' ? '' : Math.abs(Number(e.target.value)).toString())}
@@ -233,12 +234,13 @@ const RestockModal: React.FC<RestockModalProps> = ({ product, variantIndex, allO
                                 </div>
                                 
                                 {type === 'ADD' ? (
-                                    <div>
+                                    <div className="w-full">
+                                        {/* ★ 修正：確保 w-full 且不會被右側推擠 */}
                                         <label className="text-xs font-bold text-slate-500 block mb-2">本次進貨「單件成本」 (將自動加權平均)</label>
                                         <input 
                                             type="number" 
                                             className="h-12 w-full border border-slate-200 rounded-xl px-4 outline-none focus:border-green-500 font-black text-green-700 bg-green-50/30"
-                                            placeholder="例如: 150 (未填則沿用原成本)"
+                                            placeholder="例: 150 (未填則沿用原成本)"
                                             value={unitCost}
                                             onChange={(e) => setUnitCost(e.target.value === '' ? '' : Math.abs(Number(e.target.value)).toString())}
                                             min="0"

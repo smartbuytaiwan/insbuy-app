@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, User } from '../types';
-import API from '../api'; // 引入 API 工具
-import FavoritesModal from './FavoritesModal'; // 引入全新我的最愛視窗
-import CalendarModal from './CalendarModal'; // ★ 引入全新的行事曆視窗
-import SavedProductsModal from './SavedProductsModal'; // ★ 新增：關注商品視窗
+import { View, User, LevelConfig } from '../types'; // ★ 加入 LevelConfig
+import API from '../api'; 
+import FavoritesModal from './FavoritesModal'; 
+import CalendarModal from './CalendarModal'; 
+import SavedProductsModal from './SavedProductsModal'; 
 
 interface HeaderProps {
   user: User | null;
@@ -15,9 +15,10 @@ interface HeaderProps {
   onShowHelp: () => void;
   onSearch: (q: string) => void;
   onReset?: () => void;
+  permissions?: LevelConfig[]; // ★ 新增：接收權限設定
 }
 
-const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, searchQuery, setSearchQuery, onShowHelp, onSearch, onReset }) => {
+const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, searchQuery, setSearchQuery, onShowHelp, onSearch, onReset, permissions }) => {
   const [isListening, setIsListening] = useState(false);
 
   // ==========================================
@@ -222,8 +223,10 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
                       {/* ★ 修改：將我的最愛改名為 快速網頁連結 */}
                       <button onClick={() => { setIsUserMenuOpen(false); setIsFavOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-link w-4 text-center"></i> 快速網頁連結</button>
 
-                      {/* ★ 新增：行事曆按鈕 (排在我的最愛正下方) */}
-                      <button onClick={() => { setIsUserMenuOpen(false); setIsCalendarOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-regular fa-calendar-days w-4 text-center"></i> 行事曆</button>
+                      {/* ★ 新增：行事曆按鈕 (依照權限等級判斷是否顯示) */}
+                      {(user.role === 'ADMIN' || permissions?.find(p => p.target_role === user.role && p.level === user.level)?.can_use_calendar) && (
+                          <button onClick={() => { setIsUserMenuOpen(false); setIsCalendarOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-regular fa-calendar-days w-4 text-center"></i> 行事曆</button>
+                      )}
 
                       <button onClick={() => { setIsUserMenuOpen(false); onShowHelp(); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-regular fa-circle-question w-4 text-center"></i> 幫助中心</button>
 

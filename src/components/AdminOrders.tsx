@@ -114,11 +114,12 @@ const AdminOrders: React.FC<AdminOrdersProps> = ({
        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4 pb-6 border-b border-slate-100">
         <h2 className="text-xl font-bold text-slate-800 ">訂單管理系統 (銷售)</h2>
         
-        <div className="flex items-center gap-2 text-sm bg-slate-50 p-2 rounded-xl w-full md:w-auto">
-           <span className="text-slate-500 font-bold px-2 hidden md:inline">訂單日期:</span>
-           <input type="date" value={orderRange.start || ''} onChange={e => setOrderRange({...orderRange, start: e.target.value})} className="flex-1 border border-slate-300 rounded-lg px-2 py-1 outline-none text-slate-600 font-bold" />
-           <span className="text-slate-300">-</span>
-           <input type="date" value={orderRange.end || ''} onChange={e => setOrderRange({...orderRange, end: e.target.value})} className="flex-1 border border-slate-300 rounded-lg px-2 py-1 outline-none text-slate-600 font-bold" />
+        {/* ★ 修正 1：改為 flex-wrap 並縮小手機版 padding 與字體，解決破版 */}
+        <div className="flex flex-wrap items-center gap-1.5 md:gap-2 text-xs md:text-sm bg-slate-50 p-1.5 md:p-2 rounded-xl w-full md:w-auto min-w-0">
+           <span className="text-slate-500 font-bold px-1 md:px-2 shrink-0 hidden md:inline">訂單日期:</span>
+           <input type="date" value={orderRange.start || ''} onChange={e => setOrderRange({...orderRange, start: e.target.value})} className="flex-1 min-w-0 border border-slate-300 rounded-lg px-1 md:px-2 py-1 outline-none text-slate-600 font-bold text-[10px] md:text-sm" />
+           <span className="text-slate-300 shrink-0">-</span>
+           <input type="date" value={orderRange.end || ''} onChange={e => setOrderRange({...orderRange, end: e.target.value})} className="flex-1 min-w-0 border border-slate-300 rounded-lg px-1 md:px-2 py-1 outline-none text-slate-600 font-bold text-[10px] md:text-sm" />
         </div>
       </div>
 

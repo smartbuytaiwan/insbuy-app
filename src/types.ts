@@ -218,6 +218,8 @@ export interface LevelConfig {
   can_view_stats: boolean;
   can_edit_banner: boolean;
   can_edit_logo: boolean;
+  can_use_calendar?: boolean; // ★ 新增：行事曆權限
+  can_use_booking?: boolean;  // ★ 新增：品牌預約系統權限
 }
 
 export interface SiteSettings {
@@ -235,6 +237,7 @@ export interface SiteSettings {
   // ★ 新增：全站金流選項總開關
   enable_online_payment?: boolean; 
   enable_cod?: boolean; // ★ 新增：貨到付款獨立開關
+  enable_booking?: boolean; // ★ 新增：品牌預約系統開關
 }
 
 export interface Report {

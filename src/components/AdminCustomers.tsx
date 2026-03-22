@@ -97,19 +97,23 @@ const AdminCustomers: React.FC<AdminCustomersProps> = ({
                        </div>
                     </div>
                     
-                    <div className="flex flex-col md:flex-row items-center justify-between w-full md:w-auto gap-3 border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 mt-1 md:mt-0 shrink-0">
-                           <div className="text-left md:text-right hidden md:block">
-                               <div className="text-[10px] text-slate-400 font-bold">區間消費總額</div>
-                               <div className="text-lg font-black text-[#EE4D2D]">${c.totalSpent.toLocaleString()}</div>
-                           </div>
-                           <div className="flex items-center gap-2 w-full md:w-auto">
-                               <div className="md:hidden flex-1">
+                    {/* ★ 修正 5：將右側區塊改為獨立行，並且強制換行與不壓縮按鈕 */}
+                    <div className="flex flex-col items-start md:items-end justify-between w-full md:w-auto gap-3 border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 mt-1 md:mt-0 shrink-0">
+                           <div className="flex justify-between items-center w-full md:w-auto md:text-right">
+                               <div className="md:hidden">
                                    <div className="text-[10px] text-slate-400 font-bold">區間消費總額</div>
-                                   <div className="text-lg font-black text-[#EE4D2D]">${c.totalSpent.toLocaleString()}</div>
+                                   <div className="text-lg md:text-xl font-black text-[#EE4D2D]">${c.totalSpent.toLocaleString()}</div>
                                </div>
+                               <div className="hidden md:block">
+                                   <div className="text-[10px] text-slate-400 font-bold">區間消費總額</div>
+                                   <div className="text-lg md:text-xl font-black text-[#EE4D2D]">${c.totalSpent.toLocaleString()}</div>
+                               </div>
+                           </div>
+                           
+                           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
                                <button 
                                   onClick={() => handleBlacklist(c.targetId, c.name, c.isBlacklisted)} 
-                                  className={`flex-1 md:flex-none px-4 py-2 rounded-xl font-bold text-sm transition-colors flex justify-center items-center gap-2 ${c.isBlacklisted ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-slate-50 text-slate-500 hover:bg-red-50 hover:text-red-600 border border-slate-200 hover:border-red-200'}`}
+                                  className={`flex-1 md:flex-none whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm transition-colors flex justify-center items-center gap-2 ${c.isBlacklisted ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-slate-50 text-slate-500 hover:bg-red-50 hover:text-red-600 border border-slate-200 hover:border-red-200'}`}
                                   title={c.isBlacklisted ? "點擊解除黑名單" : "將此買家加入黑名單"}
                                >
                                   <i className={`fa-solid ${c.isBlacklisted ? 'fa-user-check' : 'fa-user-slash'}`}></i> 
@@ -118,7 +122,7 @@ const AdminCustomers: React.FC<AdminCustomersProps> = ({
 
                                <button 
                                   onClick={() => onNavigate(View.CHAT, undefined, c.targetId)} 
-                                  className="flex-1 md:flex-none bg-orange-50 text-[#EE4D2D] hover:bg-[#EE4D2D] hover:text-white border border-orange-100 px-4 py-2 rounded-xl font-bold text-sm transition-colors flex justify-center items-center gap-2"
+                                  className="flex-1 md:flex-none whitespace-nowrap bg-orange-50 text-[#EE4D2D] hover:bg-[#EE4D2D] hover:text-white border border-orange-100 px-4 py-2 rounded-xl font-bold text-sm transition-colors flex justify-center items-center gap-2"
                                >
                                   <i className="fa-regular fa-comments"></i> 愛聊
                                </button>
