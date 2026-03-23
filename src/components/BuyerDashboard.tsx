@@ -208,7 +208,7 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
               { id: 'ACCOUNT', icon: 'fa-user', label: '我的帳戶' },
               { id: 'ORDERS', icon: 'fa-bag-shopping', label: '我的訂單' },
               { id: 'REPORTS', icon: 'fa-chart-line', label: '消費分析' },
-              { id: 'BOOKINGS', icon: 'fa-calendar-check', label: '我的預約' }, // ★ 新增：我的預約按鈕
+              ...(siteSettings?.enable_booking !== false ? [{ id: 'BOOKINGS', icon: 'fa-calendar-check', label: '我的預約' }] : []) // ★ 總開關連動隱藏
             ].map(item => (
               <button 
                 key={item.id}

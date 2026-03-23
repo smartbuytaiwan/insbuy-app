@@ -80,6 +80,9 @@ const productSchema = new mongoose.Schema({
   category_id: String,
   name: String,
   description: String,
+  custom_html: { type: String, default: "" }, // ★ 新增：進階 HTML 排版原始碼
+  seo_title: { type: String, default: "" },   // ★ 新增：自訂 SEO 網頁標題
+  seo_description: { type: String, default: "" }, // ★ 新增：自訂 SEO 網頁描述
   images: [String],
   price: Number,
   original_price: Number,

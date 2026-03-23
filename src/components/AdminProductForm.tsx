@@ -23,8 +23,8 @@ interface AdminProductFormProps {
 }
 
 const AdminProductForm: React.FC<AdminProductFormProps> = ({
-    shopId, siteSettings, sellerConfig, products, onUpdateProducts, systemCategories, categories,
-    form, setForm, editingId, setEditingId, getInitialForm, setActiveTab, setShowMobileMenu, setGlobalSearchId, setCropModal
+    shopId, siteSettings, sellerConfig, products, onUpdateProducts, systemCategories, categories,
+    form, setForm, editingId, setEditingId, getInitialForm, setActiveTab, setShowMobileMenu, setGlobalSearchId, setCropModal
 }) => {
     // === 表單專屬的 Local State ===
     const [fullDrafts, setFullDrafts] = useState<{id:string, name:string, data:Partial<Product>}[]>(() => {
@@ -340,33 +340,82 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
         setForm(prev => ({ ...prev, category_ids: prev.category_ids?.filter(id => id !== idToRemove) }));
     };
 
-    // ★ 新增：自動產生 HTML 範本
-    const generateHtmlTemplate = () => {
-        // 取第一張圖
-        const imgTag = form.images && form.images[0] ? `<img src="${form.images[0]}" alt="${form.name || '商品圖片'}" style="max-width:100%; border-radius:12px; margin-bottom:16px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);" />\n` : '';
-        const template = `<div style="font-family: sans-serif; color: #333; line-height: 1.8; max-width: 800px; margin: 0 auto; padding: 20px;">
-    ${imgTag}<h2 style="color: #EE4D2D; border-bottom: 2px solid #EE4D2D; padding-bottom: 10px; margin-bottom: 20px; font-weight: 900;">${form.name || '商品名稱'}</h2>
-    <div style="background-color: #fff3ed; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-        <span style="font-size: 1.1em; color: #d94022; font-weight: bold;">限時優惠價：NT$ ${form.price || 0}</span>
-    </div>
-    <div style="font-size: 1em;">
-        <p>這是一件非常棒的商品，擁有以下特色：</p>
-        <ul>
-            <li>特色一：詳細說明</li>
-            <li>特色二：詳細說明</li>
-        </ul>
-    </div>
-</div>`;
-        if (form.custom_html && !window.confirm('確定要產生預設範本嗎？這將會完全覆蓋您目前編寫的 HTML 內容！')) return;
-        setForm(prev => ({ ...prev, custom_html: template }));
+    // =========================================================================
+    // ★ 核心修復：HTML 與純文字互相轉換與連動邏輯
+    // =========================================================================
+    const extractTextFromHtml = (htmlString: string) => {
+        if (!htmlString) return '';
+        const doc = new DOMParser().parseFromString(htmlString, 'text/html');
+        
+        // ★ 優化：讓轉出來的純文字保留換行，排版更好看
+        const blockElements = doc.querySelectorAll('h1, h2, h3, p, li, br');
+        blockElements.forEach(el => {
+            if (el.tagName.toLowerCase() === 'br') {
+                el.replaceWith('\n');
+            } else {
+                el.appendChild(doc.createTextNode('\n'));
+            }
+        });
+        
+        // 移除註解文字 避免污染純文字模式
+        let text = doc.body.textContent || '';
+        text = text.replace(new RegExp('', 'g'), '');
+
+        return text
+            .replace(/^[ \t]+/gm, '') // 移除每行開頭的空白
+            .replace(/\n{3,}/g, '\n\n') // 縮減多餘的空行
+            .trim();
     };
 
-    // ★ 新增：自動擷取 SEO 簡介
+    const toggleHtmlMode = () => {
+        if (isHtmlMode) {
+            // 從 HTML 切回文字模式時，自動把 HTML 轉成純文字並同步到 description
+            const cleanText = extractTextFromHtml(form.custom_html || '');
+            setForm(prev => ({ ...prev, description: cleanText }));
+        }
+        setIsHtmlMode(!isHtmlMode);
+    };
+
+    const generateHtmlTemplate = () => {
+        // ★ 修復：移除冗餘的圖片與標題，保持商品詳情區塊乾淨俐落
+        const template = `<article style="font-family: sans-serif; color: #333; line-height: 1.8; max-width: 800px; margin: 0 auto; padding: 20px;">
+    
+    <div style="font-size: 1em;">
+        
+        <h2 style="color: #EE4D2D; font-size: 1.2em; border-bottom: 2px solid #EE4D2D; padding-bottom: 8px; margin-bottom: 16px; font-weight: 900;">商品特色</h2>
+        <p>在這裡輸入一段吸引人的商品簡介，包含主要的痛點解決方案與使用情境。</p>
+        
+        <ul>
+            <li><strong>重點特色一：</strong>在這裡詳細說明第一個賣點。</li>
+            <li><strong>重點特色二：</strong>在這裡詳細說明第二個賣點。</li>
+        </ul>
+
+        <h2 style="font-size: 1.2em; color: #555; margin-top: 24px; border-bottom: 1px solid #eee; padding-bottom: 8px;">詳細規格</h2>
+        <ul>
+            <li>材質 / 成分：請填寫</li>
+            <li>尺寸 / 重量：請填寫</li>
+            <li>產地：請填寫</li>
+        </ul>
+
+    </div>
+</article>`;
+
+        if (form.custom_html && !window.confirm('確定要產生預設範本嗎？這將會完全覆蓋您目前編寫的 HTML 內容！')) return;
+        
+        // 產生範本時，同時更新 HTML 與 純文字 欄位
+        const cleanText = extractTextFromHtml(template);
+        setForm(prev => ({ 
+            ...prev, 
+            custom_html: template,
+            description: cleanText
+        }));
+    };
+    // =========================================================================
+
     const handleAutoSeoDesc = () => {
         if (!form.description) {
             return alert('請先填寫上方的一般「商品描述」，系統才能為您自動抓取喔！');
         }
-        // 去除換行與多餘空白，並擷取前 150 字
         const cleanText = form.description.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
         const snippet = cleanText.substring(0, 150);
         setForm(prev => ({ ...prev, seo_description: snippet }));
@@ -592,25 +641,28 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                         <div className="md:col-span-2">
                             <div className="flex justify-between items-center mb-2">
                                 <label className="text-xs font-bold text-slate-500 flex items-center gap-1">商品描述 <span className="text-[#EE4D2D] bg-red-50 px-1.5 py-0.5 rounded text-[10px]">(必填)</span></label>
-                                <button type="button" onClick={() => setIsHtmlMode(!isHtmlMode)} className="text-xs text-blue-500 font-bold hover:underline flex items-center gap-1">
-                                    <i className="fa-solid fa-code"></i> {isHtmlMode ? '切換回一般文字模式' : '切換 HTML 原始碼模式'}
+                                <button type="button" onClick={toggleHtmlMode} className="text-xs text-blue-500 font-bold hover:underline flex items-center gap-1">
+                                    <i className="fa-solid fa-code"></i> {isHtmlMode ? '取消並切換回一般模式' : '切換 HTML 原始碼模式'}
                                 </button>
                             </div>
                             
                             {isHtmlMode ? (
                                 <div className="space-y-2 animate-fade-in">
-                                    <div className="flex justify-end">
-                                        <button type="button" onClick={generateHtmlTemplate} className="text-xs bg-slate-800 text-green-400 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-700 transition flex items-center gap-1">
+                                    <div className="flex justify-end gap-2">
+                                        <button type="button" onClick={generateHtmlTemplate} className="text-xs bg-slate-800 text-green-400 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-700 transition flex items-center gap-1 shadow-sm">
                                             <i className="fa-solid fa-wand-magic-sparkles"></i> 自動產生排版範本
+                                        </button>
+                                        <button type="button" onClick={toggleHtmlMode} className="text-xs bg-blue-500 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-600 transition flex items-center gap-1 shadow-sm">
+                                            <i className="fa-solid fa-floppy-disk"></i> 儲存 HTML 並同步文字
                                         </button>
                                     </div>
                                     <textarea className={`w-full h-64 border rounded-2xl p-5 text-sm outline-none resize-y font-mono bg-slate-800 text-green-400 transition-all ${validationErrors.includes('description') ? 'border-red-500 ring-2 ring-red-200 shadow-[0_0_8px_rgba(239,68,68,0.4)]' : 'border-slate-200 focus:border-[#EE4D2D]'}`} value={form.custom_html || ''} onChange={e => setForm({...form, custom_html: e.target.value})} placeholder="請在此貼上或撰寫您的 HTML 程式碼..."></textarea>
                                 </div>
                             ) : (
-                                <textarea className={`w-full h-40 border rounded-2xl p-5 text-sm outline-none resize-none transition-all ${validationErrors.includes('description') ? 'border-red-500 ring-2 ring-red-200 shadow-[0_0_8px_rgba(239,68,68,0.4)] bg-red-50/30' : 'border-slate-200 focus:border-[#EE4D2D]'}`} value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="詳細介紹您的商品特色、尺寸、材質等資訊..."></textarea>
+                                <textarea className={`w-full h-40 border rounded-2xl p-5 text-sm outline-none resize-none transition-all ${validationErrors.includes('description') ? 'border-red-500 ring-2 ring-red-200 shadow-[0_0_8px_rgba(239,68,68,0.4)] bg-red-50/30' : 'border-slate-200 focus:border-[#EE4D2D]'}`} value={form.description || ''} onChange={e => setForm({...form, description: e.target.value})} placeholder="詳細介紹您的商品特色、尺寸、材質等資訊..."></textarea>
                             )}
                             
-                            </div>
+                        </div>
                         
                         <div className="md:col-span-2">
                             <label className="text-xs font-bold text-slate-500 mb-2 flex items-center flex-wrap gap-1">商品圖片 (最多可上傳多張圖片，建議 1:1 比例) <span className="text-[#EE4D2D]">(單張限制 1MB)</span> <span className="text-[#EE4D2D] bg-red-50 px-1.5 py-0.5 rounded text-[10px]">(必填)</span></label>
@@ -695,8 +747,6 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                     </div>
                 </section>
                 )}
-
-                {/* Step 3 已整合至 Step 1 */}
 
                 {/* Step 3. 運送與付款設定 */}
                 <section className="space-y-6">
@@ -830,8 +880,6 @@ const AdminProductForm: React.FC<AdminProductFormProps> = ({
                                 </div>
                             </div>
                         </div>
-
-                        {/* 隱藏銷售區塊已移至上方特殊銷售模式選項 */}
 
                         <div className="border-t border-slate-200 pt-6">
                             <label className="text-xs font-bold text-slate-600 mb-2 flex justify-between"><span>SEO 搜尋關鍵字 (用逗號隔開)</span><span className="text-slate-400 font-normal">買家搜尋時更容易找到您的商品</span></label>

@@ -45,6 +45,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
   const [activeContactId, setActiveContactId] = useState<string | null>(resolveTrueId(targetId));
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
+  const [isSending, setIsSending] = useState(false); // ★ 新增：防止重複發送的狀態鎖定
   
   // 紀錄每個聯絡人的最後訊息時間與內容
   const [contactLastTime, setContactLastTime] = useState<Record<string, number>>({});
@@ -301,7 +302,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
 
   const handleSend = async () => {
     if (readOnly) return;
-    if (!input.trim() || !activeContactId || !currentUser) return;
+    // ★ 新增阻擋條件：如果正在發送中 (isSending)，則直接返回，不執行第二次發送
+    if (!input.trim() || !activeContactId || !currentUser || isSending) return;
+    
+    setIsSending(true); // ★ 鎖定狀態：開始發送
     
     const myId = getMyId();
     const timestamp = new Date().toISOString();
@@ -335,6 +339,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
       });
     } catch (error) {
       alert("訊息發送失敗，請檢查網路");
+    } finally {
+      setIsSending(false); // ★ 解除鎖定：無論成功或失敗，發送結束後恢復狀態，允許下一次輸入
     }
   };
 
@@ -694,16 +700,27 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, targetId, allUsers, cu
                 <div className="p-3 md:p-4 border-t shrink-0 flex gap-2 bg-white items-end">
                   <div className="flex-1 bg-slate-100 rounded-2xl px-4 py-2 flex items-center gap-2 border border-transparent focus-within:border-orange-200 focus-within:bg-white transition-all">
                       <textarea 
-                        className="flex-1 bg-transparent outline-none resize-none text-sm max-h-24 py-1" 
+                        className="flex-1 bg-transparent outline-none resize-none text-sm max-h-24 py-1 disabled:opacity-50" 
                         value={input} 
                         rows={1}
                         onChange={e => setInput(e.target.value)} 
                         onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                        placeholder="輸入訊息..." 
+                        placeholder={isSending ? "發送中..." : "輸入訊息..."} 
+                        disabled={isSending}
                       />
                   </div>
-                  <button onClick={handleSend} className="w-10 h-10 md:w-11 md:h-11 bg-[#EE4D2D] text-white rounded-full flex items-center justify-center shadow-lg hover:bg-[#d73211] active:scale-95 transition-all flex-shrink-0">
-                    <i className="fa-solid fa-paper-plane text-sm md:text-base"></i>
+                  <button 
+                    onClick={handleSend} 
+                    disabled={isSending}
+                    className={`w-10 h-10 md:w-11 md:h-11 text-white rounded-full flex items-center justify-center shadow-lg transition-all flex-shrink-0 ${
+                      isSending ? 'bg-slate-400 cursor-not-allowed' : 'bg-[#EE4D2D] hover:bg-[#d73211] active:scale-95'
+                    }`}
+                  >
+                    {isSending ? (
+                      <i className="fa-solid fa-spinner fa-spin text-sm md:text-base"></i>
+                    ) : (
+                      <i className="fa-solid fa-paper-plane text-sm md:text-base"></i>
+                    )}
                   </button>
                 </div>
             )}

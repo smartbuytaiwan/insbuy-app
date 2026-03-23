@@ -1137,8 +1137,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
         { id: 'payment_settings', icon: 'fa-money-check-dollar', label: '金物流設定' },
       ]
     },
-    // ★ 判斷是否有預約系統權限，才顯示左側的 CRM 選單
-    ...(sellerConfig.can_use_booking ? [{
+    // ★ 判斷是否有預約系統權限，且全站總開關未關閉時，才顯示左側的 CRM 選單
+    ...(sellerConfig.can_use_booking && siteSettings?.enable_booking !== false ? [{
       title: '預約與 CRM 管理',
       items: [
         { id: 'seller_booking', icon: 'fa-calendar-days', label: '預約與 CRM 專區' }
@@ -1225,7 +1225,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
                  { id: 'buying_account', icon: 'fa-user', label: '我的帳戶' },
                  { id: 'buying_orders', icon: 'fa-bag-shopping', label: '購買清單' },
                  { id: 'buying_reports', icon: 'fa-chart-line', label: '我的報表' },
-                 { id: 'buying_bookings', icon: 'fa-calendar-check', label: '我的預約' } // ★ 新增：我的預約按鈕
+                 ...(siteSettings?.enable_booking !== false ? [{ id: 'buying_bookings', icon: 'fa-calendar-check', label: '我的預約' }] : []) // ★ 總開關連動隱藏
                ].map(item => (
                  <button 
                    key={item.id}

@@ -220,8 +220,8 @@ const Header: React.FC<HeaderProps> = ({ user, cartCount, onNavigate, onLogout, 
                       {/* ★ 新增：關注商品 (排在後台管理下方) */}
                       <button onClick={() => { setIsUserMenuOpen(false); setIsSavedProductsOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-heart w-4 text-center"></i> 關注商品</button>
 
-                      {/* ★ 修改：將我的最愛改名為 快速網頁連結 */}
-                      <button onClick={() => { setIsUserMenuOpen(false); setIsFavOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-link w-4 text-center"></i> 快速網頁連結</button>
+                      {/* ★ 修改：將我的最愛改名為 連結外部網頁 */}
+                      <button onClick={() => { setIsUserMenuOpen(false); setIsFavOpen(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-[#EE4D2D] transition flex items-center gap-3"><i className="fa-solid fa-link w-4 text-center"></i> 連結外部網頁</button>
 
                       {/* ★ 新增：行事曆按鈕 (依照權限等級判斷是否顯示) */}
                       {(user.role === 'ADMIN' || permissions?.find(p => p.target_role === user.role && p.level === user.level)?.can_use_calendar) && (
