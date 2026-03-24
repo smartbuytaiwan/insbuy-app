@@ -73,14 +73,11 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
   const [isSubmitting, setIsSubmitting] = useState(false); // ★ 新增：防止連點雙重送出的狀態
 
   useEffect(() => {
-      // 取得全站開關設定
+      // ★ 核心修復：改用專案設定好的 API 實例，確保上線後能抓到正確的後端網址 (避免拿到 HTML)
       const fetchSettings = async () => {
           try {
-              const res = await fetch('/api/settings');
-              if (res.ok) {
-                  const data = await res.json();
-                  setGlobalSettings(data);
-              }
+              const data = await API.getSettings();
+              setGlobalSettings(data);
           } catch (e) {
               console.error('無法取得全站設定', e);
           }
