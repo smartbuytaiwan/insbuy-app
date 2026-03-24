@@ -865,7 +865,8 @@ const App: React.FC = () => {
                                 alert(`庫存不足！該規格目前僅剩 ${maxStock} 件`);
                                 return;
                             }
-                            setCart([...cart, item]); 
+                            // ★ 修復：將新加入的商品放在陣列的最前面 (反轉排序)
+                            setCart([item, ...cart]); 
                         }
                         showToast('已加入購物車！'); 
                     }} 

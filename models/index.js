@@ -46,6 +46,7 @@ const userSchema = new mongoose.Schema({
   following: [String],
   bookmarks: { type: Array, default: [] },
   folders: { type: Array, default: [] },
+  saved_profiles: { type: Array, default: [] }, // ★ 新增：將常用資訊加入資料庫欄位名單，確保不會被丟掉
   is_suspended: { type: Boolean, default: false },
   google_map_url: String,
   // ★ 新增：金物流設定與藍新串接資料

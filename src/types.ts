@@ -133,8 +133,19 @@ export interface CartItem extends Product {
   isReviewed?: boolean;
 }
 
+// ★ 新增：買家常用收件/付款資訊型別
+export interface SavedProfile {
+  id: string;
+  name: string;
+  phone: string;
+  store: string;
+  payment_note: string;
+  remarks: string;
+}
+
 export interface User {
   id: string;
+  saved_profiles?: SavedProfile[]; // ★ 新增：儲存的常用資訊
   blacklisted_by?: string[]; // ★ 新增：被哪些賣家加入黑名單
   name: string;
   google_calendar_token?: string; // ★ 新增：Google 行事曆授權 Token

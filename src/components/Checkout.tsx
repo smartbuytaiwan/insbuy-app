@@ -57,20 +57,30 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
     return 'TRANSFER'; // Fallback
   };
 
+  // ★ 新增：從本機讀取上一次結帳的紀錄
+  const lastUsedForm = useMemo(() => {
+    try {
+      const saved = localStorage.getItem('insbuy_last_checkout');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  }, []);
+
   const [form, setForm] = useState({
-    name: user?.name || '',
-    phone: user?.phone || '',
+    name: lastUsedForm?.name || user?.name || '',
+    phone: lastUsedForm?.phone || user?.phone || '',
     method: isDigitalOrder ? '電子傳輸' : availableRules[0]?.name || '',
-    store: isDigitalOrder ? '線上' : '',
+    store: lastUsedForm?.store || (isDigitalOrder ? '線上' : ''),
     payment_method: getDefaultPaymentMethod() as 'TRANSFER' | 'ONLINE' | 'COD' | 'CASH', 
-    payment_note: '',
-    pickup_datetime: '' // ★ 新增：買家選擇的面交時間
+    payment_note: lastUsedForm?.payment_note || '',
+    pickup_datetime: '' 
   });
 
-  // ★ 新增：備註與問卷回答狀態
-  const [remarks, setRemarks] = useState('');
+  // ★ 新增：備註狀態 (帶入上次備註)
+  const [remarks, setRemarks] = useState(lastUsedForm?.remarks || '');
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false); // ★ 新增：防止連點雙重送出的狀態
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false); // ★ 新增：控制蝦皮下拉選單的開關
+  const [activeProfile, setActiveProfile] = useState<any>(null); // ★ 新增：記住目前選中的常用資訊
 
   useEffect(() => {
       // ★ 核心修復：改用專案設定好的 API 實例，確保上線後能抓到正確的後端網址 (避免拿到 HTML)
@@ -306,6 +316,17 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
 
   
 
+    // ★ 紀錄本次輸入的資料作為下一次預設值
+    try {
+        localStorage.setItem('insbuy_last_checkout', JSON.stringify({
+            name: form.name,
+            phone: form.phone,
+            store: form.store,
+            payment_note: form.payment_note,
+            remarks: remarks
+        }));
+    } catch (e) {}
+
     onSubmit(newOrder);
   };
 
@@ -314,6 +335,66 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
       {/* 1. 收件資訊 */}
       <div className="bg-white p-10 shadow-sm rounded-[2.5rem] border border-slate-100">
         <h2 className="text-xl font-black border-l-4 border-[#EE4D2D] pl-3 mb-8 text-slate-800">1. 收件資訊</h2>
+        
+        {/* ★ 新增：蝦皮風格的下拉式常用收件人選單 */}
+        {user && user.saved_profiles && user.saved_profiles.length > 0 && (
+            <div className="mb-6 relative">
+                <button 
+                    onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                    className="w-full bg-white border border-[#EE4D2D] p-4 rounded-2xl flex items-center justify-between shadow-sm hover:bg-orange-50 transition"
+                >
+                    <div className="flex items-center gap-3 text-left">
+                        <i className="fa-solid fa-address-book text-[#EE4D2D] text-lg shrink-0"></i>
+                        <div className="flex flex-col">
+                            <span className="font-bold text-[#EE4D2D] text-sm">
+                                {activeProfile ? `已選擇：${activeProfile.name} (${activeProfile.phone})` : '點擊選擇「常用收件人資訊」'}
+                            </span>
+                            {activeProfile && activeProfile.store && (
+                                <span className="text-xs text-[#EE4D2D] opacity-80 mt-0.5 line-clamp-1">{activeProfile.store}</span>
+                            )}
+                        </div>
+                    </div>
+                    <i className={`fa-solid fa-chevron-down text-[#EE4D2D] transition-transform ${showProfileDropdown ? 'rotate-180' : ''} shrink-0 ml-2`}></i>
+                </button>
+
+                {showProfileDropdown && (
+                    <div className="absolute top-full left-0 w-full mt-2 bg-white border border-slate-200 shadow-[0_10px_40px_rgba(0,0,0,0.1)] rounded-2xl overflow-hidden z-[100] max-h-[300px] overflow-y-auto custom-scrollbar animate-fade-in-up">
+                        {user.saved_profiles.map(profile => (
+                            <div 
+                                key={profile.id}
+                                onClick={() => {
+                                    // ★ 紀錄選中的常用資訊，以便後續切換運送方式時可以自動帶入地址
+                                    setActiveProfile(profile);
+
+                                    // ★ 判斷目前選擇的運送方式是否為自取/面交
+                                    const isPickupMethod = form.method.includes('面交') || form.method.includes('自取') || form.method.includes('取貨');
+                                    
+                                    setForm(prev => ({
+                                        ...prev,
+                                        name: profile.name || prev.name,
+                                        phone: profile.phone || prev.phone,
+                                        // ★ 如果是自取/面交，就不帶入地址
+                                        store: isPickupMethod ? prev.store : (profile.store || prev.store),
+                                        payment_note: profile.payment_note || prev.payment_note
+                                    }));
+                                    if (profile.remarks) setRemarks(profile.remarks);
+                                    
+                                    setShowProfileDropdown(false);
+                                }}
+                                className="p-4 border-b border-slate-100 last:border-b-0 hover:bg-orange-50 cursor-pointer transition flex flex-col gap-1"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <span className="font-bold text-slate-800 text-base">{profile.name}</span>
+                                    <span className="text-slate-500 text-sm">| {profile.phone}</span>
+                                </div>
+                                {profile.store && <div className="text-sm text-slate-600 mt-1 flex items-start gap-1"><span className="text-orange-500 bg-orange-100 px-1 rounded text-[10px] mt-0.5 shrink-0">地址</span><span className="line-clamp-2">{profile.store}</span></div>}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">購買人姓名</label>
@@ -340,7 +421,22 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
               {availableRules.map(rule => (
                 <button 
                   key={rule.name} 
-                  onClick={() => setForm({...form, method: rule.name})} 
+                  onClick={() => {
+                      const isNewMethodPickup = rule.name.includes('面交') || rule.name.includes('自取') || rule.name.includes('取貨');
+                      setForm(prev => {
+                          let newStore = prev.store;
+                          if (isNewMethodPickup) {
+                              // ★ 切換到自取/面交：清空地址，避免把收件地址留在車牌特徵欄位
+                              newStore = '';
+                          } else {
+                              // ★ 切換到宅配/超商：如果有選擇常用資訊，自動帶入該資訊的地址
+                              if (activeProfile && activeProfile.store) {
+                                  newStore = activeProfile.store;
+                              }
+                          }
+                          return { ...prev, method: rule.name, store: newStore };
+                      });
+                  }} 
                   className={`p-4 border-2 rounded-2xl font-black text-xs flex flex-col items-center justify-center gap-1.5 transition-all text-center ${
                     form.method === rule.name ? 'border-[#EE4D2D] bg-[#FFEEEC] text-[#EE4D2D] shadow-md' : 'border-slate-50 text-slate-400 hover:border-slate-200 hover:bg-slate-50'
                   }`}

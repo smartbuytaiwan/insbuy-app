@@ -59,6 +59,51 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
   );
   const [reportEndDate, setReportEndDate] = useState(new Date().toISOString().split('T')[0]);
 
+  // ★ 新增：常用資訊表單狀態與邏輯
+  const [profileForm, setProfileForm] = useState({ name: '', phone: '', store: '', payment_note: '', remarks: '' });
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+
+  const handleSaveProfile = async () => {
+      if (!profileForm.name || !profileForm.phone) return alert('請至少填寫姓名與手機');
+      
+      let updatedProfiles = [...(user.saved_profiles || [])];
+      
+      if (editingProfileId) {
+          updatedProfiles = updatedProfiles.map(p => p.id === editingProfileId ? { ...p, ...profileForm } : p);
+      } else {
+          const newProfile = { id: `prof-${Date.now()}`, ...profileForm };
+          updatedProfiles.push(newProfile);
+      }
+      
+      const updatedUser = { ...user, saved_profiles: updatedProfiles };
+      
+      try {
+          if (onUpdateUser) {
+              await onUpdateUser(updatedUser);
+              setProfileForm({ name: '', phone: '', store: '', payment_note: '', remarks: '' });
+              setEditingProfileId(null);
+              alert(editingProfileId ? '常用資訊已成功更新！' : '常用資訊已成功儲存！');
+          }
+      } catch (e) {
+          alert('儲存失敗');
+      }
+  };
+
+  const handleDeleteProfile = async (profileId: string) => {
+      if (!window.confirm('確定要刪除這筆常用資訊嗎？')) return;
+      const updatedUser = { ...user, saved_profiles: (user.saved_profiles || []).filter(p => p.id !== profileId) };
+      try {
+          if (onUpdateUser) await onUpdateUser(updatedUser);
+      } catch (e) {
+          alert('刪除失敗');
+      }
+  };
+
+  const handleEditProfile = (profile: any) => {
+      setProfileForm({ name: profile.name, phone: profile.phone, store: profile.store || '', payment_note: profile.payment_note || '', remarks: profile.remarks || '' });
+      setEditingProfileId(profile.id);
+  };
+
   const [upgradeForm, setUpgradeForm] = useState({
       shop_name: '',
       tax_id: '',
@@ -310,6 +355,56 @@ const BuyerDashboard: React.FC<BuyerDashboardProps> = ({ user, orders, allSeller
                   <button onClick={() => alert('修改功能開發中')} className="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold text-sm hover:bg-slate-700">
                      編輯資料
                   </button>
+               </div>
+
+               {/* ★ 新增：常用收件/付款資訊區塊 */}
+               <div className="mt-10">
+                   <h2 className="text-xl font-black text-slate-800 border-l-4 border-[#EE4D2D] pl-4 mb-6">管理常用結帳資訊</h2>
+                   <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 mb-6 transition-all">
+                       <h3 className="font-bold text-slate-700 mb-4 text-sm">{editingProfileId ? '✏️ 編輯常用資訊' : '新增常用資訊'}</h3>
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                           <input type="text" placeholder="收件人姓名" className="w-full h-10 border rounded-xl px-3 outline-none focus:border-[#EE4D2D] text-sm shadow-sm" value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} />
+                           <input type="tel" placeholder="聯絡手機" className="w-full h-10 border rounded-xl px-3 outline-none focus:border-[#EE4D2D] text-sm shadow-sm" value={profileForm.phone} onChange={e => setProfileForm({...profileForm, phone: e.target.value})} />
+                           <input type="text" placeholder="地址 / 收件門市" className="w-full h-10 border rounded-xl px-3 outline-none focus:border-[#EE4D2D] text-sm shadow-sm md:col-span-2" value={profileForm.store} onChange={e => setProfileForm({...profileForm, store: e.target.value})} />
+                           <input type="text" placeholder="銀行帳號後五碼" maxLength={5} className="w-full h-10 border rounded-xl px-3 outline-none focus:border-[#EE4D2D] text-sm shadow-sm" value={profileForm.payment_note} onChange={e => setProfileForm({...profileForm, payment_note: e.target.value.replace(/\D/g, '')})} />
+                           <input type="text" placeholder="常用備註" className="w-full h-10 border rounded-xl px-3 outline-none focus:border-[#EE4D2D] text-sm shadow-sm" value={profileForm.remarks} onChange={e => setProfileForm({...profileForm, remarks: e.target.value})} />
+                       </div>
+                       <div className="flex gap-3">
+                           <button onClick={handleSaveProfile} className="px-6 py-2 bg-[#EE4D2D] text-white rounded-xl font-bold text-sm shadow-sm hover:bg-[#d73211] transition flex items-center gap-2">
+                               <i className={`fa-solid ${editingProfileId ? 'fa-save' : 'fa-plus'}`}></i> {editingProfileId ? '更新常用資訊' : '儲存為常用資訊'}
+                           </button>
+                           {editingProfileId && (
+                               <button onClick={() => { setEditingProfileId(null); setProfileForm({ name: '', phone: '', store: '', payment_note: '', remarks: '' }); }} className="px-6 py-2 bg-slate-200 text-slate-600 rounded-xl font-bold text-sm shadow-sm hover:bg-slate-300 transition">
+                                   取消編輯
+                               </button>
+                           )}
+                       </div>
+                   </div>
+
+                   {/* 顯示已儲存的資訊 */}
+                   <div className="space-y-3">
+                       {(!user.saved_profiles || user.saved_profiles.length === 0) && (
+                           <div className="text-center text-slate-400 text-sm py-4">目前尚未儲存任何常用資訊</div>
+                       )}
+                       {user.saved_profiles?.map(profile => (
+                           <div key={profile.id} className="p-4 bg-white border border-slate-200 rounded-2xl flex justify-between items-start gap-4 hover:shadow-sm transition">
+                               <div className="text-sm text-slate-600 space-y-1">
+                                   <div className="font-bold text-slate-800 text-base">{profile.name} <span className="text-slate-400 font-normal text-xs ml-2">{profile.phone}</span></div>
+                                   {profile.store && <div><i className="fa-solid fa-location-dot w-4 text-center text-slate-400"></i> {profile.store}</div>}
+                                   {profile.payment_note && <div><i className="fa-solid fa-money-check w-4 text-center text-slate-400"></i> 末五碼: {profile.payment_note}</div>}
+                                   {profile.remarks && <div><i className="fa-solid fa-comment-dots w-4 text-center text-slate-400"></i> {profile.remarks}</div>}
+                               </div>
+                               <div className="flex flex-col gap-2 shrink-0">
+                                   <button onClick={() => handleEditProfile(profile)} className="w-8 h-8 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center hover:bg-blue-100 transition" title="編輯">
+                                       <i className="fa-solid fa-pen text-xs"></i>
+                                   </button>
+                                   <button onClick={() => handleDeleteProfile(profile.id)} className="w-8 h-8 rounded-full bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100 transition" title="刪除">
+                                       <i className="fa-solid fa-trash-can text-xs"></i>
+                                   </button>
+                               </div>
+                           </div>
+                       ))}
+                   </div>
                </div>
             </div>
          )}
