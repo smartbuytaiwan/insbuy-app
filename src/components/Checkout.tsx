@@ -11,6 +11,10 @@ interface CheckoutProps {
 }
 
 const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onCancel }) => {
+  // ★ 修正：將狀態宣告移至元件最上方，避免變數尚未宣告就被使用的錯誤
+  const [sellerPaymentSettings, setSellerPaymentSettings] = useState<any>(null);
+  const [globalSettings, setGlobalSettings] = useState<any>(null);
+
   // 檢查是否為純電子商品訂單
   const isDigitalOrder = useMemo(() => cart.every(item => item.product_type === 'DIGITAL'), [cart]);
 
@@ -22,12 +26,22 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
       : [{ name: '宅配', fee: 100, free_threshold: 2000 }];
   }, [cart, isDigitalOrder]);
 
-  // ★ 取得商品設定的付款方式
+  // ★ 取得商品設定的付款方式，並加上全站金流開關的判斷
   const allowedPaymentMethods = useMemo(() => {
     const methods = cart[0]?.payment_methods;
-    if (!methods || methods.length === 0) return ['BANK', 'COD']; 
-    return methods;
-  }, [cart]);
+    let available = (!methods || methods.length === 0) ? ['BANK', 'COD'] : [...methods]; 
+
+    // 根據後台全站設定動態隱藏選項
+    if (globalSettings) {
+        if (globalSettings.enable_online_payment === false) {
+            available = available.filter(m => m !== 'ONLINE');
+        }
+        if (globalSettings.enable_cod === false) {
+            available = available.filter(m => m !== 'COD');
+        }
+    }
+    return available;
+  }, [cart, globalSettings]);
 
   // ★ 取得商品設定的問卷問題
   const questions = useMemo(() => {
@@ -57,11 +71,22 @@ const Checkout: React.FC<CheckoutProps> = ({ cart, user, products, onSubmit, onC
   const [remarks, setRemarks] = useState('');
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false); // ★ 新增：防止連點雙重送出的狀態
-  
-  // ★ 新增：即時取得賣家全域金物流設定
-  const [sellerPaymentSettings, setSellerPaymentSettings] = useState<any>(null);
 
   useEffect(() => {
+      // 取得全站開關設定
+      const fetchSettings = async () => {
+          try {
+              const res = await fetch('/api/settings');
+              if (res.ok) {
+                  const data = await res.json();
+                  setGlobalSettings(data);
+              }
+          } catch (e) {
+              console.error('無法取得全站設定', e);
+          }
+      };
+      fetchSettings();
+
       const fetchSellerInfo = async () => {
           if (cart.length > 0) {
               try {
